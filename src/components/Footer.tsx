@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { Play, Globe, Link2, Mail, BookOpen, FileText, Trophy, Briefcase, Users, HelpCircle } from 'lucide-react'
 
 const footerLinks = [
+  
   {
     title: 'Courses',
     links: [
@@ -24,28 +25,28 @@ const footerLinks = [
       { label: 'Interview Questions', to: '/resources?type=Interview+Questions' },
     ],
   },
-  {
-    title: 'Services',
-    links: [
-      { label: 'Counseling', to: '/counseling' },
-      { label: 'Hackathons', to: '/hackathons' },
-      { label: 'Internships', to: '/internships' },
-      { label: 'Mentorship', to: '/mentorship' },
-      { label: 'Success Stories', to: '/success-stories' },
-      { label: 'Career Guidance', to: '/counseling?cat=Career' },
-    ],
-  },
-  {
-    title: 'Company',
-    links: [
-      { label: 'About Skill021', to: '/' },
-      { label: 'Blog', to: '/blog' },
-      { label: 'Contact Us', to: '/contact' },
-      { label: 'Privacy Policy', to: '/' },
-      { label: 'Terms of Service', to: '/' },
-      { label: 'Refund Policy', to: '/' },
-    ],
-  },
+  // {
+  //   title: 'Services',
+  //   links: [
+  //     { label: 'Counseling', to: '/counseling' },
+  //     { label: 'Hackathons', to: '/hackathons' },
+  //     { label: 'Internships', to: '/internships' },
+  //     { label: 'Mentorship', to: '/mentorship' },
+  //     { label: 'Success Stories', to: '/success-stories' },
+  //     { label: 'Career Guidance', to: '/counseling?cat=Career' },
+  //   ],
+  // },
+  // {
+  //   title: 'Company',
+  //   links: [
+  //     { label: 'About Skill021', to: '/' },
+  //     { label: 'Blog', to: '/blog' },
+  //     { label: 'Contact Us', to: '/contact' },
+  //     { label: 'Privacy Policy', to: '/' },
+  //     { label: 'Terms of Service', to: '/' },
+  //     { label: 'Refund Policy', to: '/' },
+  //   ],
+  // },
 ]
 
 export default function Footer() {

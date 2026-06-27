@@ -39,59 +39,59 @@ function useCountUp(target: number, duration = 2000) {
 }
 
 // ─── Stat Card ───────────────────────────────────────────────────────────────
-function StatCard({
-  value, suffix, label, sublabel, icon: Icon,
-}: {
-  value: number; suffix: string; label: string; sublabel: string
-  icon: typeof Users2;
-}) {
-  const { count, ref } = useCountUp(value)
-  return (
-    <motion.div
-      ref={ref}
-      initial={{ opacity: 0, y: 16 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.45 }}
-      className="bg-white dark:bg-brand-dark-card rounded-2xl border border-brand-border dark:border-brand-dark-border px-6 py-5 flex items-center gap-4"
-    >
-      <div className="w-12 h-12 rounded-xl bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center flex-shrink-0">
-        <Icon size={22} className="text-primary-500" />
-      </div>
-      <div>
-        <div className="text-2xl font-black text-brand-text dark:text-brand-dark-text leading-none">
-          {count.toLocaleString()}{suffix}
-        </div>
-        <div className="text-sm font-semibold text-brand-text dark:text-brand-dark-text mt-0.5">{label}</div>
-        <div className="text-xs text-brand-muted dark:text-brand-dark-muted mt-0.5">{sublabel}</div>
-      </div>
-    </motion.div>
-  )
-}
+// function StatCard({
+//   value, suffix, label, sublabel, icon: Icon,
+// }: {
+//   value: number; suffix: string; label: string; sublabel: string
+//   icon: typeof Users2;
+// }) {
+//   const { count, ref } = useCountUp(value)
+//   return (
+//     <motion.div
+//       ref={ref}
+//       initial={{ opacity: 0, y: 16 }}
+//       whileInView={{ opacity: 1, y: 0 }}
+//       viewport={{ once: true }}
+//       transition={{ duration: 0.45 }}
+//       className="bg-white dark:bg-brand-dark-card rounded-2xl border border-brand-border dark:border-brand-dark-border px-6 py-5 flex items-center gap-4"
+//     >
+//       <div className="w-12 h-12 rounded-xl bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center flex-shrink-0">
+//         <Icon size={22} className="text-primary-500" />
+//       </div>
+//       <div>
+//         <div className="text-2xl font-black text-brand-text dark:text-brand-dark-text leading-none">
+//           {count.toLocaleString()}{suffix}
+//         </div>
+//         <div className="text-sm font-semibold text-brand-text dark:text-brand-dark-text mt-0.5">{label}</div>
+//         <div className="text-xs text-brand-muted dark:text-brand-dark-muted mt-0.5">{sublabel}</div>
+//       </div>
+//     </motion.div>
+//   )
+// }
 
-const testimonials = [
-  {
-    name: 'Ankit Rawat',
-    college: 'ABES Engineering College, AKTU',
-    quote: 'Skill021 completely transformed my DSA preparation. Got placed at TCS with ₹7 LPA package!',
-    rating: 5,
-    initials: 'AR',
-  },
-  {
-    name: 'Sneha Gupta',
-    college: 'MSIT, IP University',
-    quote: 'The IPU counseling session was incredibly detailed. Got into my first-choice branch thanks to Skill021!',
-    rating: 5,
-    initials: 'SG',
-  },
-  {
-    name: 'Rohit Kumar',
-    college: 'DTU, Delhi',
-    quote: 'JAC Delhi cutoff analysis was spot-on. The Java + DSA combo course got me ready for placements.',
-    rating: 5,
-    initials: 'RK',
-  },
-]
+// const testimonials = [
+//   {
+//     name: 'Ankit Rawat',
+//     college: 'ABES Engineering College, AKTU',
+//     quote: 'Skill021 completely transformed my DSA preparation. Got placed at TCS with ₹7 LPA package!',
+//     rating: 5,
+//     initials: 'AR',
+//   },
+//   {
+//     name: 'Sneha Gupta',
+//     college: 'MSIT, IP University',
+//     quote: 'The IPU counseling session was incredibly detailed. Got into my first-choice branch thanks to Skill021!',
+//     rating: 5,
+//     initials: 'SG',
+//   },
+//   {
+//     name: 'Rohit Kumar',
+//     college: 'DTU, Delhi',
+//     quote: 'JAC Delhi cutoff analysis was spot-on. The Java + DSA combo course got me ready for placements.',
+//     rating: 5,
+//     initials: 'RK',
+//   },
+// ]
 
 export default function Home() {
   const [selectedVideo, setSelectedVideo] = useState<YouTubeVideo | null>(null)
@@ -205,7 +205,7 @@ export default function Home() {
           </div>
 
           {/* ── STAT CARDS ROW ── */}
-          <div className="pb-8 lg:pb-12 mt-4">
+          {/* <div className="pb-8 lg:pb-12 mt-4">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard
                 value={12000} suffix="+" label="Students" sublabel="Growing community"
@@ -224,12 +224,12 @@ export default function Home() {
                 icon={Trophy}
               />
             </div>
-          </div>
+          </div> */}
         </div>
       </section>
 
       {/* ─── FEATURES STRIP ─── */}
-      <section className="py-16 bg-gray-50 dark:bg-brand-dark-card border-y border-gray-100 dark:border-brand-dark-border">
+      {/* <section className="py-16 bg-gray-50 dark:bg-brand-dark-card border-y border-gray-100 dark:border-brand-dark-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
@@ -266,7 +266,7 @@ export default function Home() {
             ))}
           </div>
         </div>
-      </section>
+      </section> */}
 
       {/* ─── FEATURED COURSES ─── */}
       <section className="py-16 bg-white dark:bg-brand-dark-bg">
@@ -299,8 +299,8 @@ export default function Home() {
       </section>
 
       {/* ─── COUNSELING BANNER ─── */}
-      <section className="py-16 bg-[#0A0A0A] dark:bg-brand-dark-card relative overflow-hidden">
-        {/* Subtle grid */}
+      {/* <section className="py-16 bg-[#0A0A0A] dark:bg-brand-dark-card relative overflow-hidden">
+        //Subtle grid
         <div
           className="absolute inset-0 opacity-[0.06] pointer-events-none"
           style={{
@@ -334,10 +334,10 @@ export default function Home() {
             </Link>
           </motion.div>
         </div>
-      </section>
+      </section> */}
 
       {/* ─── LATEST HACKATHONS ─── */}
-      <section className="py-16 bg-white dark:bg-brand-dark-bg">
+      {/* <section className="py-16 bg-white dark:bg-brand-dark-bg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between mb-10">
             <div>
@@ -364,7 +364,7 @@ export default function Home() {
             </Link>
           </div>
         </div>
-      </section>
+      </section> */}
 
       {/* ═══════════════════════════════════════════════
           PREMIUM YOUTUBE VIDEO SHOWCASE
@@ -463,7 +463,7 @@ export default function Home() {
       </AnimatePresence>
 
       {/* ─── TESTIMONIALS ─── */}
-      <section className="py-16 bg-white dark:bg-brand-dark-bg">
+      {/* <section className="py-16 bg-white dark:bg-brand-dark-bg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="section-title">What Our Students Say</h2>
@@ -479,7 +479,7 @@ export default function Home() {
                 transition={{ duration: 0.4, delay: i * 0.1 }}
                 className="card p-6"
               >
-                {/* Stars */}
+                // //Star
                 <div className="flex items-center gap-1 mb-4">
                   {Array.from({ length: t.rating }).map((_, j) => (
                     <svg key={j} className="w-4 h-4 text-amber-400 fill-amber-400" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
@@ -501,10 +501,10 @@ export default function Home() {
             ))}
           </div>
         </div>
-      </section>
+      </section> */}
 
       {/* ─── WHAT WE OFFER ─── */}
-      <section className="py-16 bg-gray-50 dark:bg-brand-dark-card border-t border-gray-100 dark:border-brand-dark-border">
+      {/* <section className="py-16 bg-gray-50 dark:bg-brand-dark-card border-t border-gray-100 dark:border-brand-dark-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="section-title">Everything you need to succeed</h2>
@@ -536,10 +536,10 @@ export default function Home() {
             ))}
           </div>
         </div>
-      </section>
+      </section> */}
 
       {/* ─── FINAL CTA ─── */}
-      <section className="py-16 bg-white dark:bg-brand-dark-bg">
+      {/* <section className="py-16 bg-white dark:bg-brand-dark-bg">
         <div className="max-w-3xl mx-auto px-4 text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -562,7 +562,7 @@ export default function Home() {
             </Link>
           </motion.div>
         </div>
-      </section>
+      </section> */}
     </div>
   )
 }

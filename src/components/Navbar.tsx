@@ -1,18 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Menu, X, Sun, Moon, ChevronDown, User, LayoutDashboard, LogOut, Shield,
-  BookOpen, FileText, Trophy, Briefcase, Users, Star, GraduationCap,
+  Menu, X, Sun, Moon, ChevronDown,
+  BookOpen, FileText, Trophy, Briefcase, Users, GraduationCap,
   Code2, Globe, Award, Target, Map, HelpCircle,
   FileQuestion, MessageSquare, ArrowRight, Home
 } from 'lucide-react'
-import { useAuthStore } from '../store/authStore'
 
 // ─── Dropdown variants ────────────────────────────────────────────────────────
-const dropdownVariants = {
+const dropdownVariants: any = {
   hidden: { opacity: 0, y: -6, scale: 0.98 },
-  visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.16, ease: 'easeOut' } },
+  visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.16, ease: [0.16, 1, 0.3, 1] } },
   exit: { opacity: 0, y: -6, scale: 0.98, transition: { duration: 0.1 } },
 }
 
@@ -76,13 +75,11 @@ const NAV_ITEMS = [
     label: 'Resources',
     path: '/resources',
     icon: FileText,
-    description: 'Notes, PYQs, roadmaps, quizzes & more',
+    description: 'Notes, PDFs, coding resources & more',
     mega: {
       grid: [
         { name: 'Notes & PDFs', path: '/resources?type=Notes', icon: FileText, desc: 'Subject-wise handwritten & typed notes' },
-        { name: 'Roadmaps', path: '/roadmaps', icon: Map, desc: 'Visual career & learning roadmaps' },
         { name: 'Previous Year Papers', path: '/resources?type=Previous+Year+Papers', icon: FileQuestion, desc: 'PYQs with solutions for all exams' },
-        { name: 'Quizzes & Tests', path: '/quizzes', icon: HelpCircle, desc: 'Topic-wise MCQ practice tests' },
         { name: 'E-Books', path: '/resources?type=E-Books', icon: BookOpen, desc: 'Digital books & reference material' },
         { name: 'Cheat Sheets', path: '/resources?type=Cheat+Sheets', icon: FileText, desc: 'Quick revision cards & formulas' },
         { name: 'Interview Questions', path: '/resources?type=Interview+Questions', icon: Users, desc: 'Company-wise interview preparation' },
@@ -91,96 +88,6 @@ const NAV_ITEMS = [
       cta: { label: 'Explore All Resources', path: '/resources' },
     },
   },
-  {
-    id: 'counseling',
-    label: 'Counseling',
-    path: '/counseling',
-    icon: GraduationCap,
-    description: 'Expert-led college admission & career guidance',
-    mega: {
-      columns: [
-        {
-          title: 'Engineering Admissions',
-          icon: GraduationCap,
-          items: [
-            { name: 'JoSAA Counseling', path: '/counseling?cat=Engineering' },
-            { name: 'CSAB Counseling', path: '/counseling?cat=Engineering' },
-            { name: 'AKTU Counseling', path: '/counseling?cat=Engineering' },
-            { name: 'IPU Counseling', path: '/counseling?cat=Engineering' },
-            { name: 'JAC Delhi', path: '/counseling?cat=Engineering' },
-            { name: 'LPU / VIT / SRM', path: '/counseling?cat=Engineering' },
-          ],
-        },
-        {
-          title: 'Medical & Career',
-          icon: Award,
-          items: [
-            { name: 'NEET UG Counseling', path: '/counseling?cat=Medical' },
-            { name: 'AIQ Counseling', path: '/counseling?cat=Medical' },
-            { name: 'Career Guidance', path: '/counseling?cat=Career' },
-            { name: 'Stream Selection', path: '/counseling?cat=Career' },
-            { name: 'Skill Assessment', path: '/counseling?cat=Career' },
-          ],
-        },
-        {
-          title: 'Study Abroad',
-          icon: Globe,
-          items: [
-            { name: 'USA Admissions', path: '/counseling?cat=Abroad+Study' },
-            { name: 'Canada Admissions', path: '/counseling?cat=Abroad+Study' },
-            { name: 'UK Admissions', path: '/counseling?cat=Abroad+Study' },
-            { name: 'Australia', path: '/counseling?cat=Abroad+Study' },
-          ],
-        },
-      ],
-      cta: { label: 'View All Counseling Services', path: '/counseling' },
-    },
-  },
-  {
-    id: 'hackathons',
-    label: 'Hackathons',
-    path: '/hackathons',
-    icon: Trophy,
-    description: 'Compete, build & win',
-    simple: [
-      { name: 'School Level', path: '/hackathons?cat=School+Level', icon: BookOpen },
-      { name: 'College Level', path: '/hackathons?cat=College+Level', icon: GraduationCap },
-      { name: 'National Hackathons', path: '/hackathons?cat=National', icon: Award },
-      { name: 'International', path: '/hackathons?cat=International', icon: Globe },
-      { name: 'Startup Competitions', path: '/hackathons?cat=Startup+Competition', icon: Trophy },
-    ],
-    cta: { label: 'View All Hackathons', path: '/hackathons' },
-  },
-  {
-    id: 'internships',
-    label: 'Training & Internships',
-    path: '/internships',
-    icon: Briefcase,
-    description: 'Real-world experience & skill training',
-    simple: [
-      { name: 'Summer Internships', path: '/internships?cat=Summer+Internship', icon: Briefcase },
-      { name: 'Virtual Internships', path: '/internships?cat=Virtual+Internship', icon: Globe },
-      { name: 'Live Projects', path: '/internships?cat=Live+Project', icon: Code2 },
-      { name: 'Industrial Training', path: '/internships?cat=Industrial+Training', icon: Award },
-      { name: 'Placement Training', path: '/internships?cat=Placement+Training', icon: Target },
-    ],
-    cta: { label: 'All Opportunities', path: '/internships' },
-  },
-  {
-    id: 'mentorship',
-    label: 'Guidance & Mentorship',
-    path: '/mentorship',
-    icon: Users,
-    description: '1:1 sessions with industry experts',
-    simple: [
-      { name: '1:1 Mentorship', path: '/mentorship', icon: Users },
-      { name: 'Resume Review', path: '/mentorship', icon: FileText },
-      { name: 'Mock Interviews', path: '/mentorship', icon: MessageSquare },
-      { name: 'Career Guidance', path: '/mentorship', icon: Briefcase },
-    ],
-    cta: { label: 'Book a Session', path: '/mentorship' },
-  },
-  { id: 'success-stories', label: 'Success Stories', path: '/success-stories', icon: Star },
 ]
 
 // ─── Dropdown Panel Components ─────────────────────────────────────────────────
@@ -367,14 +274,11 @@ function SimpleDropdown({ item, onClose }: { item: typeof NAV_ITEMS[0]; onClose:
 export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null)
   const [mobileExpanded, setMobileExpanded] = useState<string | null>(null)
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('skills021_theme') === 'dark')
   const location = useLocation()
-  const { user, isAuthenticated, logout } = useAuthStore()
   const navRef = useRef<HTMLDivElement>(null)
-  const userMenuRef = useRef<HTMLDivElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Scroll detection
@@ -394,14 +298,13 @@ export default function Navbar() {
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (navRef.current && !navRef.current.contains(e.target as Node)) setActiveDropdown(null)
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) setUserMenuOpen(false)
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   // Close on route change
-  useEffect(() => { setMobileOpen(false); setActiveDropdown(null); setUserMenuOpen(false) }, [location])
+  useEffect(() => { setMobileOpen(false); setActiveDropdown(null) }, [location])
 
   const openDropdown = (id: string) => {
     if (timerRef.current) clearTimeout(timerRef.current)
@@ -414,8 +317,6 @@ export default function Navbar() {
     if (timerRef.current) clearTimeout(timerRef.current)
   }
 
-  const handleLogout = () => { logout(); setUserMenuOpen(false) }
-  const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
   const hasDropdown = (item: typeof NAV_ITEMS[0]) => !!(item as any).mega || !!(item as any).simple
 
   const isActive = (path: string) =>
@@ -529,65 +430,6 @@ export default function Navbar() {
             >
               {darkMode ? <Sun size={16} /> : <Moon size={16} />}
             </button>
-
-            {isAuthenticated && user ? (
-              <div className="relative" ref={userMenuRef}>
-                <button
-                  onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-                >
-                  <div className="w-7 h-7 rounded-full bg-[#0A0A0A] dark:bg-white flex items-center justify-center text-white dark:text-black text-xs font-bold">
-                    {getInitials(user.name)}
-                  </div>
-                  <span className="text-[13px] font-medium text-gray-700 dark:text-gray-200 max-w-[72px] truncate">
-                    {user.name.split(' ')[0]}
-                  </span>
-                  <ChevronDown size={12} className={`text-gray-400 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
-                </button>
-                <AnimatePresence>
-                  {userMenuOpen && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -8, scale: 0.96 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -8, scale: 0.96 }}
-                      transition={{ duration: 0.14 }}
-                      className="absolute right-0 top-12 w-52 bg-white dark:bg-brand-dark-card rounded-xl shadow-xl border border-gray-100 dark:border-brand-dark-border py-2 z-50"
-                    >
-                      <div className="px-4 py-2.5 border-b border-gray-100 dark:border-brand-dark-border mb-1">
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{user.name}</p>
-                        <p className="text-xs text-gray-500 truncate">{user.email}</p>
-                      </div>
-                      <Link to="/dashboard" className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                        <LayoutDashboard size={15} className="text-primary-500" /> My Dashboard
-                      </Link>
-                      {user.role === 'admin' && (
-                        <Link to="/admin" className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                          <Shield size={15} className="text-gray-400" /> Admin Panel
-                        </Link>
-                      )}
-                      <hr className="my-1 border-gray-100 dark:border-brand-dark-border" />
-                      <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-                        <LogOut size={15} /> Logout
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <Link
-                  to="/login"
-                  className="px-3.5 py-1.5 text-[13px] font-semibold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-brand-dark-border rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
-                >
-                  Log in
-                </Link>
-                <Link to="/register">
-                  <button className="px-4 py-1.5 text-[13px] font-semibold text-white bg-[#0A0A0A] dark:bg-white dark:text-black rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 transition-all">
-                    Sign Up
-                  </button>
-                </Link>
-              </div>
-            )}
           </div>
 
           {/* ── Mobile Controls ── */}
@@ -682,42 +524,6 @@ export default function Navbar() {
                 )
               })}
 
-              {/* Auth */}
-              <div className="pt-3 mt-2 border-t border-gray-100 dark:border-brand-dark-border space-y-2">
-                {isAuthenticated && user ? (
-                  <>
-                    <div className="px-3 py-2.5 bg-gray-50 dark:bg-white/5 rounded-xl flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-[#0A0A0A] flex items-center justify-center text-white text-xs font-bold">
-                        {getInitials(user.name)}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white">{user.name}</p>
-                        <p className="text-xs text-gray-500">{user.email}</p>
-                      </div>
-                    </div>
-                    <Link to="/dashboard" className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5">
-                      <LayoutDashboard size={15} className="text-primary-500" /> My Dashboard
-                    </Link>
-                    {user.role === 'admin' && (
-                      <Link to="/admin" className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5">
-                        <Shield size={15} className="text-gray-400" /> Admin Panel
-                      </Link>
-                    )}
-                    <button onClick={handleLogout} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">
-                      <LogOut size={15} /> Logout
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <Link to="/login" className="block px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-brand-dark-border rounded-xl text-center">
-                      Log in
-                    </Link>
-                    <Link to="/register" className="block px-4 py-3 text-sm font-semibold text-white bg-[#0A0A0A] rounded-xl text-center">
-                      Sign Up Free
-                    </Link>
-                  </>
-                )}
-              </div>
             </div>
           </motion.div>
         )}

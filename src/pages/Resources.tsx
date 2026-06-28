@@ -5,7 +5,7 @@ import {
   FileText, Download, Bookmark, Share2, Lock, Search,
   Clock, BookOpen, ChevronDown, Eye
 } from 'lucide-react'
-import { useContentStore, ResourceType, ResourceCategory } from '../store/contentStore'
+import { useContentStore, ResourceType, ResourceCategory, Resource } from '../store/contentStore'
 import toast from 'react-hot-toast'
 
 const RESOURCE_TYPES: { label: ResourceType; icon: typeof FileText }[] = [
@@ -40,7 +40,7 @@ const CATEGORY_GROUPS = [
   },
 ]
 
-function ResourceCard({ resource }: { resource: ReturnType<typeof useContentStore>['resources'][0] }) {
+function ResourceCard({ resource }: { resource: Resource }) {
   const [bookmarked, setBookmarked] = useState(false)
 
   const handleDownload = () => {

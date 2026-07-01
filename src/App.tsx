@@ -13,11 +13,7 @@ import Resources from './pages/Resources'
 import VideosBrowse from './pages/VideosBrowse'
 import Quizzes from './pages/Quizzes'
 import Roadmaps from './pages/Roadmaps'
-import Counseling from './pages/Counseling'
-import Hackathons from './pages/Hackathons'
-import Internships from './pages/Internships'
 import Mentorship from './pages/Mentorship'
-import SuccessStories from './pages/SuccessStories'
 import UserDashboard from './pages/UserDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 
@@ -66,16 +62,8 @@ function AnimatedRoutes() {
             <Route path="/resources/videos" element={<VideosBrowse />} />
             <Route path="/quizzes" element={<Quizzes />} />
             <Route path="/roadmaps" element={<Roadmaps />} />
-            {/* Counseling */}
-            <Route path="/counseling" element={<Counseling />} />
-            {/* Events */}
-            <Route path="/hackathons" element={<Hackathons />} />
-            <Route path="/internships" element={<Internships />} />
             {/* Mentorship */}
             <Route path="/mentorship" element={<Mentorship />} />
-            {/* Stories */}
-            <Route path="/success-stories" element={<SuccessStories />} />
-            {/* Protected */}
             {/* Protected */}
             <Route path="/dashboard" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
             <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />

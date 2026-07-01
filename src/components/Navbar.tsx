@@ -3,10 +3,11 @@ import { Link, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Menu, X, Sun, Moon, ChevronDown,
-  BookOpen, FileText, Trophy, Briefcase, Users, GraduationCap,
-  Code2, Globe, Award, Target, Map, HelpCircle,
-  FileQuestion, MessageSquare, ArrowRight, Home
+  BookOpen, FileText, Users,
+  Code2, Target, HelpCircle,
+  FileQuestion, ArrowRight, Home, LogIn, LogOut, UserCircle2, LayoutDashboard
 } from 'lucide-react'
+import { useAuthStore } from '../store/authStore'
 
 // ─── Dropdown variants ────────────────────────────────────────────────────────
 const dropdownVariants: any = {
@@ -277,6 +278,7 @@ export default function Navbar() {
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null)
   const [mobileExpanded, setMobileExpanded] = useState<string | null>(null)
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('skills021_theme') === 'dark')
+  const { user, isAuthenticated, logout } = useAuthStore()
   const location = useLocation()
   const navRef = useRef<HTMLDivElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -430,6 +432,47 @@ export default function Navbar() {
             >
               {darkMode ? <Sun size={16} /> : <Moon size={16} />}
             </button>
+
+            {/* Auth Buttons */}
+            {isAuthenticated && user ? (
+              <>
+                <Link
+                  to={user.role === 'admin' ? '/admin' : '/dashboard'}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium text-gray-500 dark:text-gray-400 hover:text-[#0A0A0A] dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/8 transition-all"
+                >
+                  <LayoutDashboard size={14} />
+                  Dashboard
+                </Link>
+                <div className="w-px h-5 bg-gray-200 dark:bg-white/10" />
+                <button
+                  onClick={logout}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium text-gray-500 dark:text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all"
+                >
+                  <LogOut size={14} />
+                  Logout
+                </button>
+                <div className="w-px h-5 bg-gray-200 dark:bg-white/10" />
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/10">
+                  <UserCircle2 size={16} className="text-primary-500" />
+                  <span className="text-[13px] font-semibold text-[#0A0A0A] dark:text-white max-w-[100px] truncate">{user.name.split(' ')[0]}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <Link
+                  to="/login"
+                  className="px-4 py-2 rounded-lg text-[13px] font-semibold text-gray-600 dark:text-gray-300 hover:text-[#0A0A0A] dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
+                >
+                  Log In
+                </Link>
+                <Link
+                  to="/register"
+                  className="px-4 py-2 rounded-lg text-[13px] font-semibold bg-[#0A0A0A] dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-100 transition-all"
+                >
+                  Sign Up
+                </Link>
+              </>
+            )}
           </div>
 
           {/* ── Mobile Controls ── */}
@@ -524,6 +567,42 @@ export default function Navbar() {
                 )
               })}
 
+              {/* Mobile Auth Buttons */}
+              <div className="pt-3 border-t border-gray-100 dark:border-brand-dark-border mt-1">
+                {isAuthenticated && user ? (
+                  <div className="space-y-0.5">
+                    <Link
+                      to={user.role === 'admin' ? '/admin' : '/dashboard'}
+                      className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5"
+                    >
+                      <LayoutDashboard size={15} className="text-primary-500" />
+                      Dashboard
+                    </Link>
+                    <button
+                      onClick={() => { logout(); setMobileOpen(false) }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10"
+                    >
+                      <LogOut size={15} />
+                      Logout ({user.name.split(' ')[0]})
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2 pb-2">
+                    <Link
+                      to="/login"
+                      className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold border border-gray-200 dark:border-brand-dark-border text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                    >
+                      <LogIn size={15} /> Log In
+                    </Link>
+                    <Link
+                      to="/register"
+                      className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold bg-[#0A0A0A] dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-100"
+                    >
+                      Sign Up — It's Free
+                    </Link>
+                  </div>
+                )}
+              </div>
             </div>
           </motion.div>
         )}

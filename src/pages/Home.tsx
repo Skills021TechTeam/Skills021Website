@@ -4,14 +4,12 @@ import { motion, useInView, AnimatePresence } from 'framer-motion'
 import {
   Target, Building2, Trophy, ArrowRight, Play,
   ChevronRight, Code2, Users2, Video, GraduationCap, BookOpen,
-  FileText, Briefcase, X
+  FileText, X
 } from 'lucide-react'
 import CourseCard from '../components/CourseCard'
-import HackathonCard from '../components/HackathonCard'
 import VideoCarousel from '../components/VideoCarousel'
 import { YouTubeVideo } from '../store/videoStore'
 import { courses } from '../data/courses'
-import { hackathons } from '../data/hackathons'
 
 // Count-up hook
 function useCountUp(target: number, duration = 2000) {
@@ -137,7 +135,7 @@ export default function Home() {
                 transition={{ duration: 0.6, delay: 0.15 }}
                 className="text-base md:text-[17px] text-brand-muted dark:text-brand-dark-muted leading-relaxed mb-8 max-w-lg"
               >
-                Learn skills, access quality resources, participate in hackathons, receive expert guidance, and accelerate your career journey.
+              Learn skills, access quality resources, connect with expert mentors, and accelerate your career journey.
               </motion.p>
 
               {/* CTA Buttons */}
@@ -156,12 +154,12 @@ export default function Home() {
                     <ArrowRight size={18} />
                   </motion.button>
                 </Link>
-                <Link to="/counseling">
+                <Link to="/mentorship">
                   <motion.button
                     whileTap={{ scale: 0.97 }}
                     className="flex items-center gap-2.5 px-7 py-3.5 bg-white dark:bg-transparent border border-[#0A0A0A] dark:border-white text-[#0A0A0A] dark:text-white font-semibold rounded-xl text-base hover:bg-gray-50 dark:hover:bg-white/10 transition-all duration-200"
                   >
-                    Get Guidance
+                    Find a Mentor
                   </motion.button>
                 </Link>
               </motion.div>

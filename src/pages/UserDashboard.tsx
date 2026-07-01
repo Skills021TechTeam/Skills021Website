@@ -1,21 +1,19 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { 
-  LayoutDashboard, BookOpen, GraduationCap, Trophy, Settings,
-  Clock, CheckCircle, TrendingUp, Play, ExternalLink, Save,
-  User, Phone, School, Lock, ChevronRight, AlertCircle
+  LayoutDashboard, BookOpen, Settings,
+  Clock, CheckCircle, TrendingUp, Play, Save,
+  User, Phone, School, Lock, AlertCircle
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { courses } from '../data/courses'
 import toast from 'react-hot-toast'
 
-type DashboardTab = 'overview' | 'courses' | 'counseling' | 'hackathons' | 'profile'
+type DashboardTab = 'overview' | 'courses' | 'profile'
 
 const sidebarItems = [
   { id: 'overview' as DashboardTab, label: 'Overview', icon: LayoutDashboard },
   { id: 'courses' as DashboardTab, label: 'My Courses', icon: BookOpen },
-  { id: 'counseling' as DashboardTab, label: 'Counseling Status', icon: GraduationCap },
-  { id: 'hackathons' as DashboardTab, label: 'Hackathons', icon: Trophy },
   { id: 'profile' as DashboardTab, label: 'Profile Settings', icon: Settings },
 ]
 
@@ -65,12 +63,11 @@ export default function UserDashboard() {
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
               {[
                 { label: 'Enrolled Courses', value: '3', icon: BookOpen, color: 'text-primary-500', bg: 'bg-primary-50 dark:bg-primary-900/20' },
                 { label: 'Completed', value: '0', icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-50 dark:bg-green-900/20' },
                 { label: 'Hours Learned', value: '24', icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
-                { label: 'Hackathons', value: '2', icon: Trophy, color: 'text-teal-500', bg: 'bg-teal-50 dark:bg-teal-900/20' },
               ].map((stat) => (
                 <motion.div
                   key={stat.label}
@@ -131,10 +128,9 @@ export default function UserDashboard() {
                 {[
                   { text: 'Enrolled in "DSA with Java — Complete Bootcamp"', time: '2 days ago', icon: BookOpen, color: 'text-primary-500' },
                   { text: 'Completed Module 3: Linked Lists', time: '3 days ago', icon: CheckCircle, color: 'text-green-500' },
-                  { text: 'Applied for AKTU Counseling', time: '1 week ago', icon: GraduationCap, color: 'text-teal-500' },
-                  { text: 'Registered for XEN-O-THON 2026', time: '1 week ago', icon: Trophy, color: 'text-amber-500' },
+                  { text: 'Started Web Development Bootcamp', time: '1 week ago', icon: TrendingUp, color: 'text-teal-500' },
                 ].map((activity, i) => (
-                  <div key={i} className={`flex items-center gap-3 px-5 py-4 ${i !== 3 ? 'border-b border-brand-border dark:border-brand-dark-border' : ''}`}>
+                  <div key={i} className={`flex items-center gap-3 px-5 py-4 ${i !== 2 ? 'border-b border-brand-border dark:border-brand-dark-border' : ''}`}>
                     <div className="w-8 h-8 rounded-lg bg-gray-50 dark:bg-white/10 flex items-center justify-center flex-shrink-0">
                       <activity.icon size={15} className={activity.color} />
                     </div>
@@ -187,79 +183,6 @@ export default function UserDashboard() {
           </div>
         )
 
-      case 'counseling':
-        return (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">Counseling Status</h2>
-            <div className="space-y-4">
-              {[
-                { program: 'AKTU Counseling', applied: '2025-05-12', status: 'Under Review', color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' },
-                { program: 'JoSAA Counseling', applied: '2025-05-18', status: 'Pending', color: 'text-gray-600', bg: 'bg-gray-100 dark:bg-gray-800' },
-              ].map((app) => (
-                <div key={app.program} className="card p-5 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-xl flex items-center justify-center">
-                      <GraduationCap size={22} className="text-primary-500" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-brand-text dark:text-brand-dark-text">{app.program}</p>
-                      <p className="text-xs text-brand-muted dark:text-brand-dark-muted">Applied: {app.applied}</p>
-                    </div>
-                  </div>
-                  <span className={`badge ${app.bg} ${app.color} text-xs`}>{app.status}</span>
-                </div>
-              ))}
-            </div>
-            <div className="card p-6 border-2 border-dashed border-primary-200 dark:border-primary-900/50 text-center">
-              <GraduationCap size={32} className="text-primary-400 mx-auto mb-3" />
-              <h3 className="font-bold text-brand-text dark:text-brand-dark-text mb-2">Apply for More Programs</h3>
-              <p className="text-sm text-brand-muted dark:text-brand-dark-muted mb-4">Get expert guidance for IPU, JAC Delhi, and more</p>
-              <a
-                href="https://forms.gle/BpcgGfoKjG1SVgFPA"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 btn-primary text-sm"
-              >
-                <ExternalLink size={14} /> Apply Now
-              </a>
-            </div>
-          </div>
-        )
-
-      case 'hackathons':
-        return (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">My Hackathons</h2>
-            <div className="space-y-4">
-              {[
-                { name: 'XEN-O-THON 2026', status: 'Registered', date: 'Jun 15-17, 2026', mode: 'Offline', prize: '₹50,000' },
-                { name: 'Delhi Hacks 2026', status: 'Interested', date: 'Sep 5-6, 2026', mode: 'Offline', prize: '₹25,000' },
-              ].map((h) => (
-                <div key={h.name} className="card p-5">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 bg-amber-50 dark:bg-amber-900/20 rounded-xl flex items-center justify-center">
-                        <Trophy size={22} className="text-amber-500" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-brand-text dark:text-brand-dark-text">{h.name}</p>
-                        <p className="text-xs text-brand-muted dark:text-brand-dark-muted">{h.date} · {h.mode} · {h.prize}</p>
-                      </div>
-                    </div>
-                    <span className={`badge text-xs ${h.status === 'Registered' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>
-                      {h.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="text-center">
-              <a href="/hackathons" className="inline-flex items-center gap-2 text-primary-500 text-sm font-semibold hover:underline">
-                Browse All Hackathons <ChevronRight size={16} />
-              </a>
-            </div>
-          </div>
-        )
 
       case 'profile':
         return (

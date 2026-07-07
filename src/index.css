@@ -9,11 +9,12 @@
 
   html {
     scroll-behavior: smooth;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
   }
 
   body {
     @apply bg-white text-brand-text dark:bg-brand-dark-bg dark:text-brand-dark-text antialiased;
+    overflow-x: hidden;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -64,28 +65,24 @@
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 5px;
+  width: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #F9FAFB;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #D1D5DB;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #9CA3AF;
+  background: linear-gradient(180deg, #8b5cf6, #3b82f6);
+  border-radius: 10px;
 }
 
 .dark ::-webkit-scrollbar-track {
-  background: #0A0A0F;
+  background: transparent;
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: #1E1E2E;
+  background: linear-gradient(180deg, #8b5cf6, #3b82f6);
 }
 
 /* Progress bar animation */
@@ -114,4 +111,187 @@
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   NEW DESIGN SYSTEM — Home Page Redesign
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* CSS Design Tokens — Light */
+:root {
+  --background: 0 0% 100%;
+  --foreground: 240 10% 4%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 4%;
+  --muted: 240 5% 96%;
+  --muted-foreground: 240 4% 46%;
+  --border: 240 6% 90%;
+  --ring: 271 68% 39%;
+}
+
+/* CSS Design Tokens — Dark */
+.dark {
+  --background: 240 10% 2%;
+  --foreground: 0 0% 100%;
+  --card: 240 10% 5%;
+  --card-foreground: 0 0% 100%;
+  --muted: 240 6% 10%;
+  --muted-foreground: 240 5% 65%;
+  --border: 240 6% 15%;
+  --ring: 258 90% 66%;
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 50%, #8b5cf6 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gradient-shift 6s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* Aurora blobs */
+.aurora {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.5;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.dark .aurora {
+  opacity: 0.4;
+}
+
+@keyframes float-blob {
+  0%, 100% { transform: translate3d(0,0,0) scale(1); }
+  33% { transform: translate3d(60px,-40px,0) scale(1.1); }
+  66% { transform: translate3d(-40px,60px,0) scale(0.95); }
+}
+
+.aurora-1 { animation: float-blob 18s ease-in-out infinite; }
+.aurora-2 { animation: float-blob 22s ease-in-out infinite reverse; }
+.aurora-3 { animation: float-blob 26s ease-in-out infinite; }
+
+/* Dotted grid */
+.dotted-grid {
+  background-image: radial-gradient(circle, rgba(139,92,246,0.15) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.dark .dotted-grid {
+  background-image: radial-gradient(circle, rgba(139,92,246,0.18) 1px, transparent 1px);
+}
+
+/* Noise overlay */
+.noise {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  opacity: 0.04;
+  mix-blend-mode: overlay;
+}
+
+/* Glass card */
+.glass {
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+.dark .glass {
+  background: rgba(20, 20, 25, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-strong {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+.dark .glass-strong {
+  background: rgba(15, 15, 20, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Glowing shadow */
+.glow-purple {
+  box-shadow: 0 10px 40px -10px rgba(139, 92, 246, 0.5), 0 0 60px -20px rgba(59, 130, 246, 0.35);
+}
+
+/* Floating animation */
+@keyframes float-up-down {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-14px); }
+}
+.float-slow { animation: float-up-down 6s ease-in-out infinite; }
+.float-med  { animation: float-up-down 4.5s ease-in-out infinite; }
+.float-fast { animation: float-up-down 3.5s ease-in-out infinite; }
+
+/* Pulse ring */
+@keyframes pulse-ring {
+  0% { transform: scale(0.95); opacity: 0.5; }
+  70% { transform: scale(1.15); opacity: 0; }
+  100% { transform: scale(1.2); opacity: 0; }
+}
+.pulse-ring { animation: pulse-ring 2.5s cubic-bezier(0.455,0.03,0.515,0.955) infinite; }
+
+/* Dashed rotating orbit rings */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.spin-slow { animation: spin-slow 40s linear infinite; }
+.spin-reverse { animation: spin-slow 55s linear infinite reverse; }
+
+/* Ripple */
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  transform: scale(0);
+  animation: ripple-anim 0.7s ease-out;
+  background: rgba(255,255,255,0.5);
+  pointer-events: none;
+}
+@keyframes ripple-anim {
+  to { transform: scale(4); opacity: 0; }
+}
+
+/* Sparkle */
+@keyframes sparkle {
+  0%, 100% { opacity: 0; transform: scale(0.5); }
+  50% { opacity: 1; transform: scale(1); }
+}
+.sparkle { animation: sparkle 2s ease-in-out infinite; }
+
+/* Marquee for tickers */
+@keyframes marquee-x {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.marquee { animation: marquee-x 30s linear infinite; }
+
+/* Selection */
+::selection {
+  background: rgba(139, 92, 246, 0.3);
+  color: inherit;
+}
+
+/* Prefers reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .aurora-1, .aurora-2, .aurora-3,
+  .float-slow, .float-med, .float-fast,
+  .pulse-ring, .spin-slow, .spin-reverse,
+  .sparkle, .marquee, .gradient-text {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

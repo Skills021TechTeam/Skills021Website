@@ -1,12 +1,14 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
 import {
   FileText, Download, Bookmark, Share2, Lock, Search,
-  Clock, BookOpen, ChevronDown, Eye
+  Clock, BookOpen, ChevronDown, Eye, Loader2
 } from 'lucide-react'
-import { useContentStore, ResourceType, ResourceCategory, Resource } from '../store/contentStore'
+import type { ResourceType, ResourceCategory, Resource } from '../store/contentStore'
+import { fetchPublishedResources, incrementDownloadCount, triggerResourceDownload } from '../lib/resourceService'
 import toast from 'react-hot-toast'
+import ConfirmDownloadDialog from '../components/ConfirmDownloadDialog'
 
 const RESOURCE_TYPES: { label: ResourceType; icon: typeof FileText }[] = [
   { label: 'Notes', icon: FileText },
@@ -40,16 +42,8 @@ const CATEGORY_GROUPS = [
   },
 ]
 
-function ResourceCard({ resource }: { resource: Resource }) {
+function ResourceCard({ resource, onDownload }: { resource: Resource; onDownload: (resource: Resource) => void }) {
   const [bookmarked, setBookmarked] = useState(false)
-
-  const handleDownload = () => {
-    if (resource.isPremium) {
-      toast.error('This is a premium resource. Please purchase to download.')
-      return
-    }
-    toast.success(`Downloading: ${resource.title}`)
-  }
 
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href).then(() => toast.success('Link copied to clipboard!'))
@@ -104,7 +98,7 @@ function ResourceCard({ resource }: { resource: Resource }) {
           </button>
         ) : (
           <button
-            onClick={handleDownload}
+            onClick={() => onDownload(resource)}
             className="flex-1 flex items-center justify-center gap-2 py-2 bg-[#0A0A0A] dark:bg-white text-white dark:text-black rounded-xl text-xs font-semibold hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
           >
             <Download size={13} /> Download Free
@@ -128,20 +122,115 @@ function ResourceCard({ resource }: { resource: Resource }) {
 }
 
 export default function Resources() {
-  const { resources } = useContentStore()
   const [searchParams] = useSearchParams()
   const initType = searchParams.get('type') as ResourceType | null
 
+  const [resources, setResources] = useState<Resource[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [activeType, setActiveType] = useState<ResourceType | null>(initType)
   const [activeCategory, setActiveCategory] = useState<ResourceCategory | null>(null)
   const [search, setSearch] = useState('')
   const [showPremium, setShowPremium] = useState<'all' | 'free' | 'premium'>('all')
   const [expandedGroup, setExpandedGroup] = useState<string | null>('School Resources')
 
-  const published = resources.filter(r => r.status === 'Published')
+  // ─── Download dialog state ──────────────────────────────────────────────
+  const [dialogResource, setDialogResource] = useState<Resource | null>(null)
+  const [isDownloading, setIsDownloading] = useState(false)
 
+  // ─── Fetch resources from Supabase on mount ─────────────────────────────
+  useEffect(() => {
+    const loadResources = async () => {
+      try {
+        setIsLoading(true)
+        const data = await fetchPublishedResources()
+        setResources(data)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to load resources'
+        toast.error(message)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadResources()
+  }, [])
+
+  // ─── Open confirmation dialog ───────────────────────────────────────────
+  const handleDownload = useCallback((resource: Resource) => {
+    if (resource.isPremium) {
+      // Premium flow stays unchanged
+      toast.error('This is a premium resource. Please purchase to download.')
+      return
+    }
+    setDialogResource(resource)
+  }, [])
+
+  // ─── Cancel dialog ──────────────────────────────────────────────────────
+  const handleCancelDialog = useCallback(() => {
+    if (isDownloading) return // prevent closing while processing
+    setDialogResource(null)
+  }, [isDownloading])
+
+  // ─── Confirmed download ─────────────────────────────────────────────────
+  const handleConfirmDownload = useCallback(async () => {
+    if (!dialogResource || isDownloading) return
+
+    // 1. Validate file URL
+    if (!dialogResource.downloadUrl) {
+      toast.error('Download file is not available.')
+      console.error('[Download] file_url is empty or null for resource:', dialogResource.id)
+      setDialogResource(null)
+      return
+    }
+
+    setIsDownloading(true)
+    const { id, title, downloadUrl, downloads: currentCount } = dialogResource
+    console.log(`[Download] Starting download for "${title}" (${id})`)
+
+    try {
+      // 2. Trigger the actual file download
+      await triggerResourceDownload(downloadUrl, title)
+
+      // 3. Close dialog immediately after download triggers
+      setDialogResource(null)
+
+      // 4. Optimistic UI update
+      setResources((prev) =>
+        prev.map((r) =>
+          r.id === id ? { ...r, downloads: r.downloads + 1 } : r
+        )
+      )
+      toast.success(`Downloading: ${title}`)
+
+      // 5. Persist download count to Supabase
+      try {
+        await incrementDownloadCount(id, currentCount)
+        console.log(`[Download] Download count updated for "${title}"`)
+      } catch (dbErr) {
+        // Revert optimistic update on DB failure
+        console.error('[Download] Failed to update download count:', dbErr)
+        setResources((prev) =>
+          prev.map((r) =>
+            r.id === id ? { ...r, downloads: r.downloads - 1 } : r
+          )
+        )
+        const message = dbErr instanceof Error ? dbErr.message : 'Failed to update download count'
+        toast.error(message)
+      }
+    } catch (err) {
+      // Download itself failed
+      console.error('[Download] Download failed:', err)
+      const message = err instanceof Error ? err.message : 'Download failed. Please try again.'
+      toast.error(message)
+      setDialogResource(null)
+    } finally {
+      setIsDownloading(false)
+    }
+  }, [dialogResource, isDownloading])
+
+  // ─── Filtering (unchanged logic) ───────────────────────────────────────
   const filtered = useMemo(() => {
-    return published.filter(r => {
+    return resources.filter(r => {
       if (activeType && r.type !== activeType) return false
       if (activeCategory && r.category !== activeCategory) return false
       if (showPremium === 'free' && r.isPremium) return false
@@ -149,9 +238,9 @@ export default function Resources() {
       if (search && !r.title.toLowerCase().includes(search.toLowerCase()) && !r.description.toLowerCase().includes(search.toLowerCase())) return false
       return true
     })
-  }, [published, activeType, activeCategory, search, showPremium])
+  }, [resources, activeType, activeCategory, search, showPremium])
 
-  const totalDownloads = published.reduce((acc, r) => acc + r.downloads, 0)
+  const totalDownloads = resources.reduce((acc, r) => acc + r.downloads, 0)
 
   return (
     <div className="min-h-screen bg-white dark:bg-brand-dark-bg pt-16">
@@ -166,7 +255,7 @@ export default function Resources() {
               The Ultimate Learning Library
             </h1>
             <p className="text-brand-muted dark:text-brand-dark-muted max-w-2xl mx-auto mb-6">
-              {published.length}+ resources across notes, PYQs, roadmaps, cheat sheets and more — curated for every student.
+              {resources.length}+ resources across notes, PYQs, roadmaps, cheat sheets and more — curated for every student.
             </p>
             <div className="flex items-center justify-center gap-6 text-sm text-brand-muted dark:text-brand-dark-muted mb-8">
               <span className="flex items-center gap-2"><Download size={14} />{(totalDownloads / 1000).toFixed(0)}K+ downloads</span>
@@ -200,10 +289,10 @@ export default function Resources() {
               onClick={() => setActiveType(null)}
               className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${!activeType ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-100 dark:hover:bg-white/5'}`}
             >
-              All ({published.length})
+              All ({resources.length})
             </button>
             {RESOURCE_TYPES.map(t => {
-              const cnt = published.filter(r => r.type === t.label).length
+              const cnt = resources.filter(r => r.type === t.label).length
               return (
                 <button
                   key={t.label}
@@ -288,7 +377,12 @@ export default function Resources() {
             </div>
           </div>
 
-          {filtered.length === 0 ? (
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <Loader2 size={40} className="animate-spin text-brand-muted dark:text-brand-dark-muted mb-4" />
+              <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Loading resources...</p>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="text-center py-20">
               <FileText size={48} className="mx-auto text-gray-200 dark:text-brand-dark-muted mb-4" />
               <h3 className="text-lg font-semibold text-brand-text dark:text-brand-dark-text mb-2">No resources found</h3>
@@ -297,12 +391,21 @@ export default function Resources() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
               <AnimatePresence mode="popLayout">
-                {filtered.map(r => <ResourceCard key={r.id} resource={r} />)}
+                {filtered.map(r => <ResourceCard key={r.id} resource={r} onDownload={handleDownload} />)}
               </AnimatePresence>
             </div>
           )}
         </main>
       </div>
+
+      {/* Download Confirmation Dialog */}
+      <ConfirmDownloadDialog
+        isOpen={!!dialogResource}
+        resourceTitle={dialogResource?.title ?? ''}
+        isLoading={isDownloading}
+        onCancel={handleCancelDialog}
+        onConfirm={handleConfirmDownload}
+      />
     </div>
   )
 }

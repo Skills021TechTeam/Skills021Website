@@ -1,8 +1,7 @@
 import { Link } from 'react-router-dom'
-import { Play, Globe, Link2, Mail, BookOpen, FileText, HelpCircle } from 'lucide-react'
+import { Play, Globe, Link2, Mail, BookOpen, FileText, Trophy, Briefcase, Users, HelpCircle } from 'lucide-react'
 
 const footerLinks = [
-  
   {
     title: 'Courses',
     links: [
@@ -25,28 +24,28 @@ const footerLinks = [
       { label: 'Interview Questions', to: '/resources?type=Interview+Questions' },
     ],
   },
-  // {
-  //   title: 'Services',
-  //   links: [
-  //     { label: 'Counseling', to: '/counseling' },
-  //     { label: 'Hackathons', to: '/hackathons' },
-  //     { label: 'Internships', to: '/internships' },
-  //     { label: 'Mentorship', to: '/mentorship' },
-  //     { label: 'Success Stories', to: '/success-stories' },
-  //     { label: 'Career Guidance', to: '/counseling?cat=Career' },
-  //   ],
-  // },
-  // {
-  //   title: 'Company',
-  //   links: [
-  //     { label: 'About Skill021', to: '/' },
-  //     { label: 'Blog', to: '/blog' },
-  //     { label: 'Contact Us', to: '/contact' },
-  //     { label: 'Privacy Policy', to: '/' },
-  //     { label: 'Terms of Service', to: '/' },
-  //     { label: 'Refund Policy', to: '/' },
-  //   ],
-  // },
+  {
+    title: 'Services',
+    links: [
+      { label: 'Counseling', to: '/counseling' },
+      { label: 'Hackathons', to: '/hackathons' },
+      { label: 'Internships', to: '/internships' },
+      { label: 'Mentorship', to: '/mentorship' },
+      { label: 'Success Stories', to: '/success-stories' },
+      { label: 'Career Guidance', to: '/counseling?cat=Career' },
+    ],
+  },
+  {
+    title: 'Company',
+    links: [
+      { label: 'About Skill021', to: '/' },
+      { label: 'Blog', to: '/blog' },
+      { label: 'Contact Us', to: '/contact' },
+      { label: 'Privacy Policy', to: '/' },
+      { label: 'Terms of Service', to: '/' },
+      { label: 'Refund Policy', to: '/' },
+    ],
+  },
 ]
 
 export default function Footer() {
@@ -60,7 +59,7 @@ export default function Footer() {
               <span className="text-xl font-black text-white tracking-tight">SKILL021</span>
             </Link>
             <p className="text-sm text-gray-400 leading-relaxed mb-6">
-              India's premier EdTech platform — quality courses, study resources, and expert mentorship for students across India.
+              India's complete EdTech ecosystem — courses, resources, counseling, hackathons, internships and mentorship. All in one place.
             </p>
             {/* Quick nav pills */}
             <div className="flex flex-wrap gap-1.5 mb-6">
@@ -68,6 +67,9 @@ export default function Footer() {
                 { icon: BookOpen, label: 'Courses', to: '/courses' },
                 { icon: FileText, label: 'Resources', to: '/resources' },
                 { icon: HelpCircle, label: 'Quizzes', to: '/quizzes' },
+                { icon: Trophy, label: 'Hackathons', to: '/hackathons' },
+                { icon: Briefcase, label: 'Internships', to: '/internships' },
+                { icon: Users, label: 'Mentorship', to: '/mentorship' },
               ].map(item => (
                 <Link
                   key={item.label}

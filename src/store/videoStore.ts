@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-// ─── YouTube Video Types ────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 export type VideoCategory =
   | 'DSA'
   | 'JEE'
@@ -15,6 +15,33 @@ export type VideoCategory =
   | 'Aptitude'
   | 'Study Tips'
 
+// ─── Timestamp (chapter marker) ───────────────────────────────────────────────
+export interface VideoTimestamp {
+  id: string
+  time: number
+  label: string
+}
+
+// ─── Comment & Reply ──────────────────────────────────────────────────────────
+export interface CommentReply {
+  id: string
+  userId: string
+  userName: string
+  text: string
+  createdAt: string
+}
+
+export interface VideoComment {
+  id: string
+  videoId: string
+  userId: string
+  userName: string
+  text: string
+  createdAt: string
+  replies: CommentReply[]
+}
+
+// ─── Video ────────────────────────────────────────────────────────────────────
 export interface YouTubeVideo {
   id: string
   youtubeUrl: string
@@ -24,55 +51,71 @@ export interface YouTubeVideo {
   category: VideoCategory
   thumbnail: string
   uploadDate: string
-  duration: string // e.g., "15:30"
+  duration: string
   featured: boolean
   status: 'Published' | 'Draft'
-  order: number // for custom ordering
+  order: number
   createdAt: string
+  timestamps: VideoTimestamp[]
 }
 
-// ─── State Interface ────────────────────────────────────────────────────────
+// ─── State ────────────────────────────────────────────────────────────────────
 interface VideoState {
   videos: YouTubeVideo[]
+  comments: VideoComment[]
 
-  // Video actions
-  addVideo: (video: Omit<YouTubeVideo, 'id' | 'createdAt' | 'videoId' | 'thumbnail'>) => void
+  addVideo: (video: Omit<YouTubeVideo, 'id' | 'createdAt' | 'videoId' | 'thumbnail' | 'timestamps'>) => void
   updateVideo: (id: string, data: Partial<YouTubeVideo>) => void
   deleteVideo: (id: string) => void
   toggleVideoStatus: (id: string) => void
   toggleFeatured: (id: string) => void
   reorderVideos: (videos: YouTubeVideo[]) => void
+
+  addTimestamp: (videoId: string, ts: Omit<VideoTimestamp, 'id'>) => void
+  updateTimestamp: (videoId: string, tsId: string, data: Partial<VideoTimestamp>) => void
+  deleteTimestamp: (videoId: string, tsId: string) => void
+
+  addComment: (videoId: string, userId: string, userName: string, text: string) => void
+  deleteComment: (commentId: string) => void
+  addReply: (commentId: string, userId: string, userName: string, text: string) => void
+  deleteReply: (commentId: string, replyId: string) => void
+  getVideoComments: (videoId: string) => VideoComment[]
+
   getPublishedVideos: () => YouTubeVideo[]
   getVideosByCategory: (category: VideoCategory) => YouTubeVideo[]
 }
 
-// ─── Helper: Extract Video ID from YouTube URL ──────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 function extractYouTubeVideoId(url: string): string {
   const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)
   return match?.[1] || ''
 }
 
-// ─── Helper: Get YouTube Thumbnail URL ──────────────────────────────────────
 function getYouTubeThumbnail(videoId: string): string {
   return `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
 }
 
-// ─── Seed Data ──────────────────────────────────────────────────────────────
+// ─── Seed Data ────────────────────────────────────────────────────────────────
 const seedVideos: YouTubeVideo[] = [
   {
     id: 'v1',
-    youtubeUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-    videoId: 'dQw4w9WgXcQ',
-    title: 'Complete DSA Mastery - Arrays & Strings',
-    description: 'In this video, we cover the fundamentals of arrays and strings - two of the most important topics in DSA interviews.',
+    youtubeUrl: '/dsa-video.mp4',
+    videoId: 'local-dsa',
+    title: 'Complete DSA with Java',
+    description: 'Complete DSA course with Java covering all important topics from basics to advanced level.',
     category: 'DSA',
-    thumbnail: 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
-    uploadDate: '2026-05-15',
-    duration: '45:30',
+    thumbnail: '',
+    uploadDate: '2026-06-29',
+    duration: '60:00',
     featured: true,
     status: 'Published',
     order: 1,
-    createdAt: '2026-05-15',
+    createdAt: '2026-06-29',
+    timestamps: [
+      { id: 'ts1', time: 0, label: 'Intro' },
+      { id: 'ts2', time: 10, label: 'First Stamp' },
+      { id: 'ts3', time: 60, label: 'Second' },
+    ],
   },
   {
     id: 'v2',
@@ -88,6 +131,11 @@ const seedVideos: YouTubeVideo[] = [
     status: 'Published',
     order: 2,
     createdAt: '2026-05-10',
+    timestamps: [
+      { id: 'ts5', time: 0, label: 'Mechanics' },
+      { id: 'ts6', time: 600, label: 'Thermodynamics' },
+      { id: 'ts7', time: 1500, label: 'Electrostatics' },
+    ],
   },
   {
     id: 'v3',
@@ -103,6 +151,7 @@ const seedVideos: YouTubeVideo[] = [
     status: 'Published',
     order: 3,
     createdAt: '2026-05-08',
+    timestamps: [],
   },
   {
     id: 'v4',
@@ -118,13 +167,14 @@ const seedVideos: YouTubeVideo[] = [
     status: 'Published',
     order: 4,
     createdAt: '2026-05-05',
+    timestamps: [],
   },
   {
     id: 'v5',
     youtubeUrl: 'https://www.youtube.com/watch?v=OPf0YbXqDm0',
     videoId: 'OPf0YbXqDm0',
     title: 'College Counseling - Choosing Right Stream & Institute',
-    description: 'Expert counseling on how to choose the right stream (Engineering, Medical, Commerce) and institute based on your scores.',
+    description: 'Expert counseling on how to choose the right stream and institute based on your scores.',
     category: 'Counseling',
     thumbnail: 'https://img.youtube.com/vi/OPf0YbXqDm0/maxresdefault.jpg',
     uploadDate: '2026-05-01',
@@ -133,6 +183,7 @@ const seedVideos: YouTubeVideo[] = [
     status: 'Published',
     order: 5,
     createdAt: '2026-05-01',
+    timestamps: [],
   },
   {
     id: 'v6',
@@ -148,6 +199,7 @@ const seedVideos: YouTubeVideo[] = [
     status: 'Published',
     order: 6,
     createdAt: '2026-04-28',
+    timestamps: [],
   },
   {
     id: 'v7',
@@ -163,6 +215,7 @@ const seedVideos: YouTubeVideo[] = [
     status: 'Published',
     order: 7,
     createdAt: '2026-04-25',
+    timestamps: [],
   },
   {
     id: 'v8',
@@ -178,27 +231,29 @@ const seedVideos: YouTubeVideo[] = [
     status: 'Published',
     order: 8,
     createdAt: '2026-04-20',
+    timestamps: [],
   },
 ]
 
-// ─── Store ──────────────────────────────────────────────────────────────────
+// ─── Store ────────────────────────────────────────────────────────────────────
 export const useVideoStore = create<VideoState>()(
   persist(
     (set, get) => ({
       videos: seedVideos,
+      comments: [],
 
       addVideo: (video) => {
         const videoId = extractYouTubeVideoId(video.youtubeUrl)
         const thumbnail = getYouTubeThumbnail(videoId)
         const maxOrder = Math.max(...get().videos.map(v => v.order), 0)
-
-        return set((s) => ({
+        set((s) => ({
           videos: [...s.videos, {
             ...video,
             id: `v-${Date.now()}`,
             videoId,
             thumbnail,
             order: maxOrder + 1,
+            timestamps: [],
             createdAt: new Date().toISOString().split('T')[0],
           }],
         }))
@@ -209,7 +264,8 @@ export const useVideoStore = create<VideoState>()(
       })),
 
       deleteVideo: (id) => set((s) => ({
-        videos: s.videos.filter((v) => v.id !== id)
+        videos: s.videos.filter((v) => v.id !== id),
+        comments: s.comments.filter(c => c.videoId !== id),
       })),
 
       toggleVideoStatus: (id) => set((s) => ({
@@ -222,15 +278,87 @@ export const useVideoStore = create<VideoState>()(
 
       reorderVideos: (videos) => set(() => ({ videos })),
 
+      addTimestamp: (videoId, ts) => set((s) => ({
+        videos: s.videos.map(v =>
+          v.id === videoId
+            ? { ...v, timestamps: [...v.timestamps, { ...ts, id: `ts-${Date.now()}` }].sort((a, b) => a.time - b.time) }
+            : v
+        )
+      })),
+
+      updateTimestamp: (videoId, tsId, data) => set((s) => ({
+        videos: s.videos.map(v =>
+          v.id === videoId
+            ? { ...v, timestamps: v.timestamps.map(t => t.id === tsId ? { ...t, ...data } : t).sort((a, b) => a.time - b.time) }
+            : v
+        )
+      })),
+
+      deleteTimestamp: (videoId, tsId) => set((s) => ({
+        videos: s.videos.map(v =>
+          v.id === videoId
+            ? { ...v, timestamps: v.timestamps.filter(t => t.id !== tsId) }
+            : v
+        )
+      })),
+
+      addComment: (videoId, userId, userName, text) => set((s) => ({
+        comments: [...s.comments, {
+          id: `c-${Date.now()}`,
+          videoId,
+          userId,
+          userName,
+          text,
+          createdAt: new Date().toISOString(),
+          replies: [],
+        }]
+      })),
+
+      deleteComment: (commentId) => set((s) => ({
+        comments: s.comments.filter(c => c.id !== commentId)
+      })),
+
+      addReply: (commentId, userId, userName, text) => set((s) => ({
+        comments: s.comments.map(c =>
+          c.id === commentId
+            ? {
+                ...c,
+                replies: [...c.replies, {
+                  id: `r-${Date.now()}`,
+                  userId,
+                  userName,
+                  text,
+                  createdAt: new Date().toISOString(),
+                }]
+              }
+            : c
+        )
+      })),
+
+      deleteReply: (commentId, replyId) => set((s) => ({
+        comments: s.comments.map(c =>
+          c.id === commentId
+            ? { ...c, replies: c.replies.filter(r => r.id !== replyId) }
+            : c
+        )
+      })),
+
+      getVideoComments: (videoId) => {
+        return get().comments
+          .filter(c => c.videoId === videoId)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      },
+
       getPublishedVideos: () => {
-        const videos = get().videos.filter(v => v.status === 'Published').sort((a, b) => a.order - b.order)
-        return videos
+        return get().videos.filter(v => v.status === 'Published').sort((a, b) => a.order - b.order)
       },
 
       getVideosByCategory: (category) => {
         return get().getPublishedVideos().filter(v => v.category === category)
       },
     }),
-    { name: 'skill021_videos' }
+    {
+      name: 'skill021_videos_v2',
+    }
   )
 )

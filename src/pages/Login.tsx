@@ -193,7 +193,7 @@ export default function Login() {
           {/* Demo credentials hint */}
           <div className="mt-4 p-3 bg-primary-50 dark:bg-primary-900/20 rounded-xl">
             <p className="text-xs text-primary-600 dark:text-primary-400 text-center font-medium">
-              Demo: admin@skills021.com / admin123
+              🔑 Admin: admin@skills021.com / admin123
             </p>
           </div>
         </div>

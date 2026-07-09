@@ -1,8 +1,38 @@
-import { useState, useMemo } from 'react'
-import { motion } from 'framer-motion'
-import { Link, useSearchParams } from 'react-router-dom'
-import { BookOpen, Clock, Users, Star, Search, Play, Filter } from 'lucide-react'
-import { useContentStore, CourseGroup, CourseSubcategory } from '../store/contentStore'
+import { useState, useMemo, useRef, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useSearchParams, useNavigate } from 'react-router-dom'
+import {
+  BookOpen, Clock, Users, Star, Search, Play, X,
+  MoreVertical, MessageSquare, ThumbsUp, Send, CreditCard, Lock,
+} from 'lucide-react'
+import toast from 'react-hot-toast'
+import { useContentStore, CourseGroup, CourseSubcategory, CourseBatch, Course } from '../store/contentStore'
+import { useCourseFeedbackStore, CourseFeedbackType } from '../store/courseFeedbackStore'
+import { useAuthStore } from '../store/authStore'
+
+// Placeholder payment gateway URL — replace with real Razorpay/Stripe checkout link later
+const PAYMENT_GATEWAY_URL = 'https://example-payment-gateway.com/checkout'
+
+function redirectToPayment(formData: {
+  courseId: string
+  courseTitle: string
+  fullName: string
+  email: string
+  address: string
+  batchId: string
+  batchName: string
+}) {
+  const params = new URLSearchParams({
+    courseId: formData.courseId,
+    course: formData.courseTitle,
+    name: formData.fullName,
+    email: formData.email,
+    address: formData.address,
+    batchId: formData.batchId,
+    batch: formData.batchName,
+  })
+  window.location.href = `${PAYMENT_GATEWAY_URL}?${params.toString()}`
+}
 
 const GROUPS: { label: CourseGroup }[] = [
   { label: 'Foundation Programs' },
@@ -23,79 +53,636 @@ const SUBCATEGORIES: Record<CourseGroup, CourseSubcategory[]> = {
 const LEVELS = ['All Levels', 'Beginner', 'Intermediate', 'Advanced']
 const PRICES = ['All', 'Free', 'Paid']
 
-function CourseCard({ course }: { course: ReturnType<typeof useContentStore>['courses'][0] }) {
+// Map course id to video id — only c1 (DSA) has a video right now
+const COURSE_VIDEO_MAP: Record<string, string> = {
+  'c1': 'v1',
+}
+
+function ComingSoonModal({ title, onClose }: { title: string; onClose: () => void }) {
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -16 }}
-      whileHover={{ y: -3 }}
-      transition={{ duration: 0.25 }}
-      className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border overflow-hidden group cursor-pointer hover:shadow-card-hover transition-all duration-200"
-    >
-      {/* Thumbnail — clean dark card */}
-      <div className="relative h-44 bg-gray-900 dark:bg-black overflow-hidden flex items-center justify-center">
-        <BookOpen size={48} className="text-white/10" />
-        {/* Overlay on hover */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-        {/* Badges */}
-        <div className="absolute top-3 left-3 flex gap-2">
-          <span className="px-2.5 py-1 text-xs font-semibold bg-white/15 backdrop-blur-sm text-white rounded-lg border border-white/20">
-            {course.level}
-          </span>
-          {course.price === 'FREE' && (
-            <span className="px-2.5 py-1 text-xs font-semibold bg-primary-500 text-white rounded-lg">FREE</span>
-          )}
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-sm w-full shadow-xl text-center"
+      >
+        <div className="w-14 h-14 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Play size={24} className="text-primary-500 ml-1" />
         </div>
-        {/* Play button on hover */}
-        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-          <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center border border-white/40">
-            <Play size={18} className="text-white ml-0.5" />
-          </div>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="p-5">
-        <span className="text-[11px] font-semibold text-brand-muted dark:text-brand-dark-muted bg-gray-100 dark:bg-white/10 px-2 py-0.5 rounded-md">
-          {course.subcategory}
-        </span>
-        <h3 className="text-[15px] font-bold text-brand-text dark:text-brand-dark-text mt-2 mb-1 leading-snug line-clamp-2 group-hover:text-primary-500 transition-colors">
-          {course.title}
+        <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text mb-2">
+          Video Coming Soon!
         </h3>
-        <p className="text-xs text-brand-muted dark:text-brand-dark-muted mb-3 line-clamp-2 leading-relaxed">
-          {course.description}
+        <p className="text-sm text-brand-muted dark:text-brand-dark-muted mb-2">
+          <span className="font-semibold text-primary-500">{title}</span>
         </p>
-        <p className="text-xs text-brand-muted dark:text-brand-dark-muted mb-3">By {course.instructor}</p>
+        <p className="text-sm text-brand-muted dark:text-brand-dark-muted mb-6">
+          Admin will upload the video for this course shortly. Stay tuned!
+        </p>
+        <button
+          onClick={onClose}
+          className="w-full py-2.5 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600 transition-colors"
+        >
+          Got it!
+        </button>
+      </motion.div>
+    </div>
+  )
+}
 
-        {/* Stats */}
-        <div className="flex items-center gap-3 text-xs text-brand-muted dark:text-brand-dark-muted mb-4">
-          <span className="flex items-center gap-1"><Star size={11} className="text-amber-400 fill-amber-400" />{course.rating}</span>
-          <span className="flex items-center gap-1"><Clock size={11} />{course.duration}</span>
-          <span className="flex items-center gap-1"><Users size={11} />{course.enrolled.toLocaleString()}</span>
+// ─── Comment / Recommend Modal ─────────────────────────────────────────────────
+function FeedbackModal({
+  title,
+  type,
+  onSubmit,
+  onClose,
+}: {
+  title: string
+  type: 'Comment' | 'Recommend'
+  onSubmit: (text: string) => void
+  onClose: () => void
+}) {
+  const [text, setText] = useState('')
+
+  const copy: Record<'Comment' | 'Recommend', { heading: string; placeholder: string; icon: JSX.Element }> = {
+    Comment: {
+      heading: 'Add a Comment',
+      placeholder: 'Write your comment about this course...',
+      icon: <Send size={20} className="text-primary-500" />,
+    },
+    Recommend: {
+      heading: 'Recommend This Course',
+      placeholder: 'Why is this course good for our website? Tell us what you liked...',
+      icon: <ThumbsUp size={20} className="text-primary-500" />,
+    },
+  }
+
+  const handleSubmit = () => {
+    if (!text.trim()) {
+      toast.error('Please write something before submitting.')
+      return
+    }
+    onSubmit(text.trim())
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-md w-full shadow-xl"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            {copy[type].icon}
+            <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">
+              {copy[type].heading}
+            </h3>
+          </div>
+          <button onClick={onClose} className="text-brand-muted hover:text-brand-text dark:hover:text-brand-dark-text transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+        <p className="text-sm text-brand-muted dark:text-brand-dark-muted mb-2">
+          <span className="font-semibold text-primary-500">{title}</span>
+        </p>
+        <textarea
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder={copy[type].placeholder}
+          rows={4}
+          className="input w-full resize-none mb-4"
+          autoFocus
+        />
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text rounded-xl text-sm font-semibold hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            className="flex-1 py-2.5 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600 transition-colors"
+          >
+            Submit
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
+// ─── Rating Modal (enrolled students only) ────────────────────────────────────
+function RatingModal({
+  title,
+  onSubmit,
+  onClose,
+}: {
+  title: string
+  onSubmit: (stars: number) => void
+  onClose: () => void
+}) {
+  const [stars, setStars] = useState(0)
+  const [hovered, setHovered] = useState(0)
+
+  const handleSubmit = () => {
+    if (stars < 1) {
+      toast.error('Please select a star rating before submitting.')
+      return
+    }
+    onSubmit(stars)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-md w-full shadow-xl"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Star size={20} className="text-primary-500" />
+            <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">
+              Rate This Course
+            </h3>
+          </div>
+          <button onClick={onClose} className="text-brand-muted hover:text-brand-text dark:hover:text-brand-dark-text transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+        <p className="text-sm text-brand-muted dark:text-brand-dark-muted mb-4">
+          <span className="font-semibold text-primary-500">{title}</span>
+        </p>
+
+        <div className="flex items-center justify-center gap-2 mb-6">
+          {[1, 2, 3, 4, 5].map(n => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setStars(n)}
+              onMouseEnter={() => setHovered(n)}
+              onMouseLeave={() => setHovered(0)}
+              className="transition-transform hover:scale-110"
+              aria-label={`${n} star`}
+            >
+              <Star
+                size={32}
+                className={
+                  n <= (hovered || stars)
+                    ? 'text-amber-400 fill-amber-400'
+                    : 'text-gray-300 dark:text-brand-dark-border'
+                }
+              />
+            </button>
+          ))}
         </div>
 
-        {/* Price & CTA */}
-        <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-brand-dark-border">
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text rounded-xl text-sm font-semibold hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            className="flex-1 py-2.5 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600 transition-colors"
+          >
+            Submit Rating
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
+
+// ─── Three-Dot Options Menu ────────────────────────────────────────────────────
+function OptionsMenu({
+  isEnrolled,
+  onRating,
+  onRecommend,
+}: {
+  isEnrolled: boolean
+  onRating: () => void
+  onRecommend: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [])
+
+  const handleRating = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setOpen(false)
+    if (!isEnrolled) {
+      toast.error('Only enrolled students can rate this course.')
+      return
+    }
+    onRating()
+  }
+
+  const handleRecommend = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setOpen(false)
+    if (!isEnrolled) {
+      toast.error('Only enrolled students can give feedback on this course.')
+      return
+    }
+    onRecommend()
+  }
+
+  return (
+    <div className="relative ml-auto" ref={menuRef}>
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(v => !v) }}
+        className="p-1 rounded-md text-brand-muted dark:text-brand-dark-muted hover:bg-gray-100 dark:hover:bg-white/10 hover:text-brand-text dark:hover:text-brand-dark-text transition-colors"
+        aria-label="More options"
+      >
+        <MoreVertical size={16} />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: -4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -4 }}
+            transition={{ duration: 0.15 }}
+            className="absolute right-0 top-7 z-20 w-48 bg-white dark:bg-brand-dark-card rounded-xl border border-gray-100 dark:border-brand-dark-border shadow-xl overflow-hidden"
+          >
+            <button
+              onClick={handleRating}
+              className={`w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left transition-colors ${
+                isEnrolled
+                  ? 'text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5'
+                  : 'text-brand-muted dark:text-brand-dark-muted opacity-60 cursor-not-allowed'
+              }`}
+            >
+              <Star size={14} className={isEnrolled ? 'text-primary-500' : 'text-brand-muted dark:text-brand-dark-muted'} />
+              Rating
+              {!isEnrolled && <Lock size={11} className="ml-auto" />}
+            </button>
+            <button
+              onClick={handleRecommend}
+              className={`w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left transition-colors ${
+                isEnrolled
+                  ? 'text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5'
+                  : 'text-brand-muted dark:text-brand-dark-muted opacity-60 cursor-not-allowed'
+              }`}
+            >
+              <ThumbsUp size={14} className={isEnrolled ? 'text-primary-500' : 'text-brand-muted dark:text-brand-dark-muted'} />
+              Recommend
+              {!isEnrolled && <Lock size={11} className="ml-auto" />}
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+// ─── Enroll Form Modal ──────────────────────────────────────────────────────────
+function EnrollModal({
+  course,
+  onClose,
+}: {
+  course: Course
+  onClose: () => void
+}) {
+  const { user } = useAuthStore()
+  const [fullName, setFullName] = useState(user?.name || '')
+  const [email, setEmail] = useState(user?.email || '')
+  const [address, setAddress] = useState('')
+  const [batchId, setBatchId] = useState('')
+
+  const batches: CourseBatch[] = course.batches || []
+
+  const handleProceed = () => {
+    if (!fullName.trim() || !email.trim() || !address.trim() || !batchId) {
+      toast.error('Please fill in all fields before proceeding.')
+      return
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email.trim())) {
+      toast.error('Please enter a valid email address.')
+      return
+    }
+    const batch = batches.find(b => b.id === batchId)
+    if (!batch) {
+      toast.error('Please select a valid batch.')
+      return
+    }
+    if (batch.seatsLeft <= 0) {
+      toast.error('Selected batch is full. Please choose another batch.')
+      return
+    }
+
+    toast.success('Redirecting to payment...')
+    redirectToPayment({
+      courseId: course.id,
+      courseTitle: course.title,
+      fullName: fullName.trim(),
+      email: email.trim(),
+      address: address.trim(),
+      batchId: batch.id,
+      batchName: batch.name,
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 overflow-y-auto">
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-md w-full shadow-xl my-8"
+      >
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">Enroll Now</h3>
+          <button onClick={onClose} className="text-brand-muted hover:text-brand-text dark:hover:text-brand-dark-text transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+        <p className="text-sm text-brand-muted dark:text-brand-dark-muted mb-4">
+          <span className="font-semibold text-primary-500">{course.title}</span>
+        </p>
+
+        <div className="space-y-3">
           <div>
-            {course.price === 'FREE' ? (
-              <span className="text-lg font-bold text-primary-500">FREE</span>
+            <label className="text-xs font-semibold text-brand-muted dark:text-brand-dark-muted mb-1 block">Full Name</label>
+            <input
+              value={fullName}
+              onChange={e => setFullName(e.target.value)}
+              placeholder="Your full name"
+              className="input w-full"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-brand-muted dark:text-brand-dark-muted mb-1 block">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="input w-full"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-brand-muted dark:text-brand-dark-muted mb-1 block">Address</label>
+            <textarea
+              value={address}
+              onChange={e => setAddress(e.target.value)}
+              placeholder="Your full address"
+              rows={2}
+              className="input w-full resize-none"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-brand-muted dark:text-brand-dark-muted mb-1 block">Batch</label>
+            {batches.length === 0 ? (
+              <p className="text-xs text-brand-muted dark:text-brand-dark-muted">No batches available for this course yet.</p>
             ) : (
-              <span className="text-lg font-bold text-brand-text dark:text-brand-dark-text">₹{course.price}</span>
+              <select
+                value={batchId}
+                onChange={e => setBatchId(e.target.value)}
+                className="input w-full"
+              >
+                <option value="">Select a batch</option>
+                {batches.map(b => (
+                  <option key={b.id} value={b.id} disabled={b.seatsLeft <= 0}>
+                    {b.name} Batch — {b.seatsLeft > 0 ? `${b.seatsLeft} seats left` : 'Full'}
+                  </option>
+                ))}
+              </select>
             )}
           </div>
-          <a
-            href={course.videoUrl || '#'}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#0A0A0A] dark:bg-white dark:text-black rounded-xl hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
-          >
-            <Play size={11} /> Enroll Now
-          </a>
         </div>
-      </div>
-    </motion.div>
+
+        <button
+          onClick={handleProceed}
+          disabled={batches.length === 0}
+          className="w-full mt-5 flex items-center justify-center gap-2 py-3 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          <CreditCard size={16} /> Proceed to Payment
+        </button>
+      </motion.div>
+    </div>
+  )
+}
+
+function CourseCard({ course }: { course: Course }) {
+  const navigate = useNavigate()
+  const [showComingSoon, setShowComingSoon] = useState(false)
+  const [showRecommend, setShowRecommend] = useState(false)
+  const [showRating, setShowRating] = useState(false)
+  const [showEnroll, setShowEnroll] = useState(false)
+  const { addEntry } = useCourseFeedbackStore()
+  const { user } = useAuthStore()
+  const { updateCourse } = useContentStore()
+
+  const isAdmin = user?.role === 'admin'
+  const isEnrolled = isAdmin || (!!user && !!user.enrolledCourses && user.enrolledCourses.includes(course.id))
+
+  const handlePlayClick = () => {
+    const videoId = COURSE_VIDEO_MAP[course.id]
+    if (!videoId) {
+      setShowComingSoon(true)
+      return
+    }
+    if (!isEnrolled) {
+      toast.error('Please enroll in this course to watch the videos.', {
+        icon: '🔒',
+        duration: 3000,
+      })
+      setShowEnroll(true)
+      return
+    }
+    navigate(`/videos/${videoId}`)
+  }
+
+  const handleRecommendSubmit = (text: string) => {
+    addEntry({
+      courseId: course.id,
+      courseTitle: course.title,
+      type: 'Recommend',
+      text,
+      userId: user?.id || null,
+      userName: user?.name || 'Anonymous',
+    })
+    toast.success('Thanks for recommending this course!')
+    setShowRecommend(false)
+  }
+
+  const handleRatingSubmit = (stars: number) => {
+    addEntry({
+      courseId: course.id,
+      courseTitle: course.title,
+      type: 'Rating',
+      text: '',
+      stars,
+      userId: user?.id || null,
+      userName: user?.name || 'Anonymous',
+    })
+
+    const newReviews = course.reviews + 1
+    const newRating = Math.round((((course.rating * course.reviews) + stars) / newReviews) * 10) / 10
+    updateCourse(course.id, { rating: newRating, reviews: newReviews })
+
+    toast.success('Thanks for rating this course!')
+    setShowRating(false)
+  }
+
+  return (
+    <>
+      <motion.div
+        layout
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -16 }}
+        whileHover={{ y: -3 }}
+        transition={{ duration: 0.25 }}
+        className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border overflow-hidden group cursor-pointer hover:shadow-card-hover transition-all duration-200"
+      >
+        {/* Thumbnail */}
+        <div className="relative h-44 bg-gray-900 dark:bg-black overflow-hidden flex items-center justify-center">
+          <BookOpen size={48} className="text-white/10" />
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+          {/* Badges */}
+          <div className="absolute top-3 left-3 flex gap-2">
+            <span className="px-2.5 py-1 text-xs font-semibold bg-white/15 backdrop-blur-sm text-white rounded-lg border border-white/20">
+              {course.level}
+            </span>
+            {course.price === 'FREE' && (
+              <span className="px-2.5 py-1 text-xs font-semibold bg-primary-500 text-white rounded-lg">FREE</span>
+            )}
+          </div>
+          {/* Video available badge */}
+          {COURSE_VIDEO_MAP[course.id] && (
+            <div className="absolute top-3 right-3">
+              <span className="px-2 py-1 text-[10px] font-bold bg-green-500 text-white rounded-lg">
+                ▶ Video Ready
+              </span>
+            </div>
+          )}
+          {/* Play button - shows lock if not enrolled */}
+          <div
+            className="absolute inset-0 flex items-center justify-center cursor-pointer"
+            onClick={handlePlayClick}
+          >
+            <div className={`w-14 h-14 backdrop-blur-sm rounded-full flex items-center justify-center border-2 hover:scale-110 transition-all duration-200 ${
+              isEnrolled
+                ? 'bg-white/20 border-white/40 hover:bg-white/30'
+                : 'bg-black/40 border-white/30 hover:bg-black/50'
+            }`}>
+              {isEnrolled
+                ? <Play size={22} className="text-white ml-1" />
+                : <Lock size={20} className="text-white" />
+              }
+            </div>
+            {!isEnrolled && (
+              <div className="absolute bottom-3 left-0 right-0 flex justify-center">
+                <span className="text-[10px] text-white/80 bg-black/50 px-2 py-0.5 rounded-full backdrop-blur-sm">
+                  Enroll to Watch
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-5">
+          <span className="text-[11px] font-semibold text-brand-muted dark:text-brand-dark-muted bg-gray-100 dark:bg-white/10 px-2 py-0.5 rounded-md">
+            {course.subcategory}
+          </span>
+          <h3 className="text-[15px] font-bold text-brand-text dark:text-brand-dark-text mt-2 mb-1 leading-snug line-clamp-2 group-hover:text-primary-500 transition-colors">
+            {course.title}
+          </h3>
+          <p className="text-xs text-brand-muted dark:text-brand-dark-muted mb-3 line-clamp-2 leading-relaxed">
+            {course.description}
+          </p>
+          <p className="text-xs text-brand-muted dark:text-brand-dark-muted mb-3">By {course.instructor}</p>
+
+          {/* Stats */}
+          <div className="flex items-center gap-3 text-xs text-brand-muted dark:text-brand-dark-muted mb-4">
+            <span className="flex items-center gap-1"><Star size={11} className="text-amber-400 fill-amber-400" />{course.rating}</span>
+            <span className="flex items-center gap-1"><Clock size={11} />{course.duration}</span>
+            <span className="flex items-center gap-1"><Users size={11} />{course.enrolled.toLocaleString()}</span>
+            <OptionsMenu
+              isEnrolled={isEnrolled}
+              onRating={() => setShowRating(true)}
+              onRecommend={() => setShowRecommend(true)}
+            />
+          </div>
+
+          {/* Price & CTA */}
+          <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-brand-dark-border">
+            <div>
+              {course.price === 'FREE' ? (
+                <span className="text-lg font-bold text-primary-500">FREE</span>
+              ) : (
+                <span className="text-lg font-bold text-brand-text dark:text-brand-dark-text">₹{course.price}</span>
+              )}
+            </div>
+            <button
+              onClick={() => setShowEnroll(true)}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-primary-500 rounded-xl hover:bg-primary-600 transition-colors"
+            >
+              Enroll Now
+            </button>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Coming Soon Modal */}
+      {showComingSoon && (
+        <ComingSoonModal
+          title={course.title}
+          onClose={() => setShowComingSoon(false)}
+        />
+      )}
+
+      {/* Recommend Modal */}
+      <AnimatePresence>
+        {showRecommend && (
+          <FeedbackModal
+            title={course.title}
+            type="Recommend"
+            onSubmit={handleRecommendSubmit}
+            onClose={() => setShowRecommend(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Rating Modal */}
+      <AnimatePresence>
+        {showRating && (
+          <RatingModal
+            title={course.title}
+            onSubmit={handleRatingSubmit}
+            onClose={() => setShowRating(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Enroll Modal */}
+      <AnimatePresence>
+        {showEnroll && (
+          <EnrollModal course={course} onClose={() => setShowEnroll(false)} />
+        )}
+      </AnimatePresence>
+    </>
   )
 }
 
@@ -132,7 +719,7 @@ export default function Courses() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-brand-dark-bg pt-16">
-      {/* Hero — clean light section */}
+      {/* Hero */}
       <div className="bg-gray-50 dark:bg-brand-dark-card border-b border-gray-100 dark:border-brand-dark-border py-12 px-4">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-8">
@@ -155,7 +742,6 @@ export default function Courses() {
               From Class 1 to placement — explore {published.length}+ expert-curated courses across all domains.
             </motion.p>
           </div>
-          {/* Search */}
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}

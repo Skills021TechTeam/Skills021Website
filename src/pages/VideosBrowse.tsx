@@ -1,286 +1,181 @@
 import { useState, useMemo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import {
-  Search, Play, Calendar, Clock, ChevronDown, Filter, X
-} from 'lucide-react'
+import { motion } from 'framer-motion'
+import { Search, Play, Clock, Filter, X, Shield } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useVideoStore, VideoCategory } from '../store/videoStore'
-import YouTubeVideoCard from '../components/YouTubeVideoCard'
 
 const VIDEO_CATEGORIES: VideoCategory[] = [
   'DSA', 'JEE', 'NEET', 'AI/ML', 'Counseling', 'Career Guidance',
-  'Interview Prep', 'Web Development', 'Python', 'Aptitude', 'Study Tips'
+  'Interview Prep', 'Web Development', 'Python', 'Aptitude', 'Study Tips',
 ]
 
 export default function VideosPage() {
+  const navigate = useNavigate()
   const videoStore = useVideoStore()
   const videos = videoStore.getPublishedVideos()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<VideoCategory | 'All'>('All')
   const [showFilters, setShowFilters] = useState(false)
-  const [selectedVideo, setSelectedVideo] = useState<any>(null)
 
   const filtered = useMemo(() => {
     return videos.filter(video => {
-      const matchesSearch = video.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      const matchesSearch =
+        video.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         video.description.toLowerCase().includes(searchQuery.toLowerCase())
       const matchesCategory = selectedCategory === 'All' || video.category === selectedCategory
       return matchesSearch && matchesCategory
     })
   }, [videos, searchQuery, selectedCategory])
 
-  const stats = {
-    total: videos.length,
-    byCategory: VIDEO_CATEGORIES.map(cat => ({
-      category: cat,
-      count: videos.filter(v => v.category === cat).length
-    }))
-  }
-
   return (
     <div className="min-h-screen bg-white dark:bg-brand-dark-bg pt-16 pb-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-12"
-        >
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-10">
           <h1 className="text-4xl md:text-5xl font-black text-brand-text dark:text-brand-dark-text mb-3">
-            All Educational Videos
+            Educational Videos
           </h1>
           <p className="text-lg text-brand-muted dark:text-brand-dark-muted">
-            Browse our complete library of {videos.length}+ video tutorials, guidance sessions, and learning resources.
+            Browse {videos.length}+ video tutorials, guidance sessions, and learning resources.
           </p>
-        </motion.div>
-
-        {/* Search & Filter Bar */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="mb-8"
-        >
-          <div className="flex gap-3 flex-col sm:flex-row">
-            {/* Search */}
-            <div className="flex-1 relative">
-              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
-              <input
-                type="text"
-                placeholder="Search by title, topic, or keyword..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text placeholder:text-brand-muted dark:placeholder:text-brand-dark-muted focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
-              />
-            </div>
-
-            {/* Filter Toggle */}
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center gap-2 px-4 py-3 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text font-semibold hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-            >
-              <Filter size={18} />
-              Filters
-            </button>
-          </div>
-
-          {/* Filter Panel */}
-          <AnimatePresence>
-            {showFilters && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="mt-4 p-4 rounded-xl bg-gray-50 dark:bg-white/5 border border-brand-border dark:border-brand-dark-border"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold text-brand-text dark:text-brand-dark-text">Filter by Category</h3>
-                  <button
-                    onClick={() => setShowFilters(false)}
-                    className="p-1 hover:bg-white dark:hover:bg-white/10 rounded-lg"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => setSelectedCategory('All')}
-                    className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                      selectedCategory === 'All'
-                        ? 'bg-primary-500 text-white'
-                        : 'bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text border border-brand-border dark:border-brand-dark-border hover:bg-gray-50 dark:hover:bg-white/5'
-                    }`}
-                  >
-                    All Categories
-                  </button>
-
-                  {VIDEO_CATEGORIES.map((cat) => {
-                    const count = videos.filter(v => v.category === cat).length
-                    return (
-                      <button
-                        key={cat}
-                        onClick={() => setSelectedCategory(cat)}
-                        className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                          selectedCategory === cat
-                            ? 'bg-primary-500 text-white'
-                            : 'bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text border border-brand-border dark:border-brand-dark-border hover:bg-gray-50 dark:hover:bg-white/5'
-                        }`}
-                      >
-                        {cat}
-                        <span className="ml-1 text-xs opacity-70">({count})</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-
-        {/* Stats */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="mb-8 p-4 rounded-xl bg-gradient-to-r from-primary-50 to-primary-100/50 dark:from-primary-900/20 dark:to-primary-800/20 border border-primary-200 dark:border-primary-700/50"
-        >
-          <div className="flex flex-wrap items-center gap-4 text-sm">
-            <div>
-              <span className="font-bold text-primary-600 dark:text-primary-400 text-lg">{filtered.length}</span>
-              <span className="text-brand-text dark:text-brand-dark-text ml-2">Videos Found</span>
-            </div>
-            <div className="w-px h-6 bg-primary-200 dark:bg-primary-700"></div>
-            <div className="text-brand-muted dark:text-brand-dark-muted">
-              {selectedCategory === 'All'
-                ? `Showing all ${videos.length} videos`
-                : `Showing ${filtered.length} ${selectedCategory} videos`}
-            </div>
+          {/* Protected notice */}
+          <div className="flex items-center gap-2 mt-3 text-xs text-brand-muted dark:text-brand-dark-muted">
+            <Shield size={13} className="text-primary-500" />
+            All videos are DRM-protected. Screen recording is disabled.
           </div>
         </motion.div>
 
-        {/* Videos Grid */}
-        {filtered.length > 0 ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+        {/* Search & Filter */}
+        <div className="flex gap-3 mb-6 flex-col sm:flex-row">
+          <div className="flex-1 relative">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
+            <input
+              type="text"
+              placeholder="Search videos..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text placeholder:text-brand-muted focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="flex items-center gap-2 px-4 py-3 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text font-semibold hover:bg-gray-50 dark:hover:bg-white/5"
           >
-            <AnimatePresence mode="popLayout">
-              {filtered.map((video, idx) => (
-                <motion.div
-                  key={video.id}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ delay: idx * 0.05 }}
-                  onClick={() => setSelectedVideo(video)}
-                  className="cursor-pointer"
+            {showFilters ? <X size={16} /> : <Filter size={16} />}
+            {selectedCategory !== 'All' ? selectedCategory : 'Filter'}
+          </button>
+        </div>
+
+        {/* Category Pills */}
+        {showFilters && (
+          <div className="flex flex-wrap gap-2 mb-6">
+            <button
+              onClick={() => setSelectedCategory('All')}
+              className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+                selectedCategory === 'All'
+                  ? 'bg-primary-500 text-white'
+                  : 'bg-gray-100 dark:bg-white/10 text-brand-muted dark:text-brand-dark-muted hover:bg-gray-200 dark:hover:bg-white/20'
+              }`}
+            >
+              All ({videos.length})
+            </button>
+            {VIDEO_CATEGORIES.map(cat => {
+              const cnt = videos.filter(v => v.category === cat).length
+              if (cnt === 0) return null
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+                    selectedCategory === cat
+                      ? 'bg-primary-500 text-white'
+                      : 'bg-gray-100 dark:bg-white/10 text-brand-muted dark:text-brand-dark-muted hover:bg-gray-200 dark:hover:bg-white/20'
+                  }`}
                 >
-                  <YouTubeVideoCard
-                    video={video}
-                    onPlay={() => setSelectedVideo(video)}
-                    layout="grid"
-                  />
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </motion.div>
-        ) : (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center py-16"
-          >
-            <Play size={48} className="mx-auto text-brand-muted dark:text-brand-dark-muted mb-4 opacity-50" />
-            <h3 className="text-xl font-bold text-brand-text dark:text-brand-dark-text mb-2">
-              No videos found
-            </h3>
-            <p className="text-brand-muted dark:text-brand-dark-muted mb-6">
-              Try adjusting your search or filters
-            </p>
-            <button
-              onClick={() => {
-                setSearchQuery('')
-                setSelectedCategory('All')
-              }}
-              className="px-6 py-2.5 bg-primary-500 text-white rounded-lg font-semibold hover:bg-primary-600 transition-colors"
-            >
-              Clear Filters
-            </button>
-          </motion.div>
+                  {cat} ({cnt})
+                </button>
+              )
+            })}
+          </div>
         )}
 
-        {/* Video Modal */}
-        <AnimatePresence>
-          {selectedVideo && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSelectedVideo(null)}
-              className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
-            >
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                onClick={(e) => e.stopPropagation()}
-                className="relative w-full max-w-4xl bg-black rounded-2xl overflow-hidden"
-              >
-                {/* Close Button */}
-                <button
-                  onClick={() => setSelectedVideo(null)}
-                  className="absolute top-4 right-4 z-10 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors"
-                >
-                  <X size={24} className="text-white" />
-                </button>
+        {/* Results count */}
+        <p className="text-sm text-brand-muted dark:text-brand-dark-muted mb-5">
+          {filtered.length} video{filtered.length !== 1 ? 's' : ''} found
+        </p>
 
-                {/* Video Container */}
-                <div className="aspect-video">
-                  <iframe
-                    width="100%"
-                    height="100%"
-                    src={`https://www.youtube.com/embed/${selectedVideo.videoId}`}
-                    title={selectedVideo.title}
-                    frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    className="w-full h-full"
+        {/* Video Grid */}
+        {filtered.length === 0 ? (
+          <div className="text-center py-24">
+            <Play size={48} className="mx-auto text-gray-200 dark:text-brand-dark-muted mb-4" />
+            <h3 className="text-lg font-semibold text-brand-text dark:text-brand-dark-text mb-2">No videos found</h3>
+            <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Try adjusting your search or filter.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            {filtered.map(video => (
+              <motion.div
+                key={video.id}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                whileHover={{ y: -4 }}
+                transition={{ duration: 0.2 }}
+                onClick={() => navigate(`/videos/${video.id}`)}
+                className="bg-white dark:bg-brand-dark-card rounded-2xl border border-brand-border dark:border-brand-dark-border overflow-hidden cursor-pointer group hover:shadow-card-hover transition-all"
+              >
+                {/* Thumbnail */}
+                <div className="relative aspect-video bg-gray-900 overflow-hidden">
+                  <img
+                    src={video.thumbnail}
+                    alt={video.title}
+                    className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300"
+                    onError={e => { e.currentTarget.src = 'https://via.placeholder.com/320x180?text=Video' }}
                   />
+                  {/* Overlay */}
+                  <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
+                  {/* Play */}
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center border border-white/40">
+                      <Play size={18} className="text-white ml-0.5" />
+                    </div>
+                  </div>
+                  {/* Duration badge */}
+                  {video.duration && (
+                    <span className="absolute bottom-2 right-2 text-[10px] font-bold bg-black/70 text-white px-1.5 py-0.5 rounded font-mono">
+                      {video.duration}
+                    </span>
+                  )}
+                  {/* Featured */}
+                  {video.featured && (
+                    <span className="absolute top-2 left-2 text-[10px] font-bold bg-amber-500 text-white px-2 py-0.5 rounded-full">
+                      ⭐ Featured
+                    </span>
+                  )}
+                  {/* Chapter count */}
+                  {video.timestamps?.length > 0 && (
+                    <span className="absolute bottom-2 left-2 flex items-center gap-1 text-[10px] bg-black/60 text-white px-1.5 py-0.5 rounded">
+                      <Clock size={9} /> {video.timestamps.length} chapters
+                    </span>
+                  )}
                 </div>
 
-                {/* Video Info */}
-                <div className="bg-gray-900 p-6">
-                  <h3 className="text-xl font-bold text-white mb-2">{selectedVideo.title}</h3>
-                  <p className="text-gray-300 text-sm mb-4">{selectedVideo.description}</p>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <span className="text-xs font-semibold text-white bg-red-600 px-3 py-1 rounded-full">
-                      {selectedVideo.category}
-                    </span>
-                    <span className="text-xs text-gray-400 flex items-center gap-1">
-                      <Calendar size={12} />
-                      {new Date(selectedVideo.uploadDate).toLocaleDateString()}
-                    </span>
-                    <span className="text-xs text-gray-400 flex items-center gap-1">
-                      <Clock size={12} />
-                      {selectedVideo.duration}
-                    </span>
-                    <a
-                      href={selectedVideo.youtubeUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-blue-400 hover:text-blue-300 transition-colors ml-auto"
-                    >
-                      Watch on YouTube →
-                    </a>
-                  </div>
+                {/* Info */}
+                <div className="p-4">
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                    {video.category}
+                  </span>
+                  <h3 className="text-sm font-bold text-brand-text dark:text-brand-dark-text mt-2 line-clamp-2 leading-snug group-hover:text-primary-500 transition-colors">
+                    {video.title}
+                  </h3>
+                  <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1 line-clamp-1">
+                    {video.uploadDate}
+                  </p>
                 </div>
               </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

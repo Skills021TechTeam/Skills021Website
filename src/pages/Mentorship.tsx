@@ -7,10 +7,8 @@ import {
   Send, ChevronRight, Sparkles, Shield, Zap,
 } from 'lucide-react'
 import { useMentorStore } from '../store/mentorStore'
+import { useGuidanceStore, GuidanceType } from '../store/guidanceStore'
 import toast from 'react-hot-toast'
-
-// Guidance type definition
-type GuidanceType = 'Career Guidance' | 'College Selection' | 'Branch Selection' | 'Placement Preparation' | 'Internship Guidance' | 'Higher Studies Guidance' | 'Resume Review' | 'LinkedIn Profile Review' | 'Mock Interview' | 'Skill Roadmap' | 'Startup Guidance' | 'Study Planning'
 
 // ─── Guidance type options ────────────────────────────────────────────────────
 const GUIDANCE_TYPES: { label: GuidanceType; icon: typeof Users; color: string }[] = [
@@ -93,6 +91,7 @@ function SuccessScreen({ onReset }: { onReset: () => void }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function Mentorship() {
   const { mentors } = useMentorStore()
+  const { addRequest } = useGuidanceStore()
   const [form, setForm] = useState(INIT_FORM)
   const [submitted, setSubmitted] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -124,6 +123,21 @@ export default function Mentorship() {
     }
     setLoading(true)
     setTimeout(() => {
+      addRequest({
+        fullName: form.fullName,
+        mobile: form.mobile,
+        whatsapp: form.whatsapp,
+        email: form.email,
+        city: form.city,
+        state: form.state,
+        classYear: form.classYear,
+        schoolCollege: form.schoolCollege,
+        boardUniversity: form.boardUniversity,
+        stream: form.stream,
+        percentage: form.percentage,
+        guidanceTypes: form.guidanceTypes,
+        additionalQuery: form.additionalQuery,
+      })
       setLoading(false)
       setSubmitted(true)
       toast.success('Guidance request submitted!')

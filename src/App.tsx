@@ -11,9 +11,14 @@ import Register from './pages/Register'
 import Courses from './pages/Courses'
 import Resources from './pages/Resources'
 import VideosBrowse from './pages/VideosBrowse'
+import VideoPlayer from './pages/VideoPlayer'        // ← NEW
 import Quizzes from './pages/Quizzes'
 import Roadmaps from './pages/Roadmaps'
+import Counseling from './pages/Counseling'
+import Hackathons from './pages/Hackathons'
+import Internships from './pages/Internships'
 import Mentorship from './pages/Mentorship'
+import SuccessStories from './pages/SuccessStories'
 import UserDashboard from './pages/UserDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 
@@ -33,7 +38,7 @@ const pageVariants = {
 
 const pageTransition = { type: 'tween', ease: 'easeInOut', duration: 0.22 } as const
 
-const noFooterRoutes = ['/dashboard', '/admin']
+const noFooterRoutes = ['/dashboard', '/admin', '/videos/']
 
 function AnimatedRoutes() {
   const location = useLocation()
@@ -59,11 +64,18 @@ function AnimatedRoutes() {
             <Route path="/courses" element={<Courses />} />
             {/* Resources */}
             <Route path="/resources" element={<Resources />} />
+            {/* Videos */}
             <Route path="/resources/videos" element={<VideosBrowse />} />
+            <Route path="/videos" element={<VideosBrowse />} />
+            <Route path="/videos/:videoId" element={<VideoPlayer />} />  {/* ← NEW */}
+            {/* Other */}
             <Route path="/quizzes" element={<Quizzes />} />
             <Route path="/roadmaps" element={<Roadmaps />} />
-            {/* Mentorship */}
+            <Route path="/counseling" element={<Counseling />} />
+            <Route path="/hackathons" element={<Hackathons />} />
+            <Route path="/internships" element={<Internships />} />
             <Route path="/mentorship" element={<Mentorship />} />
+            <Route path="/success-stories" element={<SuccessStories />} />
             {/* Protected */}
             <Route path="/dashboard" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
             <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />

@@ -32,12 +32,20 @@ export interface Course {
   tags: string[]
   thumbnail?: string
   videoUrl?: string
+  externalVideoUrl?: string
   modules: CourseModule[]
   status: 'Published' | 'Draft'
   enrolled: number
   gradientFrom: string
   gradientTo: string
   createdAt: string
+  batches?: CourseBatch[]
+}
+
+export interface CourseBatch {
+  id: string
+  name: string
+  seatsLeft: number
 }
 
 // ─── Resource Types ─────────────────────────────────────────────────────────
@@ -161,6 +169,12 @@ const seedCourses: Course[] = [
     price: 999, tags: ['DSA', 'Java', 'Algorithms'], modules: [], status: 'Published',
     enrolled: 4500, gradientFrom: '#6C63FF', gradientTo: '#00BFA6', createdAt: '2025-01-15',
     videoUrl: 'https://www.youtube.com/@skills021',
+    externalVideoUrl: 'https://www.youtube.com/@skills021',
+    batches: [
+      { id: 'f1', name: 'F1', seatsLeft: 2 },
+      { id: 'f2', name: 'F2', seatsLeft: 5 },
+      { id: 'f3', name: 'F3', seatsLeft: 0 },
+    ],
   },
   {
     id: 'c2', title: 'Full Stack Web Development', description: 'Build modern web apps with React, Node.js, MongoDB. Learn from basics to deployment.',
@@ -169,6 +183,10 @@ const seedCourses: Course[] = [
     price: 1499, tags: ['React', 'Node', 'MongoDB'], modules: [], status: 'Published',
     enrolled: 3200, gradientFrom: '#FF6B6B', gradientTo: '#FFE66D', createdAt: '2025-02-01',
     videoUrl: 'https://www.youtube.com/@skills021',
+    batches: [
+      { id: 'f1', name: 'F1', seatsLeft: 1 },
+      { id: 'f2', name: 'F2', seatsLeft: 1 },
+    ],
   },
   {
     id: 'c3', title: 'JEE Mains & Advanced Complete', description: 'Comprehensive JEE preparation with Physics, Chemistry & Maths. Includes mock tests and PYQs.',
@@ -177,6 +195,10 @@ const seedCourses: Course[] = [
     price: 2999, tags: ['JEE', 'Physics', 'Chemistry', 'Maths'], modules: [], status: 'Published',
     enrolled: 8900, gradientFrom: '#4ECDC4', gradientTo: '#556270', createdAt: '2025-01-10',
     videoUrl: 'https://www.youtube.com/@skills021',
+    batches: [
+      { id: 'f1', name: 'F1', seatsLeft: 6 },
+      { id: 'f2', name: 'F2', seatsLeft: 0 },
+    ],
   },
   {
     id: 'c4', title: 'NEET Biology Masterclass', description: 'Complete Biology for NEET with NCERT analysis, PYQs and short notes.',
@@ -185,6 +207,10 @@ const seedCourses: Course[] = [
     price: 'FREE', tags: ['NEET', 'Biology', 'NCERT'], modules: [], status: 'Published',
     enrolled: 12000, gradientFrom: '#A8E6CF', gradientTo: '#3D9970', createdAt: '2025-01-20',
     videoUrl: 'https://www.youtube.com/@skills021',
+    batches: [
+      { id: 'f1', name: 'F1', seatsLeft: 0 },
+      { id: 'f2', name: 'F2', seatsLeft: 2 },
+    ],
   },
   {
     id: 'c5', title: 'Flutter App Development', description: 'Build beautiful cross-platform apps with Flutter and Dart. From zero to Play Store.',
@@ -193,6 +219,10 @@ const seedCourses: Course[] = [
     price: 799, tags: ['Flutter', 'Dart', 'Mobile'], modules: [], status: 'Published',
     enrolled: 2100, gradientFrom: '#667EEA', gradientTo: '#764BA2', createdAt: '2025-03-01',
     videoUrl: 'https://www.youtube.com/@skills021',
+    batches: [
+      { id: 'f1', name: 'F1', seatsLeft: 1 },
+      { id: 'f2', name: 'F2', seatsLeft: 0 },
+    ],
   },
   {
     id: 'c6', title: 'Class 10 Science & Maths', description: 'Complete CBSE Class 10 preparation with chapter-wise videos, notes and practice tests.',
@@ -201,6 +231,10 @@ const seedCourses: Course[] = [
     price: 'FREE', tags: ['Class 10', 'CBSE', 'Science', 'Maths'], modules: [], status: 'Published',
     enrolled: 15000, gradientFrom: '#F093FB', gradientTo: '#F5576C', createdAt: '2025-02-15',
     videoUrl: 'https://www.youtube.com/@skills021',
+    batches: [
+      { id: 'f1', name: 'F1', seatsLeft: 1 },
+      { id: 'f2', name: 'F2', seatsLeft: 5 },
+    ],
   },
   {
     id: 'c7', title: 'AI & Machine Learning with Python', description: 'Learn ML from scratch — regression, classification, neural networks, and deployment.',
@@ -209,6 +243,10 @@ const seedCourses: Course[] = [
     price: 1299, tags: ['AI', 'ML', 'Python', 'TensorFlow'], modules: [], status: 'Published',
     enrolled: 3600, gradientFrom: '#4776E6', gradientTo: '#8E54E9', createdAt: '2025-03-10',
     videoUrl: 'https://www.youtube.com/@skills021',
+    batches: [
+      { id: 'f1', name: 'F1', seatsLeft: 5 },
+      { id: 'f2', name: 'F2', seatsLeft: 3 },
+    ],
   },
   {
     id: 'c8', title: 'Interview Preparation Bootcamp', description: 'Crack product-based company interviews with DSA, system design, and behavioral rounds.',
@@ -217,6 +255,10 @@ const seedCourses: Course[] = [
     price: 599, tags: ['Interview', 'DSA', 'System Design'], modules: [], status: 'Published',
     enrolled: 7200, gradientFrom: '#f7971e', gradientTo: '#ffd200', createdAt: '2025-02-20',
     videoUrl: 'https://www.youtube.com/@skills021',
+    batches: [
+      { id: 'f1', name: 'F1', seatsLeft: 1 },
+      { id: 'f2', name: 'F2', seatsLeft: 1 },
+    ],
   },
 ]
 

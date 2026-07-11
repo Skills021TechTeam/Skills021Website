@@ -3,14 +3,28 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
 import {
   FileText, Download, Bookmark, Share2, Lock, Search,
-  Clock, BookOpen, ChevronDown, Eye, Loader2
+  Clock, BookOpen, ChevronDown, Eye, Loader2, Archive
 } from 'lucide-react'
-import type { ResourceType, ResourceCategory, Resource } from '../store/contentStore'
-import { fetchPublishedResources, incrementDownloadCount, triggerResourceDownload } from '../lib/resourceService'
+import type { Resource } from '../store/contentStore'
+import {
+  fetchPublishedResources,
+  incrementDownloadCount,
+  triggerResourceDownload,
+  fetchColleges,
+  fetchCourses,
+  fetchBranches,
+  fetchSemesters,
+  fetchSubjects,
+  type College,
+  type Course as DBCourse,
+  type Branch,
+  type Semester,
+  type Subject
+} from '../lib/resourceService'
 import toast from 'react-hot-toast'
 import ConfirmDownloadDialog from '../components/ConfirmDownloadDialog'
 
-const RESOURCE_TYPES: { label: ResourceType; icon: typeof FileText }[] = [
+const RESOURCE_TYPES: { label: string; icon: typeof FileText }[] = [
   { label: 'Notes', icon: FileText },
   { label: 'Roadmaps', icon: BookOpen },
   { label: 'Previous Year Papers', icon: FileText },
@@ -23,31 +37,51 @@ const RESOURCE_TYPES: { label: ResourceType; icon: typeof FileText }[] = [
   { label: 'Career Resources', icon: BookOpen },
 ]
 
-const CATEGORY_GROUPS = [
-  {
-    label: 'School Resources',
-    categories: ['Class 1-5', 'Class 6-8', 'Class 9-10', 'Class 11-12'] as ResourceCategory[],
-  },
-  {
-    label: 'Competitive Exams',
-    categories: ['JEE', 'NEET', 'CUET', 'Olympiads'] as ResourceCategory[],
-  },
-  {
-    label: 'Tech & Coding',
-    categories: ['DSA', 'Web Development', 'Flutter', 'AI/ML', 'Data Science', 'Cyber Security', 'Cloud Computing'] as ResourceCategory[],
-  },
-  {
-    label: 'Counseling Guides',
-    categories: ['JoSAA', 'AKTU', 'IPU', 'JAC Delhi', 'NEET Counseling', 'LPU', 'VIT', 'BITS'] as ResourceCategory[],
-  },
-]
-
 function ResourceCard({ resource, onDownload }: { resource: Resource; onDownload: (resource: Resource) => void }) {
   const [bookmarked, setBookmarked] = useState(false)
 
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href).then(() => toast.success('Link copied to clipboard!'))
   }
+
+  const getFileStyle = (downloadUrl?: string) => {
+    const ext = downloadUrl?.split('.').pop()?.toLowerCase() || ''
+    if (ext === 'pdf') {
+      return {
+        icon: FileText,
+        color: 'text-red-500 dark:text-red-400',
+        bg: 'bg-red-50 dark:bg-red-950/20 border-red-100 dark:border-red-900/30'
+      }
+    }
+    if (ext === 'doc' || ext === 'docx') {
+      return {
+        icon: FileText,
+        color: 'text-blue-500 dark:text-blue-400',
+        bg: 'bg-blue-50 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900/30'
+      }
+    }
+    if (ext === 'ppt' || ext === 'pptx') {
+      return {
+        icon: FileText,
+        color: 'text-orange-500 dark:text-orange-400',
+        bg: 'bg-orange-50 dark:bg-orange-950/20 border-orange-100 dark:border-orange-900/30'
+      }
+    }
+    if (ext === 'zip' || ext === 'rar') {
+      return {
+        icon: Archive,
+        color: 'text-amber-500 dark:text-amber-400',
+        bg: 'bg-amber-50 dark:bg-amber-950/20 border-amber-100 dark:border-amber-900/30'
+      }
+    }
+    return {
+      icon: FileText,
+      color: 'text-brand-muted dark:text-brand-dark-muted',
+      bg: 'bg-gray-100 dark:bg-white/10 border-gray-200 dark:border-white/5'
+    }
+  }
+
+  const { icon: FileIcon, color: iconColor, bg: iconBg } = getFileStyle(resource.downloadUrl)
 
   return (
     <motion.div
@@ -66,8 +100,8 @@ function ResourceCard({ resource, onDownload }: { resource: Resource; onDownload
 
       {/* Header */}
       <div className="flex items-start gap-3 mb-3">
-        <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-white/10 flex items-center justify-center flex-shrink-0">
-          <FileText size={22} className="text-brand-muted dark:text-brand-dark-muted" />
+        <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 border ${iconBg}`}>
+          <FileIcon size={22} className={iconColor} />
         </div>
         <div className="min-w-0 flex-1">
           <span className="text-[10px] font-semibold text-brand-muted dark:text-brand-dark-muted bg-gray-100 dark:bg-white/10 px-2 py-0.5 rounded-md">
@@ -87,7 +121,7 @@ function ResourceCard({ resource, onDownload }: { resource: Resource; onDownload
       <div className="flex items-center gap-3 text-[11px] text-brand-muted dark:text-brand-dark-muted mb-4 flex-wrap">
         <span className="flex items-center gap-1"><BookOpen size={11} />{resource.author}</span>
         <span className="flex items-center gap-1"><Clock size={11} />Updated {resource.lastUpdated}</span>
-        <span className="flex items-center gap-1"><Download size={11} />{resource.downloads.toLocaleString()}</span>
+        <span className="flex items-center gap-1"><Download size={11} />{(resource.downloads ?? 0).toLocaleString()}</span>
       </div>
 
       {/* Actions */}
@@ -123,15 +157,29 @@ function ResourceCard({ resource, onDownload }: { resource: Resource; onDownload
 
 export default function Resources() {
   const [searchParams] = useSearchParams()
-  const initType = searchParams.get('type') as ResourceType | null
+  const initType = searchParams.get('type')
 
   const [resources, setResources] = useState<Resource[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [activeType, setActiveType] = useState<ResourceType | null>(initType)
-  const [activeCategory, setActiveCategory] = useState<ResourceCategory | null>(null)
+  const [activeType, setActiveType] = useState<string | null>(initType)
   const [search, setSearch] = useState('')
   const [showPremium, setShowPremium] = useState<'all' | 'free' | 'premium'>('all')
-  const [expandedGroup, setExpandedGroup] = useState<string | null>('School Resources')
+
+  // ─── Academic Hierarchy States ──────────────────────────────────────────
+  const [colleges, setColleges] = useState<College[]>([])
+  const [courses, setCourses] = useState<DBCourse[]>([])
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [semesters, setSemesters] = useState<Semester[]>([])
+  const [subjects, setSubjectOptions] = useState<Subject[]>([])
+
+  const [selectedCollegeId, setSelectedCollegeId] = useState<number | null>(null)
+  const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null)
+  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null)
+  const [selectedSemesterId, setSelectedSemesterId] = useState<number | null>(null)
+  const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(null)
+
+  const [activeDropdown, setActiveDropdown] = useState<'college' | 'course' | 'branch' | 'semester' | 'subject' | null>(null)
+  const [loadingLevels, setLoadingLevels] = useState<Record<string, boolean>>({})
 
   // ─── Download dialog state ──────────────────────────────────────────────
   const [dialogResource, setDialogResource] = useState<Resource | null>(null)
@@ -155,10 +203,124 @@ export default function Resources() {
     loadResources()
   }, [])
 
+  // ─── Fetch colleges on mount ────────────────────────────────────────────
+  useEffect(() => {
+    const loadColleges = async () => {
+      try {
+        setLoadingLevels(prev => ({ ...prev, college: true }))
+        const data = await fetchColleges()
+        setColleges(data)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to load colleges')
+      } finally {
+        setLoadingLevels(prev => ({ ...prev, college: false }))
+      }
+    }
+    loadColleges()
+  }, [])
+
+  // ─── Hierarchy selection handlers ─────────────────────────────────────────
+  const handleCollegeSelect = async (collegeId: number) => {
+    setSelectedCollegeId(collegeId)
+    setSelectedCourseId(null)
+    setSelectedBranchId(null)
+    setSelectedSemesterId(null)
+    setSelectedSubjectId(null)
+    setCourses([])
+    setBranches([])
+    setSemesters([])
+    setSubjectOptions([])
+
+    try {
+      setLoadingLevels(prev => ({ ...prev, course: true }))
+      const data = await fetchCourses(collegeId)
+      setCourses(data)
+      setActiveDropdown('course')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load courses')
+    } finally {
+      setLoadingLevels(prev => ({ ...prev, course: false }))
+    }
+  }
+
+  const handleCourseSelect = async (courseId: number) => {
+    setSelectedCourseId(courseId)
+    setSelectedBranchId(null)
+    setSelectedSemesterId(null)
+    setSelectedSubjectId(null)
+    setBranches([])
+    setSemesters([])
+    setSubjectOptions([])
+
+    try {
+      setLoadingLevels(prev => ({ ...prev, branch: true }))
+      const data = await fetchBranches(courseId)
+      setBranches(data)
+      setActiveDropdown('branch')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load branches')
+    } finally {
+      setLoadingLevels(prev => ({ ...prev, branch: false }))
+    }
+  }
+
+  const handleBranchSelect = async (branchId: number) => {
+    setSelectedBranchId(branchId)
+    setSelectedSemesterId(null)
+    setSelectedSubjectId(null)
+    setSemesters([])
+    setSubjectOptions([])
+
+    try {
+      setLoadingLevels(prev => ({ ...prev, semester: true }))
+      const data = await fetchSemesters(branchId)
+      setSemesters(data)
+      setActiveDropdown('semester')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load semesters')
+    } finally {
+      setLoadingLevels(prev => ({ ...prev, semester: false }))
+    }
+  }
+
+  const handleSemesterSelect = async (semesterId: number) => {
+    setSelectedSemesterId(semesterId)
+    setSelectedSubjectId(null)
+    setSubjectOptions([])
+
+    try {
+      setLoadingLevels(prev => ({ ...prev, subject: true }))
+      const data = await fetchSubjects(semesterId)
+      setSubjectOptions(data)
+      setActiveDropdown('subject')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load subjects')
+    } finally {
+      setLoadingLevels(prev => ({ ...prev, subject: false }))
+    }
+  }
+
+  const handleSubjectSelect = (subjectId: number) => {
+    setSelectedSubjectId(subjectId)
+    setActiveDropdown(null)
+  }
+
+  const handleResetHierarchy = () => {
+    setSelectedCollegeId(null)
+    setSelectedCourseId(null)
+    setSelectedBranchId(null)
+    setSelectedSemesterId(null)
+    setSelectedSubjectId(null)
+    setCourses([])
+    setBranches([])
+    setSemesters([])
+    setSubjectOptions([])
+    setActiveDropdown(null)
+  }
+
   // ─── Open confirmation dialog ───────────────────────────────────────────
   const handleDownload = useCallback((resource: Resource) => {
     if (resource.isPremium) {
-      // Premium flow stays unchanged
       toast.error('This is a premium resource. Please purchase to download.')
       return
     }
@@ -167,7 +329,7 @@ export default function Resources() {
 
   // ─── Cancel dialog ──────────────────────────────────────────────────────
   const handleCancelDialog = useCallback(() => {
-    if (isDownloading) return // prevent closing while processing
+    if (isDownloading) return
     setDialogResource(null)
   }, [isDownloading])
 
@@ -175,7 +337,6 @@ export default function Resources() {
   const handleConfirmDownload = useCallback(async () => {
     if (!dialogResource || isDownloading) return
 
-    // 1. Validate file URL
     if (!dialogResource.downloadUrl) {
       toast.error('Download file is not available.')
       console.error('[Download] file_url is empty or null for resource:', dialogResource.id)
@@ -188,13 +349,8 @@ export default function Resources() {
     console.log(`[Download] Starting download for "${title}" (${id})`)
 
     try {
-      // 2. Trigger the actual file download
       await triggerResourceDownload(downloadUrl, title)
-
-      // 3. Close dialog immediately after download triggers
       setDialogResource(null)
-
-      // 4. Optimistic UI update
       setResources((prev) =>
         prev.map((r) =>
           r.id === id ? { ...r, downloads: r.downloads + 1 } : r
@@ -202,12 +358,10 @@ export default function Resources() {
       )
       toast.success(`Downloading: ${title}`)
 
-      // 5. Persist download count to Supabase
       try {
         await incrementDownloadCount(id, currentCount)
         console.log(`[Download] Download count updated for "${title}"`)
       } catch (dbErr) {
-        // Revert optimistic update on DB failure
         console.error('[Download] Failed to update download count:', dbErr)
         setResources((prev) =>
           prev.map((r) =>
@@ -218,7 +372,6 @@ export default function Resources() {
         toast.error(message)
       }
     } catch (err) {
-      // Download itself failed
       console.error('[Download] Download failed:', err)
       const message = err instanceof Error ? err.message : 'Download failed. Please try again.'
       toast.error(message)
@@ -228,19 +381,125 @@ export default function Resources() {
     }
   }, [dialogResource, isDownloading])
 
-  // ─── Filtering (unchanged logic) ───────────────────────────────────────
+  // ─── Filtering ─────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     return resources.filter(r => {
       if (activeType && r.type !== activeType) return false
-      if (activeCategory && r.category !== activeCategory) return false
+      
+      // Normalized schema filters using joins
+      if (selectedSubjectId && r.subjectId !== selectedSubjectId) return false
+      if (selectedSemesterId && r.semesterId !== selectedSemesterId) return false
+      if (selectedBranchId && r.branchId !== selectedBranchId) return false
+      if (selectedCourseId && r.courseId !== selectedCourseId) return false
+      if (selectedCollegeId && r.collegeId !== selectedCollegeId) return false
+
       if (showPremium === 'free' && r.isPremium) return false
       if (showPremium === 'premium' && !r.isPremium) return false
       if (search && !r.title.toLowerCase().includes(search.toLowerCase()) && !r.description.toLowerCase().includes(search.toLowerCase())) return false
       return true
     })
-  }, [resources, activeType, activeCategory, search, showPremium])
+  }, [resources, activeType, selectedCollegeId, selectedCourseId, selectedBranchId, selectedSemesterId, selectedSubjectId, search, showPremium])
 
-  const totalDownloads = resources.reduce((acc, r) => acc + r.downloads, 0)
+  const activeLevelName = useMemo(() => {
+    if (selectedSubjectId) {
+      return subjects.find(s => s.id === selectedSubjectId)?.name
+    }
+    if (selectedSemesterId) {
+      return `Semester ${semesters.find(s => s.id === selectedSemesterId)?.semester_number}`
+    }
+    if (selectedBranchId) {
+      return branches.find(b => b.id === selectedBranchId)?.name
+    }
+    if (selectedCourseId) {
+      return courses.find(c => c.id === selectedCourseId)?.name
+    }
+    if (selectedCollegeId) {
+      return colleges.find(c => c.id === selectedCollegeId)?.name
+    }
+    return null
+  }, [colleges, courses, branches, semesters, subjects, selectedCollegeId, selectedCourseId, selectedBranchId, selectedSemesterId, selectedSubjectId])
+
+  const renderHierarchyDropdown = (
+    label: string,
+    placeholder: string,
+    options: { id: number; name: string }[],
+    selectedValue: number | null,
+    onSelect: (id: number) => void,
+    levelName: 'college' | 'course' | 'branch' | 'semester' | 'subject',
+    disabled: boolean
+  ) => {
+    const isOpen = activeDropdown === levelName
+    const isLoading = loadingLevels[levelName]
+    const selectedObj = options.find(o => o.id === selectedValue)
+    const displayName = selectedObj ? selectedObj.name : placeholder
+
+    return (
+      <div className="mb-3">
+        <label className="block text-[10px] font-bold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider mb-1 px-1">
+          {label}
+        </label>
+        <button
+          disabled={disabled}
+          onClick={() => setActiveDropdown(isOpen ? null : levelName)}
+          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm transition-all text-left ${
+            disabled
+              ? 'opacity-40 bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-brand-dark-border cursor-not-allowed text-brand-muted dark:text-brand-dark-muted'
+              : isOpen
+              ? 'bg-[#0A0A0A] text-white border-[#0A0A0A] dark:bg-white dark:text-black dark:border-white font-semibold shadow-sm'
+              : 'bg-white dark:bg-brand-dark-card border-gray-100 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:border-gray-300 dark:hover:border-white/20'
+          }`}
+        >
+          <span className="truncate pr-2 font-medium">{displayName}</span>
+          {isLoading ? (
+            <Loader2 size={13} className="animate-spin text-brand-muted" />
+          ) : (
+            <ChevronDown
+              size={13}
+              className={`transition-transform duration-200 flex-shrink-0 ${
+                isOpen ? 'rotate-180' : ''
+              } ${disabled ? 'text-brand-muted' : ''}`}
+            />
+          )}
+        </button>
+
+        <AnimatePresence>
+          {isOpen && !disabled && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden bg-gray-50 dark:bg-brand-dark-bg border border-gray-100 dark:border-brand-dark-border rounded-xl mt-1 max-h-48 overflow-y-auto"
+            >
+              {options.length === 0 ? (
+                <div className="px-3 py-3 text-xs text-brand-muted dark:text-brand-dark-muted text-center">
+                  No options available
+                </div>
+              ) : (
+                <div className="py-1">
+                  {options.map(opt => (
+                    <button
+                      key={opt.id}
+                      onClick={() => onSelect(opt.id)}
+                      className={`w-full text-left px-3 py-2 text-xs transition-colors hover:bg-gray-100 dark:hover:bg-white/10 ${
+                        selectedValue === opt.id
+                          ? 'font-bold text-primary-500 bg-primary-50 dark:bg-primary-950/20'
+                          : 'text-brand-text dark:text-brand-dark-text'
+                      }`}
+                    >
+                      {opt.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    )
+  }
+
+  const totalDownloads = resources.reduce((acc, r) => acc + (r.downloads ?? 0), 0)
 
   return (
     <div className="min-h-screen bg-white dark:bg-brand-dark-bg pt-16">
@@ -327,41 +586,69 @@ export default function Resources() {
               ))}
             </div>
 
-            {/* Categories */}
+            {/* Academic Hierarchy */}
             <div className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border p-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-brand-muted dark:text-brand-dark-muted mb-3">Category</h3>
-              <button
-                onClick={() => setActiveCategory(null)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-1 transition-colors ${!activeCategory ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}
-              >
-                All Categories
-              </button>
-              {CATEGORY_GROUPS.map(grp => (
-                <div key={grp.label} className="mb-2">
+              <div className="flex items-center justify-between mb-4 border-b border-gray-100 dark:border-brand-dark-border pb-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-brand-text dark:text-brand-dark-text">Academic Filter</h3>
+                {(selectedCollegeId || selectedCourseId || selectedBranchId || selectedSemesterId || selectedSubjectId) && (
                   <button
-                    onClick={() => setExpandedGroup(expandedGroup === grp.label ? null : grp.label)}
-                    className="w-full text-left px-2 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center justify-between text-brand-muted dark:text-brand-dark-muted"
+                    onClick={handleResetHierarchy}
+                    className="text-[10px] font-bold text-red-500 hover:text-red-600 transition-colors uppercase tracking-wider"
                   >
-                    {grp.label}
-                    <ChevronDown size={11} className={`transition-transform ${expandedGroup === grp.label ? 'rotate-180' : ''}`} />
+                    Reset
                   </button>
-                  <AnimatePresence>
-                    {expandedGroup === grp.label && (
-                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                        {grp.categories.map(cat => (
-                          <button
-                            key={cat}
-                            onClick={() => setActiveCategory(cat)}
-                            className={`w-full text-left pl-4 pr-2 py-1.5 text-sm rounded-lg transition-colors ${activeCategory === cat ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}
-                          >
-                            {cat}
-                          </button>
-                        ))}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              ))}
+                )}
+              </div>
+
+              {renderHierarchyDropdown(
+                'College',
+                'Select College...',
+                colleges,
+                selectedCollegeId,
+                handleCollegeSelect,
+                'college',
+                false
+              )}
+
+              {renderHierarchyDropdown(
+                'Course',
+                selectedCollegeId ? 'Select Course...' : 'Select College first',
+                courses,
+                selectedCourseId,
+                handleCourseSelect,
+                'course',
+                !selectedCollegeId
+              )}
+
+              {renderHierarchyDropdown(
+                'Branch',
+                selectedCourseId ? 'Select Branch...' : 'Select Course first',
+                branches,
+                selectedBranchId,
+                handleBranchSelect,
+                'branch',
+                !selectedCourseId
+              )}
+
+              {renderHierarchyDropdown(
+                'Semester',
+                selectedBranchId ? 'Select Semester...' : 'Select Branch first',
+                semesters.map(s => ({ id: s.id, name: `Semester ${s.semester_number}` })),
+                selectedSemesterId,
+                handleSemesterSelect,
+                'semester',
+                !selectedBranchId
+              )}
+
+              {renderHierarchyDropdown(
+                'Subject',
+                selectedSemesterId ? 'Select Subject...' : 'Select Semester first',
+                subjects,
+                selectedSubjectId,
+                handleSubjectSelect,
+                'subject',
+                !selectedSemesterId
+              )}
             </div>
           </div>
         </aside>
@@ -371,7 +658,7 @@ export default function Resources() {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-xl font-bold text-brand-text dark:text-brand-dark-text">
-                {activeType || (activeCategory ? activeCategory + ' Resources' : 'All Resources')}
+                {activeType || (activeLevelName ? activeLevelName + ' Resources' : 'All Resources')}
               </h2>
               <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">{filtered.length} resource{filtered.length !== 1 ? 's' : ''}</p>
             </div>

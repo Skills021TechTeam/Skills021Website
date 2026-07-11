@@ -1,19 +1,60 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, BookOpen, FileText, HelpCircle, Map,
   Users, Settings, Plus, Edit2, Trash2, Search,
   X, Shield, TrendingUp, Eye, Download, EyeOff,
-  CheckCircle, Zap, Video
+  CheckCircle, Zap, Video, Loader2, RotateCw
 } from 'lucide-react'
 import { useContentStore, Course, Resource, Quiz, Roadmap } from '../store/contentStore'
 import { useMentorStore } from '../store/mentorStore'
 import { useVideoStore, YouTubeVideo } from '../store/videoStore'
+import {
+  fetchAllResources,
+  createResource as createResourceApi,
+  updateResource as updateResourceApi,
+  deleteResource as deleteResourceApi,
+  toggleResourceStatus as toggleResourceStatusApi,
+  fetchColleges,
+  fetchCourses,
+  fetchBranches,
+  fetchSemesters,
+  fetchSubjects,
+  fetchResourceTypes,
+  type College,
+  type Course as DBCourse,
+  type Branch,
+  type Semester,
+  type Subject,
+  type ResourceTypeRow,
+  type CreateResourceInput,
+  fetchAllCoursesWithDetails,
+  fetchAllBranchesWithDetails,
+  fetchAllSemestersWithDetails,
+  fetchAllSubjectsWithDetails,
+  createCollege,
+  updateCollege,
+  deleteCollege,
+  createCourse,
+  updateCourse,
+  deleteCourse,
+  createBranch,
+  updateBranch,
+  deleteBranch,
+  createSemester,
+  updateSemester,
+  deleteSemester,
+  createSubject,
+  updateSubject,
+  deleteSubject,
+  uploadResourceFile,
+  deleteResourceFile,
+} from '../lib/resourceService'
 import toast from 'react-hot-toast'
 
 type AdminTab =
   | 'overview' | 'courses' | 'resources' | 'quizzes' | 'roadmaps'
-  | 'mentorship' | 'youtube-videos' | 'users' | 'settings'
+  | 'mentorship' | 'youtube-videos' | 'users' | 'settings' | 'hierarchy'
 
 const sidebarItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard; group?: string }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -23,6 +64,7 @@ const sidebarItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard;
   { id: 'roadmaps', label: 'Roadmaps', icon: Map, group: 'Content' },
   { id: 'youtube-videos', label: 'YouTube Videos', icon: Video, group: 'Content' },
   { id: 'mentorship', label: 'Mentorship', icon: Users, group: 'Services' },
+  { id: 'hierarchy', label: 'Academic Hierarchy', icon: BookOpen, group: 'Content' },
   { id: 'users', label: 'Users', icon: Users, group: 'Admin' },
   { id: 'settings', label: 'Settings', icon: Settings, group: 'Admin' },
 ]
@@ -115,27 +157,468 @@ export default function AdminDashboard() {
   const content = useContentStore()
   const mentors = useMentorStore()
 
+  // ─── Supabase Resources State ──────────────────────────────────────────────
+  const [dbResources, setDbResources] = useState<Resource[]>([])
+  const [resourcesLoading, setResourcesLoading] = useState(false)
+
+  // Hierarchy dropdown state for resource form
+  const [colleges, setColleges] = useState<College[]>([])
+  const [courses, setCourses] = useState<DBCourse[]>([])
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [semesters, setSemesters] = useState<Semester[]>([])
+  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [resourceTypes, setResourceTypes] = useState<ResourceTypeRow[]>([])
+
+  const [selectedCollegeId, setSelectedCollegeId] = useState<number | ''>('')
+  const [selectedCourseId, setSelectedCourseId] = useState<number | ''>('')
+  const [selectedBranchId, setSelectedBranchId] = useState<number | ''>('')
+  const [selectedSemesterId, setSelectedSemesterId] = useState<number | ''>('')
+  const [selectedSubjectId, setSelectedSubjectId] = useState<number | ''>('')
+  const [selectedResourceTypeId, setSelectedResourceTypeId] = useState<number | ''>('')
+  const [resourceSaving, setResourceSaving] = useState(false)
+
+  // Resource form fields
+  const [resTitle, setResTitle] = useState('')
+  const [resDescription, setResDescription] = useState('')
+  const [resAuthor, setResAuthor] = useState('')
+  // File upload states
+  const [resUploadFile, setResUploadFile] = useState<File | null>(null)
+  const [resUploadProgress, setResUploadProgress] = useState(0)
+  const [resUploadStatus, setResUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle')
+  const [resExistingFileUrl, setResExistingFileUrl] = useState('')
+  const [resIsPremium, setResIsPremium] = useState(false)
+  const [resPrice, setResPrice] = useState<number>(0)
+  const [resStatus, setResStatus] = useState<'Published' | 'Draft'>('Draft')
+
+  // ─── Academic Hierarchy States ──────────────────────────────────────────
+  const [hColleges, setHColleges] = useState<College[]>([])
+  const [hCourses, setHCourses] = useState<any[]>([])
+  const [hBranches, setHBranches] = useState<any[]>([])
+  const [hSemesters, setHSemesters] = useState<any[]>([])
+  const [hSubjects, setHSubjects] = useState<any[]>([])
+  const [hierarchyLoading, setHierarchyLoading] = useState(false)
+  const [hierarchyTab, setHierarchyTab] = useState<'colleges' | 'courses' | 'branches' | 'semesters' | 'subjects'>('colleges')
+  const [hierarchyDeleteId, setHierarchyDeleteId] = useState<number | null>(null)
+
+  // Hierarchy Form/Modal States
+  const [showHierarchyModal, setShowHierarchyModal] = useState(false)
+  const [hierarchyEditItem, setHierarchyEditItem] = useState<any>(null) // null for Add, object for Edit
+  
+  const [hFormCollegeId, setHFormCollegeId] = useState<number | ''>('')
+  const [hFormCourseId, setHFormCourseId] = useState<number | ''>('')
+  const [hFormBranchId, setHFormBranchId] = useState<number | ''>('')
+  const [hFormSemesterId, setHFormSemesterId] = useState<number | ''>('')
+  
+  const [hFormName, setHFormName] = useState('')
+  const [hFormShortName, setHFormShortName] = useState('')
+  const [hFormCity, setHFormCity] = useState('')
+  const [hFormState, setHFormState] = useState('')
+  const [hFormDuration, setHFormDuration] = useState('')
+  const [hFormCode, setHFormCode] = useState('')
+  const [hFormSemesterNumber, setHFormSemesterNumber] = useState<number | ''>('')
+  const [hierarchySaving, setHierarchySaving] = useState(false)
+
+  // Dropdown lists in hierarchy modal
+  const [modalColleges, setModalColleges] = useState<College[]>([])
+  const [modalCourses, setModalCourses] = useState<DBCourse[]>([])
+  const [modalBranches, setModalBranches] = useState<Branch[]>([])
+  const [modalSemesters, setModalSemesters] = useState<Semester[]>([])
+
+  const isPrefillingRef = useRef(false)
+
+  // ─── Load resources from Supabase ──────────────────────────────────────────
+  const loadDbResources = useCallback(async () => {
+    setResourcesLoading(true)
+    try {
+      const data = await fetchAllResources()
+      setDbResources(data)
+      // Use getState() to avoid the content ref changing and causing an infinite loop
+      useContentStore.getState().setResources(data)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load resources'
+      toast.error(msg)
+    } finally {
+      setResourcesLoading(false)
+    }
+  }, [])
+
+  // Load resources when switching to resources/overview tab
+  useEffect(() => {
+    if (activeTab === 'resources' || activeTab === 'overview') {
+      loadDbResources()
+    }
+  }, [activeTab, loadDbResources])
+
+  // ─── Load hierarchy dropdowns ──────────────────────────────────────────────
+  useEffect(() => {
+    if (showModal && editItem?._type === 'resource') {
+      fetchColleges().then(setColleges).catch(() => toast.error('Failed to load colleges'))
+      fetchResourceTypes().then(setResourceTypes).catch(() => toast.error('Failed to load resource types'))
+    }
+  }, [showModal, editItem?._type])
+
+  useEffect(() => {
+    if (selectedCollegeId) {
+      fetchCourses(selectedCollegeId as number).then(setCourses).catch(() => toast.error('Failed to load courses'))
+      setSelectedCourseId(''); setSelectedBranchId(''); setSelectedSemesterId(''); setSelectedSubjectId('')
+      setBranches([]); setSemesters([]); setSubjects([])
+    }
+  }, [selectedCollegeId])
+
+  useEffect(() => {
+    if (selectedCourseId) {
+      fetchBranches(selectedCourseId as number).then(setBranches).catch(() => toast.error('Failed to load branches'))
+      setSelectedBranchId(''); setSelectedSemesterId(''); setSelectedSubjectId('')
+      setSemesters([]); setSubjects([])
+    }
+  }, [selectedCourseId])
+
+  useEffect(() => {
+    if (selectedBranchId) {
+      fetchSemesters(selectedBranchId as number).then(setSemesters).catch(() => toast.error('Failed to load semesters'))
+      setSelectedSemesterId(''); setSelectedSubjectId('')
+      setSubjects([])
+    }
+  }, [selectedBranchId])
+
+  useEffect(() => {
+    if (selectedSemesterId) {
+      fetchSubjects(selectedSemesterId as number).then(setSubjects).catch(() => toast.error('Failed to load subjects'))
+      setSelectedSubjectId('')
+    }
+  }, [selectedSemesterId])
+
+  // ─── Hierarchy Loader Callback ─────────────────────────────────────────────
+  const loadHierarchyData = useCallback(async (tabName: string) => {
+    setHierarchyLoading(true)
+    try {
+      if (tabName === 'colleges') {
+        const data = await fetchColleges()
+        setHColleges(data)
+      } else if (tabName === 'courses') {
+        const data = await fetchAllCoursesWithDetails()
+        setHCourses(data)
+      } else if (tabName === 'branches') {
+        const data = await fetchAllBranchesWithDetails()
+        setHBranches(data)
+      } else if (tabName === 'semesters') {
+        const data = await fetchAllSemestersWithDetails()
+        setHSemesters(data)
+      } else if (tabName === 'subjects') {
+        const data = await fetchAllSubjectsWithDetails()
+        setHSubjects(data)
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Failed to load ${tabName}`)
+    } finally {
+      setHierarchyLoading(false)
+    }
+  }, [])
+
+  // Fetch active tab data
+  useEffect(() => {
+    if (activeTab === 'hierarchy') {
+      loadHierarchyData(hierarchyTab)
+    }
+  }, [activeTab, hierarchyTab, loadHierarchyData])
+
+  // ─── Hierarchy Modal Prefill & Cascading Effects ──────────────────────────
+  useEffect(() => {
+    if (showHierarchyModal) {
+      fetchColleges().then(setModalColleges).catch(() => toast.error('Failed to load colleges'))
+    }
+  }, [showHierarchyModal])
+
+  useEffect(() => {
+    if (hFormCollegeId) {
+      fetchCourses(hFormCollegeId as number).then(setModalCourses).catch(() => toast.error('Failed to load courses'))
+      if (!isPrefillingRef.current) {
+        setHFormCourseId(''); setHFormBranchId(''); setHFormSemesterId('')
+        setModalBranches([]); setModalSemesters([])
+      }
+    } else {
+      setModalCourses([])
+      setHFormCourseId(''); setHFormBranchId(''); setHFormSemesterId('')
+      setModalBranches([]); setModalSemesters([])
+    }
+  }, [hFormCollegeId])
+
+  useEffect(() => {
+    if (hFormCourseId) {
+      fetchBranches(hFormCourseId as number).then(setModalBranches).catch(() => toast.error('Failed to load branches'))
+      if (!isPrefillingRef.current) {
+        setHFormBranchId(''); setHFormSemesterId('')
+        setModalSemesters([])
+      }
+    } else {
+      setModalBranches([])
+      setHFormBranchId(''); setHFormSemesterId('')
+      setModalSemesters([])
+    }
+  }, [hFormCourseId])
+
+  useEffect(() => {
+    if (hFormBranchId) {
+      fetchSemesters(hFormBranchId as number).then(setModalSemesters).catch(() => toast.error('Failed to load semesters'))
+      if (!isPrefillingRef.current) {
+        setHFormSemesterId('')
+      }
+    } else {
+      setModalSemesters([])
+      setHFormSemesterId('')
+    }
+  }, [hFormBranchId])
+
+  // Open hierarchy modal helpers
+  const openAddHierarchy = () => {
+    setHierarchyEditItem(null)
+    setHFormCollegeId(''); setHFormCourseId(''); setHFormBranchId(''); setHFormSemesterId('')
+    setHFormName(''); setHFormShortName(''); setHFormCity(''); setHFormState('')
+    setHFormDuration(''); setHFormCode(''); setHFormSemesterNumber('')
+    setModalCourses([]); setModalBranches([]); setModalSemesters([])
+    setShowHierarchyModal(true)
+  }
+
+  const openEditHierarchy = async (tab: string, item: any) => {
+    isPrefillingRef.current = true
+    setHierarchyEditItem({ ...item, _tab: tab })
+    
+    setHFormName(item.name || '')
+    setHFormShortName(item.short_name || '')
+    setHFormCity(item.city || '')
+    setHFormState(item.state || '')
+    setHFormDuration(item.duration || '')
+    setHFormCode(item.code || '')
+    setHFormSemesterNumber(item.semester_number || '')
+
+    try {
+      if (tab === 'courses') {
+        const colId = item.college_id || item.colleges?.id || ''
+        setHFormCollegeId(colId)
+      } else if (tab === 'branches') {
+        const colId = item.courses?.colleges?.id
+        const crsId = item.course_id || item.courses?.id
+        
+        if (colId) {
+          const crsList = await fetchCourses(colId)
+          setModalCourses(crsList)
+        }
+        setHFormCollegeId(colId || '')
+        setHFormCourseId(crsId || '')
+      } else if (tab === 'semesters') {
+        const colId = item.branches?.courses?.colleges?.id
+        const crsId = item.branches?.courses?.id
+        const brId = item.branch_id || item.branches?.id
+        
+        if (colId) {
+          const crsList = await fetchCourses(colId)
+          setModalCourses(crsList)
+        }
+        if (crsId) {
+          const brList = await fetchBranches(crsId)
+          setModalBranches(brList)
+        }
+        setHFormCollegeId(colId || '')
+        setHFormCourseId(crsId || '')
+        setHFormBranchId(brId || '')
+      } else if (tab === 'subjects') {
+        const colId = item.semesters?.branches?.courses?.colleges?.id
+        const crsId = item.semesters?.branches?.courses?.id
+        const brId = item.semesters?.branches?.id
+        const semId = item.semester_id || item.semesters?.id
+        
+        if (colId) {
+          const crsList = await fetchCourses(colId)
+          setModalCourses(crsList)
+        }
+        if (crsId) {
+          const brList = await fetchBranches(crsId)
+          setModalBranches(brList)
+        }
+        if (brId) {
+          const semList = await fetchSemesters(brId)
+          setModalSemesters(semList)
+        }
+        setHFormCollegeId(colId || '')
+        setHFormCourseId(crsId || '')
+        setHFormBranchId(brId || '')
+        setHFormSemesterId(semId || '')
+      }
+    } catch (err) {
+      console.error('Failed to pre-fill hierarchy modal:', err)
+    } finally {
+      isPrefillingRef.current = false
+      setShowHierarchyModal(true)
+    }
+  }
+
+  const closeHierarchyModal = () => {
+    setShowHierarchyModal(false)
+    setHierarchyEditItem(null)
+  }
+
+  // Save changes
+  const handleHierarchySave = async () => {
+    setHierarchySaving(true)
+    try {
+      const isEdit = !!hierarchyEditItem
+      const activeLvl = isEdit ? hierarchyEditItem._tab : hierarchyTab
+
+      if (activeLvl === 'colleges') {
+        if (!hFormName) throw new Error('College Name is required')
+        const payload = {
+          name: hFormName,
+          short_name: hFormShortName || null,
+          city: hFormCity || null,
+          state: hFormState || null,
+        }
+        if (isEdit) {
+          await updateCollege(hierarchyEditItem.id, payload)
+          toast.success('College updated!')
+        } else {
+          await createCollege(payload)
+          toast.success('College added!')
+        }
+      } else if (activeLvl === 'courses') {
+        if (!hFormCollegeId) throw new Error('College is required')
+        if (!hFormName) throw new Error('Course Name is required')
+        const payload = {
+          college_id: hFormCollegeId as number,
+          name: hFormName,
+          duration: hFormDuration || null,
+        }
+        if (isEdit) {
+          await updateCourse(hierarchyEditItem.id, payload)
+          toast.success('Course updated!')
+        } else {
+          await createCourse(payload)
+          toast.success('Course added!')
+        }
+      } else if (activeLvl === 'branches') {
+        if (!hFormCourseId) throw new Error('Course is required')
+        if (!hFormName) throw new Error('Branch Name is required')
+        const payload = {
+          course_id: hFormCourseId as number,
+          name: hFormName,
+          code: hFormCode || null,
+        }
+        if (isEdit) {
+          await updateBranch(hierarchyEditItem.id, payload)
+          toast.success('Branch updated!')
+        } else {
+          await createBranch(payload)
+          toast.success('Branch added!')
+        }
+      } else if (activeLvl === 'semesters') {
+        if (!hFormBranchId) throw new Error('Branch is required')
+        if (hFormSemesterNumber === '') throw new Error('Semester Number is required')
+        const payload = {
+          branch_id: hFormBranchId as number,
+          semester_number: Number(hFormSemesterNumber),
+        }
+        if (isEdit) {
+          await updateSemester(hierarchyEditItem.id, payload)
+          toast.success('Semester updated!')
+        } else {
+          await createSemester(payload)
+          toast.success('Semester added!')
+        }
+      } else if (activeLvl === 'subjects') {
+        if (!hFormSemesterId) throw new Error('Semester is required')
+        if (!hFormName) throw new Error('Subject Name is required')
+        const payload = {
+          semester_id: hFormSemesterId as number,
+          name: hFormName,
+          code: hFormCode || null,
+        }
+        if (isEdit) {
+          await updateSubject(hierarchyEditItem.id, payload)
+          toast.success('Subject updated!')
+        } else {
+          await createSubject(payload)
+          toast.success('Subject added!')
+        }
+      }
+      
+      closeHierarchyModal()
+      loadHierarchyData(activeLvl)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save record')
+    } finally {
+      setHierarchySaving(false)
+    }
+  }
+
+  // Deletion
+  const handleHierarchyDelete = async (tab: string, id: number) => {
+    try {
+      if (tab === 'colleges') {
+        await deleteCollege(id)
+      } else if (tab === 'courses') {
+        await deleteCourse(id)
+      } else if (tab === 'branches') {
+        await deleteBranch(id)
+      } else if (tab === 'semesters') {
+        await deleteSemester(id)
+      } else if (tab === 'subjects') {
+        await deleteSubject(id)
+      }
+      toast.success('Record deleted successfully!')
+      loadHierarchyData(tab)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete record')
+    }
+  }
+
   // Users from localStorage
   const users = JSON.parse(localStorage.getItem('skills021_users') || '[]')
 
-  const openAdd = (type?: string) => { setEditItem({ _type: type }); setShowModal(true) }
-  const openEdit = (item: any) => { setEditItem(item); setShowModal(true) }
+  const openAdd = (type?: string) => {
+    if (type === 'resource') {
+      // Reset resource form
+      setResTitle(''); setResDescription(''); setResAuthor('Skills021 Team')
+      setResUploadFile(null); setResUploadProgress(0); setResUploadStatus('idle'); setResExistingFileUrl('')
+      setResIsPremium(false); setResPrice(0); setResStatus('Draft')
+      setSelectedCollegeId(''); setSelectedCourseId(''); setSelectedBranchId('')
+      setSelectedSemesterId(''); setSelectedSubjectId(''); setSelectedResourceTypeId('')
+      setCourses([]); setBranches([]); setSemesters([]); setSubjects([])
+    }
+    setEditItem({ _type: type })
+    setShowModal(true)
+  }
+  const openEdit = (item: any) => {
+    if (item._type === 'resource') {
+      // Pre-fill resource form fields for editing
+      setResTitle(item.title || ''); setResDescription(item.description || '')
+      setResAuthor(item.author || '')
+      setResUploadFile(null); setResUploadProgress(0); setResUploadStatus('idle'); setResExistingFileUrl(item.downloadUrl || '')
+      setResIsPremium(item.isPremium || false)
+      setResPrice(item.price || 0); setResStatus(item.status || 'Draft')
+      // Note: hierarchy dropdowns won't be pre-selected on edit since we don't store IDs in Resource
+      // The admin can change them if needed, otherwise they remain unchanged
+      setSelectedCollegeId(''); setSelectedCourseId(''); setSelectedBranchId('')
+      setSelectedSemesterId(''); setSelectedSubjectId(''); setSelectedResourceTypeId('')
+      setCourses([]); setBranches([]); setSemesters([]); setSubjects([])
+    }
+    setEditItem(item)
+    setShowModal(true)
+  }
   const closeModal = () => { setShowModal(false); setEditItem(null) }
 
   // ─── Overview ───────────────────────────────────────────────────────────────
   const renderOverview = () => {
     const statsCards = [
       { label: 'Total Courses', val: content.courses.length, icon: BookOpen, color: 'text-primary-500', bg: 'bg-primary-50 dark:bg-primary-900/20' },
-      { label: 'Resources', val: content.resources.length, icon: FileText, color: 'text-teal-500', bg: 'bg-teal-50 dark:bg-teal-900/20' },
+      { label: 'Resources', val: dbResources.length, icon: FileText, color: 'text-teal-500', bg: 'bg-teal-50 dark:bg-teal-900/20' },
       { label: 'Quizzes', val: content.quizzes.length, icon: HelpCircle, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-900/20' },
       { label: 'Roadmaps', val: content.roadmaps.length, icon: Map, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
       { label: 'Active Mentors', val: mentors.mentors.filter(m => m.status === 'Active').length, icon: Users, color: 'text-indigo-500', bg: 'bg-indigo-50 dark:bg-indigo-900/20' },
       { label: 'Total Users', val: users.length, icon: Users, color: 'text-rose-500', bg: 'bg-rose-50 dark:bg-rose-900/20' },
     ]
 
-    const totalDownloads = content.resources.reduce((a, r) => a + r.downloads, 0)
-    const totalEnrolled = content.courses.reduce((a, c) => a + c.enrolled, 0)
-    const totalQuizParticipants = content.quizzes.reduce((a, q) => a + q.participants, 0)
+    const totalDownloads = dbResources.reduce((a, r) => a + (r.downloads ?? 0), 0)
+    const totalEnrolled = content.courses.reduce((a, c) => a + (c.enrolled ?? 0), 0)
+    const totalQuizParticipants = content.quizzes.reduce((a, q) => a + (q.participants ?? 0), 0)
     const totalSessions = mentors.sessions.length
 
     return (
@@ -161,9 +644,9 @@ export default function AdminDashboard() {
         {/* Analytics Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { val: totalDownloads.toLocaleString(), label: 'Resource Downloads', icon: Download, color: 'text-teal-500' },
-            { val: totalEnrolled.toLocaleString(), label: 'Course Enrollments', icon: BookOpen, color: 'text-primary-500' },
-            { val: totalQuizParticipants.toLocaleString(), label: 'Quiz Participants', icon: HelpCircle, color: 'text-purple-500' },
+            { val: (totalDownloads ?? 0).toLocaleString(), label: 'Resource Downloads', icon: Download, color: 'text-teal-500' },
+            { val: (totalEnrolled ?? 0).toLocaleString(), label: 'Course Enrollments', icon: BookOpen, color: 'text-primary-500' },
+            { val: (totalQuizParticipants ?? 0).toLocaleString(), label: 'Quiz Participants', icon: HelpCircle, color: 'text-purple-500' },
             { val: totalSessions.toString(), label: 'Mentor Sessions', icon: CheckCircle, color: 'text-green-500' },
           ].map(m => (
             <div key={m.label} className="card p-4 flex items-center gap-3">
@@ -213,7 +696,7 @@ export default function AdminDashboard() {
               <div key={c.id} className="px-4 py-3 flex items-center justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-brand-text dark:text-brand-dark-text truncate">{c.title}</p>
-                  <p className="text-xs text-brand-muted dark:text-brand-dark-muted">{c.enrolled.toLocaleString()} enrolled</p>
+                  <p className="text-xs text-brand-muted dark:text-brand-dark-muted">{(c.enrolled ?? 0).toLocaleString()} enrolled</p>
                 </div>
                 <StatusBadge status={c.status} />
               </div>
@@ -246,7 +729,7 @@ export default function AdminDashboard() {
                     <td className="px-4 py-3 text-xs text-brand-muted dark:text-brand-dark-muted whitespace-nowrap">{c.group}</td>
                     <td className="px-4 py-3"><span className="badge bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 text-xs">{c.subcategory}</span></td>
                     <td className="px-4 py-3 font-medium">{c.price === 'FREE' ? <span className="text-green-500">FREE</span> : `₹${c.price}`}</td>
-                    <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted">{c.enrolled.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted">{(c.enrolled ?? 0).toLocaleString()}</td>
                     <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
@@ -267,42 +750,60 @@ export default function AdminDashboard() {
 
   // ─── Resources ──────────────────────────────────────────────────────────────
   const renderResources = () => {
-    const filtered = content.resources.filter(r => r.title.toLowerCase().includes(search.toLowerCase()))
+    const filtered = dbResources.filter(r => r.title.toLowerCase().includes(search.toLowerCase()))
     return (
       <div>
-        <SectionHeader title="Manage Resources" count={content.resources.length} onAdd={() => openAdd('resource')} addLabel="Add Resource" />
+        <SectionHeader title="Manage Resources" count={dbResources.length} onAdd={() => openAdd('resource')} addLabel="Add Resource" />
         <SearchBar value={search} onChange={setSearch} placeholder="Search resources..." />
-        <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-white/5">
-                <tr>{['Title', 'Type', 'Category', 'Author', 'Downloads', 'Premium', 'Status', 'Actions'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
-                ))}</tr>
-              </thead>
-              <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
-                {filtered.map(r => (
-                  <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
-                    <td className="px-4 py-3 font-medium text-brand-text dark:text-brand-dark-text max-w-[180px] truncate">{r.title}</td>
-                    <td className="px-4 py-3"><span className="badge bg-blue-50 dark:bg-blue-900/20 text-blue-600 text-xs">{r.type}</span></td>
-                    <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{r.category}</td>
-                    <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{r.author}</td>
-                    <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted">{r.downloads.toLocaleString()}</td>
-                    <td className="px-4 py-3">{r.isPremium ? <span className="badge bg-amber-50 dark:bg-amber-900/20 text-amber-600 text-xs">₹{r.price}</span> : <span className="badge bg-green-50 dark:bg-green-900/20 text-green-600 text-xs">Free</span>}</td>
-                    <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => content.toggleResourceStatus(r.id)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted"><EyeOff size={14} /></button>
-                        <button onClick={() => openEdit({ ...r, _type: 'resource' })} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500"><Edit2 size={14} /></button>
-                        <button onClick={() => setDeleteId({ id: r.id, title: r.title, type: 'resource' })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 size={14} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+
+        {resourcesLoading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <Loader2 size={32} className="animate-spin text-brand-muted dark:text-brand-dark-muted mb-3" />
+            <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Loading resources...</p>
           </div>
-        </div>
+        ) : (
+          <div className="card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-white/5">
+                  <tr>{['Title', 'Type', 'College', 'Subject', 'Author', 'Downloads', 'Premium', 'Status', 'Actions'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  ))}</tr>
+                </thead>
+                <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
+                  {filtered.map(r => (
+                    <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                      <td className="px-4 py-3 font-medium text-brand-text dark:text-brand-dark-text max-w-[180px] truncate">{r.title}</td>
+                      <td className="px-4 py-3"><span className="badge bg-blue-50 dark:bg-blue-900/20 text-blue-600 text-xs">{r.type}</span></td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{r.college || '—'}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{r.subject || '—'}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{r.author}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted">{(r.downloads ?? 0).toLocaleString()}</td>
+                      <td className="px-4 py-3">{r.isPremium ? <span className="badge bg-amber-50 dark:bg-amber-900/20 text-amber-600 text-xs">₹{r.price ?? 0}</span> : <span className="badge bg-green-50 dark:bg-green-900/20 text-green-600 text-xs">Free</span>}</td>
+                      <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <button onClick={async () => {
+                            try {
+                              const updated = await toggleResourceStatusApi(r.id, r.status)
+                              setDbResources(prev => prev.map(res => res.id === r.id ? updated : res))
+                              toast.success(`Resource ${updated.status === 'Published' ? 'published' : 'unpublished'}`)
+                            } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to toggle status') }
+                          }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted"><EyeOff size={14} /></button>
+                          <button onClick={() => openEdit({ ...r, _type: 'resource' })} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500"><Edit2 size={14} /></button>
+                          <button onClick={() => setDeleteId({ id: r.id, title: r.title, type: 'resource' })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 size={14} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {filtered.length === 0 && !resourcesLoading && (
+                    <tr><td colSpan={9} className="px-4 py-8 text-center text-brand-muted text-sm">No resources found.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -330,7 +831,7 @@ export default function AdminDashboard() {
                     <td className="px-4 py-3"><span className={`badge text-xs ${q.difficulty === 'Easy' ? 'bg-green-50 text-green-600' : q.difficulty === 'Medium' ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600'}`}>{q.difficulty}</span></td>
                     <td className="px-4 py-3 text-center text-brand-muted">{q.questions.length}</td>
                     <td className="px-4 py-3 text-brand-muted">{q.timeLimit}m</td>
-                    <td className="px-4 py-3 text-brand-muted">{q.participants.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-brand-muted">{(q.participants ?? 0).toLocaleString()}</td>
                     <td className="px-4 py-3"><StatusBadge status={q.status} /></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
@@ -371,7 +872,7 @@ export default function AdminDashboard() {
                     <td className="px-4 py-3"><span className="badge bg-green-50 dark:bg-green-900/20 text-green-600 text-xs">{r.category}</span></td>
                     <td className="px-4 py-3 text-center text-brand-muted">{r.steps.length}</td>
                     <td className="px-4 py-3 text-brand-muted text-xs">{r.totalDuration}</td>
-                    <td className="px-4 py-3 text-brand-muted">{r.views.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-brand-muted">{(r.views ?? 0).toLocaleString()}</td>
                     <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
@@ -413,7 +914,7 @@ export default function AdminDashboard() {
                   </td>
                   <td className="px-4 py-3 text-brand-muted text-xs">{m.company}</td>
                   <td className="px-4 py-3 text-brand-muted text-xs">{m.services.length} services</td>
-                  <td className="px-4 py-3 text-brand-muted">{m.sessions.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-brand-muted">{(m.sessions ?? 0).toLocaleString()}</td>
                   <td className="px-4 py-3 text-amber-500 font-semibold">⭐ {m.rating}</td>
                   <td className="px-4 py-3"><StatusBadge status={m.status} /></td>
                   <td className="px-4 py-3">
@@ -690,7 +1191,8 @@ export default function AdminDashboard() {
         {[
           { label: 'Platform Name', val: 'Skill021' },
           { label: 'YouTube Channel', val: 'youtube.com/@skills021' },
-          { label: 'Total Content Items', val: `${content.courses.length + content.resources.length + content.quizzes.length + content.roadmaps.length}` },
+          { label: 'Total Courses', val: content.courses.length.toString() },
+          { label: 'Total Resources', val: dbResources.length.toString() },
           { label: 'Active Mentors', val: mentors.mentors.filter(m => m.status === 'Active').length.toString() },
           { label: 'Total Active Users', val: users.filter((u: any) => !u.disabled).length.toString() },
           { label: 'Total Mentor Sessions', val: mentors.sessions.length.toString() },
@@ -704,18 +1206,275 @@ export default function AdminDashboard() {
     </div>
   )
 
-  // ─── Delete handler ──────────────────────────────────────────────────────────
-  const handleDelete = () => {
-    if (!deleteId) return
-    const { id, type } = deleteId
-    switch (type) {
-      case 'course': content.deleteCourse(id); break
-      case 'resource': content.deleteResource(id); break
-      case 'quiz': content.deleteQuiz(id); break
-      case 'roadmap': content.deleteRoadmap(id); break
-      case 'mentor': mentors.deleteMentor(id); break
+  // ─── Academic Hierarchy Tab ──────────────────────────────────────────────────
+  const renderHierarchy = () => {
+    const searchLower = search.toLowerCase()
+    
+    let filteredItems: any[] = []
+    if (hierarchyTab === 'colleges') {
+      filteredItems = hColleges.filter(c =>
+        c.name.toLowerCase().includes(searchLower) ||
+        (c.short_name ?? '').toLowerCase().includes(searchLower) ||
+        (c.city ?? '').toLowerCase().includes(searchLower) ||
+        (c.state ?? '').toLowerCase().includes(searchLower)
+      )
+    } else if (hierarchyTab === 'courses') {
+      filteredItems = hCourses.filter(c =>
+        c.name.toLowerCase().includes(searchLower) ||
+        (c.colleges?.name ?? '').toLowerCase().includes(searchLower)
+      )
+    } else if (hierarchyTab === 'branches') {
+      filteredItems = hBranches.filter(b =>
+        b.name.toLowerCase().includes(searchLower) ||
+        (b.code ?? '').toLowerCase().includes(searchLower) ||
+        (b.courses?.name ?? '').toLowerCase().includes(searchLower) ||
+        (b.courses?.colleges?.name ?? '').toLowerCase().includes(searchLower)
+      )
+    } else if (hierarchyTab === 'semesters') {
+      filteredItems = hSemesters.filter(s =>
+        String(s.semester_number).includes(searchLower) ||
+        (s.branches?.name ?? '').toLowerCase().includes(searchLower) ||
+        (s.branches?.courses?.name ?? '').toLowerCase().includes(searchLower) ||
+        (s.branches?.courses?.colleges?.name ?? '').toLowerCase().includes(searchLower)
+      )
+    } else if (hierarchyTab === 'subjects') {
+      filteredItems = hSubjects.filter(s =>
+        s.name.toLowerCase().includes(searchLower) ||
+        (s.code ?? '').toLowerCase().includes(searchLower) ||
+        (s.semesters?.branches?.name ?? '').toLowerCase().includes(searchLower) ||
+        (s.semesters?.branches?.courses?.name ?? '').toLowerCase().includes(searchLower) ||
+        (s.semesters?.branches?.courses?.colleges?.name ?? '').toLowerCase().includes(searchLower)
+      )
     }
-    toast.success(`${deleteId.title} deleted successfully`)
+
+    const subTabs = [
+      { id: 'colleges', label: 'Colleges' },
+      { id: 'courses', label: 'Courses' },
+      { id: 'branches', label: 'Branches' },
+      { id: 'semesters', label: 'Semesters' },
+      { id: 'subjects', label: 'Subjects' },
+    ] as const
+
+    const getAddLabel = () => {
+      switch (hierarchyTab) {
+        case 'colleges': return 'Add College'
+        case 'courses': return 'Add Course'
+        case 'branches': return 'Add Branch'
+        case 'semesters': return 'Add Semester'
+        case 'subjects': return 'Add Subject'
+      }
+    }
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">🎓 Academic Hierarchy</h2>
+            <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5 font-medium">Manage colleges, courses, branches, semesters, and subjects</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => loadHierarchyData(hierarchyTab)}
+              disabled={hierarchyLoading}
+              title="Refresh records"
+              className="p-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors flex items-center justify-center disabled:opacity-55"
+            >
+              <RotateCw size={15} className={hierarchyLoading ? 'animate-spin' : ''} />
+            </button>
+            <button onClick={openAddHierarchy} className="flex items-center gap-2 btn-primary text-sm py-2.5 px-4">
+              <Plus size={15} /> {getAddLabel()}
+            </button>
+          </div>
+        </div>
+
+        {/* Sub Navigation Tabs */}
+        <div className="flex gap-1 overflow-x-auto no-scrollbar py-1 border-b border-brand-border dark:border-brand-dark-border">
+          {subTabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => { setHierarchyTab(tab.id); setSearch('') }}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
+                hierarchyTab === tab.id
+                  ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black shadow-sm'
+                  : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Controls */}
+        <SearchBar value={search} onChange={setSearch} placeholder={`Search ${hierarchyTab}...`} />
+
+        {hierarchyLoading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <Loader2 size={32} className="animate-spin text-brand-muted dark:text-brand-dark-muted mb-3" />
+            <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Loading hierarchy records...</p>
+          </div>
+        ) : (
+          <div className="card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-white/5">
+                  {hierarchyTab === 'colleges' && (
+                    <tr>
+                      {['College Name', 'Short Name', 'City', 'State', 'Created At', 'Actions'].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  )}
+                  {hierarchyTab === 'courses' && (
+                    <tr>
+                      {['College', 'Course Name', 'Duration', 'Actions'].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  )}
+                  {hierarchyTab === 'branches' && (
+                    <tr>
+                      {['College', 'Course', 'Branch Name', 'Code', 'Actions'].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  )}
+                  {hierarchyTab === 'semesters' && (
+                    <tr>
+                      {['College', 'Course', 'Branch', 'Semester Number', 'Actions'].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  )}
+                  {hierarchyTab === 'subjects' && (
+                    <tr>
+                      {['College', 'Course', 'Branch', 'Semester', 'Subject Name', 'Code', 'Actions'].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  )}
+                </thead>
+                <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
+                  {/* Colleges Table Body */}
+                  {hierarchyTab === 'colleges' && filteredItems.map((item: College) => (
+                    <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                      <td className="px-4 py-3 font-semibold text-brand-text dark:text-brand-dark-text">{item.name}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{item.short_name || '—'}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{item.city || '—'}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{item.state || '—'}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{(item as any).created_at ? new Date((item as any).created_at).toLocaleDateString() : '—'}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => openEditHierarchy('colleges', item)} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500 transition-colors"><Edit2 size={14} /></button>
+                          <button onClick={() => setHierarchyDeleteId(item.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"><Trash2 size={14} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* Courses Table Body */}
+                  {hierarchyTab === 'courses' && filteredItems.map((item: any) => (
+                    <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs font-semibold">{item.colleges?.name || '—'}</td>
+                      <td className="px-4 py-3 font-semibold text-brand-text dark:text-brand-dark-text">{item.name}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{item.duration || '—'}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => openEditHierarchy('courses', item)} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500 transition-colors"><Edit2 size={14} /></button>
+                          <button onClick={() => setHierarchyDeleteId(item.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"><Trash2 size={14} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* Branches Table Body */}
+                  {hierarchyTab === 'branches' && filteredItems.map((item: any) => (
+                    <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{item.courses?.colleges?.name || '—'}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs font-semibold">{item.courses?.name || '—'}</td>
+                      <td className="px-4 py-3 font-semibold text-brand-text dark:text-brand-dark-text">{item.name}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{item.code || '—'}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => openEditHierarchy('branches', item)} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500 transition-colors"><Edit2 size={14} /></button>
+                          <button onClick={() => setHierarchyDeleteId(item.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"><Trash2 size={14} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* Semesters Table Body */}
+                  {hierarchyTab === 'semesters' && filteredItems.map((item: any) => (
+                    <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{item.branches?.courses?.colleges?.name || '—'}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{item.branches?.courses?.name || '—'}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs font-semibold">{item.branches?.name || '—'}</td>
+                      <td className="px-4 py-3 font-semibold text-brand-text dark:text-brand-dark-text">Semester {item.semester_number}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => openEditHierarchy('semesters', item)} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500 transition-colors"><Edit2 size={14} /></button>
+                          <button onClick={() => setHierarchyDeleteId(item.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"><Trash2 size={14} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* Subjects Table Body */}
+                  {hierarchyTab === 'subjects' && filteredItems.map((item: any) => (
+                    <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{item.semesters?.branches?.courses?.colleges?.name || '—'}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{item.semesters?.branches?.courses?.name || '—'}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{item.semesters?.branches?.name || '—'}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">Sem {item.semesters?.semester_number}</td>
+                      <td className="px-4 py-3 font-semibold text-brand-text dark:text-brand-dark-text">{item.name}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{item.code || '—'}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => openEditHierarchy('subjects', item)} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500 transition-colors"><Edit2 size={14} /></button>
+                          <button onClick={() => setHierarchyDeleteId(item.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"><Trash2 size={14} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {filteredItems.length === 0 && (
+                    <tr>
+                      <td colSpan={10} className="px-4 py-8 text-center text-brand-muted text-sm">
+                        No hierarchy records found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ─── Delete handler ──────────────────────────────────────────────────────────
+  const handleDelete = async () => {
+    if (!deleteId) return
+    const { id, type, title } = deleteId
+
+    if (type === 'resource') {
+      // Delete from Supabase
+      try {
+        await deleteResourceApi(id)
+        setDbResources(prev => prev.filter(r => r.id !== id))
+        toast.success(`${title} deleted successfully`)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to delete resource')
+      }
+    } else {
+      switch (type) {
+        case 'course': content.deleteCourse(id); break
+        case 'quiz': content.deleteQuiz(id); break
+        case 'roadmap': content.deleteRoadmap(id); break
+        case 'mentor': mentors.deleteMentor(id); break
+      }
+      toast.success(`${title} deleted successfully`)
+    }
     setDeleteId(null)
   }
 
@@ -723,6 +1482,336 @@ export default function AdminDashboard() {
   const renderModal = () => {
     if (!editItem) return null
     const type = editItem._type
+
+    // ─── Resource Modal with cascading dropdowns ────────────────────────────
+    if (type === 'resource') {
+      const isEditing = !!editItem.id
+
+      const handleResourceSave = async () => {
+        if (!resTitle) { toast.error('Title is required'); return }
+
+        // Determine if we need file upload
+        if (!isEditing && !resUploadFile) {
+          toast.error('Please upload a resource file');
+          return
+        }
+
+        setResourceSaving(true)
+        
+        let uploadInterval: any = undefined
+        try {
+          let fileUrl = resExistingFileUrl
+
+          if (resUploadFile) {
+            // Validate hierarchy IDs are loaded for the path if creating
+            const finalSubjectId = isEditing ? editItem.subjectId : selectedSubjectId
+            if (!finalSubjectId) {
+              toast.error('Please select the full academic hierarchy first')
+              setResourceSaving(false)
+              return
+            }
+
+            // Generate clean path
+            const cleanPathSegment = (str: string) => {
+              return str
+                .replace(/[^a-zA-Z0-9\s-]/g, '')
+                .trim()
+                .replace(/\s+/g, '_')
+            }
+
+            const resolvePathSegment = (level: 'college' | 'course' | 'branch' | 'semester' | 'subject') => {
+              if (level === 'college') {
+                const colId = isEditing ? editItem.collegeId : selectedCollegeId
+                const found = colleges.find(c => c.id === colId)
+                return cleanPathSegment(found?.short_name || found?.name || editItem.college || 'unknown_college')
+              }
+              if (level === 'course') {
+                const crsId = isEditing ? editItem.courseId : selectedCourseId
+                const found = courses.find(c => c.id === crsId)
+                return cleanPathSegment(found?.name || editItem.course || 'unknown_course')
+              }
+              if (level === 'branch') {
+                const brId = isEditing ? editItem.branchId : selectedBranchId
+                const found = branches.find(b => b.id === brId)
+                return cleanPathSegment(found?.code || found?.name || editItem.branch || 'unknown_branch')
+              }
+              if (level === 'semester') {
+                const semId = isEditing ? editItem.semesterId : selectedSemesterId
+                const found = semesters.find(s => s.id === semId)
+                const num = found?.semester_number || editItem.semester || 'unknown'
+                return `Sem${num}`
+              }
+              if (level === 'subject') {
+                const subId = isEditing ? editItem.subjectId : selectedSubjectId
+                const found = subjects.find(s => s.id === subId)
+                return cleanPathSegment(found?.code || found?.name || editItem.subject || 'unknown_subject')
+              }
+              return 'unknown'
+            }
+
+            const col = resolvePathSegment('college')
+            const crs = resolvePathSegment('course')
+            const br = resolvePathSegment('branch')
+            const sem = resolvePathSegment('semester')
+            const sub = resolvePathSegment('subject')
+            const timestamp = Math.floor(Date.now() / 1000)
+            const sanitizedFilename = cleanPathSegment(resUploadFile.name.split('.').slice(0, -1).join('.')) + '.' + resUploadFile.name.split('.').pop()
+            const storagePath = `${col}/${crs}/${br}/${sem}/${sub}/${timestamp}_${sanitizedFilename}`
+
+            // Start simulated progress indicator
+            setResUploadStatus('uploading')
+            setResUploadProgress(10)
+            uploadInterval = setInterval(() => {
+              setResUploadProgress(p => {
+                if (p >= 90) {
+                  clearInterval(uploadInterval)
+                  return 90
+                }
+                return p + 10
+              })
+            }, 150)
+
+            // Perform storage upload
+            fileUrl = await uploadResourceFile(resUploadFile, storagePath)
+            
+            clearInterval(uploadInterval)
+            setResUploadProgress(100)
+            setResUploadStatus('success')
+
+            // Cleanup old file on update
+            if (isEditing && resExistingFileUrl) {
+              await deleteResourceFile(resExistingFileUrl).catch(err => console.error('Failed to remove old resource file:', err))
+            }
+          }
+
+          if (isEditing) {
+            // Update existing resource
+            const updatePayload: any = {
+              title: resTitle,
+              description: resDescription,
+              author: resAuthor,
+              fileUrl: fileUrl,
+              isPremium: resIsPremium,
+              price: resIsPremium ? resPrice : undefined,
+              status: resStatus,
+            }
+            if (selectedSubjectId) updatePayload.subjectId = selectedSubjectId
+            if (selectedResourceTypeId) updatePayload.resourceTypeId = selectedResourceTypeId
+
+            const updated = await updateResourceApi(editItem.id, updatePayload)
+            setDbResources(prev => prev.map(r => r.id === editItem.id ? updated : r))
+            toast.success('Resource updated!')
+          } else {
+            // Create new resource
+            if (!selectedSubjectId) { toast.error('Please select the full hierarchy'); return }
+            if (!selectedResourceTypeId) { toast.error('Please select a resource type'); return }
+
+            const input: CreateResourceInput = {
+              subjectId: selectedSubjectId as number,
+              resourceTypeId: selectedResourceTypeId as number,
+              title: resTitle,
+              description: resDescription,
+              fileUrl: fileUrl,
+              author: resAuthor || 'Skills021 Team',
+              isPremium: resIsPremium,
+              price: resIsPremium ? resPrice : undefined,
+              status: resStatus,
+            }
+            const created = await createResourceApi(input)
+            setDbResources(prev => [created, ...prev])
+            toast.success('Resource added!')
+          }
+          closeModal()
+        } catch (err) {
+          if (uploadInterval) clearInterval(uploadInterval)
+          setResUploadStatus('error')
+          setResUploadProgress(0)
+          toast.error(err instanceof Error ? err.message : 'Failed to save resource')
+        } finally {
+          setResourceSaving(false)
+        }
+      }
+
+      return (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
+          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-lg w-full shadow-xl my-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">{isEditing ? 'Edit Resource' : 'Add Resource'}</h3>
+              <button onClick={closeModal}><X size={18} className="text-brand-muted" /></button>
+            </div>
+            <div className="space-y-4">
+              <Field label="Title *"><input value={resTitle} onChange={e => setResTitle(e.target.value)} className={inputCls} placeholder="Resource title" /></Field>
+              <Field label="Description"><textarea value={resDescription} onChange={e => setResDescription(e.target.value)} rows={3} className={inputCls + ' resize-none'} placeholder="Resource description" /></Field>
+
+              {/* Cascading hierarchy dropdowns */}
+              {!isEditing && (
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-200 dark:border-blue-800 space-y-3">
+                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-wider">Hierarchy (Required for new resources)</p>
+                  <Field label="College *">
+                    <select value={selectedCollegeId} onChange={e => setSelectedCollegeId(e.target.value ? Number(e.target.value) : '')} className={inputCls}>
+                      <option value="">Select College...</option>
+                      {colleges.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Course *">
+                    <select value={selectedCourseId} onChange={e => setSelectedCourseId(e.target.value ? Number(e.target.value) : '')} className={inputCls} disabled={!selectedCollegeId}>
+                      <option value="">Select Course...</option>
+                      {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Branch *">
+                    <select value={selectedBranchId} onChange={e => setSelectedBranchId(e.target.value ? Number(e.target.value) : '')} className={inputCls} disabled={!selectedCourseId}>
+                      <option value="">Select Branch...</option>
+                      {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Semester *">
+                    <select value={selectedSemesterId} onChange={e => setSelectedSemesterId(e.target.value ? Number(e.target.value) : '')} className={inputCls} disabled={!selectedBranchId}>
+                      <option value="">Select Semester...</option>
+                      {semesters.map(s => <option key={s.id} value={s.id}>Semester {s.semester_number}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Subject *">
+                    <select value={selectedSubjectId} onChange={e => setSelectedSubjectId(e.target.value ? Number(e.target.value) : '')} className={inputCls} disabled={!selectedSemesterId}>
+                      <option value="">Select Subject...</option>
+                      {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </Field>
+                </div>
+              )}
+
+              {isEditing && (
+                <div className="p-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-200 dark:border-amber-800">
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    <strong>Current:</strong> {editItem.college} → {editItem.course} → {editItem.branch} → Sem {editItem.semester} → {editItem.subject}
+                  </p>
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Hierarchy cannot be changed during edit. To reassign, delete and re-create.</p>
+                </div>
+              )}
+
+              <Field label="Resource Type *">
+                <select value={selectedResourceTypeId} onChange={e => setSelectedResourceTypeId(e.target.value ? Number(e.target.value) : '')} className={inputCls}>
+                  <option value="">{isEditing ? `Current: ${editItem.type || 'N/A'}` : 'Select Type...'}</option>
+                  {resourceTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </Field>
+
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Author"><input value={resAuthor} onChange={e => setResAuthor(e.target.value)} className={inputCls} placeholder="Skills021 Team" /></Field>
+                <Field label="Status">
+                  <select value={resStatus} onChange={e => setResStatus(e.target.value as 'Published' | 'Draft')} className={inputCls}>
+                    <option>Published</option><option>Draft</option>
+                  </select>
+                </Field>
+              </div>
+              {/* File Upload Section */}
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-brand-text dark:text-brand-dark-text">
+                  Upload Resource File *
+                </label>
+                <div className="border-2 border-dashed border-brand-border dark:border-brand-dark-border rounded-xl p-5 text-center bg-gray-50 dark:bg-brand-dark-bg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors relative group">
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.ppt,.pptx,.zip"
+                    onChange={e => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        const allowed = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'zip']
+                        const ext = file.name.split('.').pop()?.toLowerCase() || ''
+                        if (!allowed.includes(ext)) {
+                          toast.error('Only PDF, DOC, DOCX, PPT, PPTX, and ZIP files are allowed')
+                          return
+                        }
+                        setResUploadFile(file)
+                        setResUploadStatus('idle')
+                        setResUploadProgress(0)
+                      }
+                    }}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  />
+                  <div className="flex flex-col items-center justify-center space-y-2">
+                    <FileText className="text-brand-muted dark:text-brand-dark-muted group-hover:scale-105 transition-transform" size={24} />
+                    <p className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
+                      {resUploadFile ? 'Change Selected File' : 'Choose File'}
+                    </p>
+                    <p className="text-[10px] text-brand-muted">
+                      Accepts PDF, DOC, DOCX, PPT, PPTX, ZIP (Max 50MB)
+                    </p>
+                  </div>
+                </div>
+
+                {/* File Metadata Info */}
+                {(resUploadFile || resExistingFileUrl) && (
+                  <div className="p-3 bg-gray-50 dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border rounded-xl flex items-center justify-between text-xs text-brand-text dark:text-brand-dark-text">
+                    <div className="flex items-center gap-2 truncate max-w-[70%]">
+                      <span className="text-green-500 font-bold">✔</span>
+                      <div className="truncate text-left">
+                        <p className="font-semibold truncate">{resUploadFile ? resUploadFile.name : 'Current Stored File'}</p>
+                        <p className="text-[10px] text-brand-muted">
+                          {resUploadFile ? `${(resUploadFile.size / 1024 / 1024).toFixed(2)} MB` : 'Exists in Storage'}
+                        </p>
+                      </div>
+                    </div>
+                    {resExistingFileUrl && !resUploadFile && (
+                      <span className="text-[10px] bg-primary-50 dark:bg-primary-950/20 text-primary-600 font-semibold px-2 py-0.5 rounded-md truncate max-w-[30%]">
+                        Active
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Progress Indicators */}
+                {resUploadStatus === 'uploading' && (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-brand-muted uppercase">
+                      <span>Uploading File...</span>
+                      <span>{resUploadProgress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-white/10 rounded-full h-1.5 overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${resUploadProgress}%` }}
+                        transition={{ duration: 0.1 }}
+                        className="bg-primary-500 h-full rounded-full"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Success/Error Prompts */}
+                {resUploadStatus === 'success' && (
+                  <p className="text-xs text-green-600 font-semibold flex items-center gap-1.5">
+                    <span>✔</span> File uploaded successfully!
+                  </p>
+                )}
+                {resUploadStatus === 'error' && (
+                  <p className="text-xs text-red-600 font-semibold flex items-center gap-1.5">
+                    <span>❌</span> Upload failed. Please try again.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 text-sm text-brand-text dark:text-brand-dark-text">
+                  <input type="checkbox" checked={resIsPremium} onChange={e => setResIsPremium(e.target.checked)} className="rounded" />
+                  Premium Resource
+                </label>
+                {resIsPremium && (
+                  <Field label="Price (₹)"><input type="number" value={resPrice} onChange={e => setResPrice(Number(e.target.value))} className={inputCls} placeholder="99" /></Field>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={closeModal} className="flex-1 py-3 border border-brand-border dark:border-brand-dark-border rounded-xl text-sm font-semibold text-brand-text dark:text-brand-dark-text" disabled={resUploadStatus === 'uploading'}>Cancel</button>
+              <button onClick={handleResourceSave} disabled={resourceSaving || resUploadStatus === 'uploading'} className="flex-1 py-3 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600 disabled:opacity-60 flex items-center justify-center gap-2">
+                {(resourceSaving || resUploadStatus === 'uploading') && <Loader2 size={14} className="animate-spin" />}
+                {isEditing ? 'Update' : 'Add'} Resource
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )
+    }
 
     // Simplified quick-add modal for courses
     if (type === 'course') {
@@ -784,16 +1873,12 @@ export default function AdminDashboard() {
       )
     }
 
-    // Generic modal for other types
+    // Generic modal for other types (quiz, roadmap, mentor)
     const handleGenericSave = () => {
       const title = editItem.title || editItem.name || editItem.studentName || 'Item'
       if (!title || title === 'Item') { toast.error('Required fields missing'); return }
 
       switch (type) {
-        case 'resource':
-          if (editItem.id) content.updateResource(editItem.id, editItem)
-          else content.addResource({ ...editItem, status: editItem.status || 'Draft' })
-          break
         case 'quiz':
           if (editItem.id) content.updateQuiz(editItem.id, editItem)
           else content.addQuiz({ ...editItem, questions: [], status: 'Draft', maxScore: 100 })
@@ -861,6 +1946,7 @@ export default function AdminDashboard() {
       case 'roadmaps': return renderRoadmaps()
       case 'mentorship': return renderMentorship()
       case 'youtube-videos': return renderYoutubeVideos()
+      case 'hierarchy': return renderHierarchy()
       case 'users': return renderUsers()
       case 'settings': return renderSettings()
       default: return null
@@ -960,6 +2046,248 @@ export default function AdminDashboard() {
       {/* Add/Edit Modal */}
       <AnimatePresence>
         {showModal && renderModal()}
+      </AnimatePresence>
+
+      {/* Hierarchy Delete Confirmation Modal */}
+      <AnimatePresence>
+        {hierarchyDeleteId && (
+          <DeleteModal
+            title={(() => {
+              const tab = hierarchyTab
+              if (tab === 'colleges') return hColleges.find(c => c.id === hierarchyDeleteId)?.name ?? ''
+              if (tab === 'courses') return hCourses.find(c => c.id === hierarchyDeleteId)?.name ?? ''
+              if (tab === 'branches') return hBranches.find(b => b.id === hierarchyDeleteId)?.name ?? ''
+              if (tab === 'semesters') {
+                const s = hSemesters.find(sem => sem.id === hierarchyDeleteId)
+                return s ? `Semester ${s.semester_number}` : ''
+              }
+              if (tab === 'subjects') return hSubjects.find(s => s.id === hierarchyDeleteId)?.name ?? ''
+              return 'Record'
+            })()}
+            onConfirm={() => {
+              handleHierarchyDelete(hierarchyTab, hierarchyDeleteId)
+              setHierarchyDeleteId(null)
+            }}
+            onCancel={() => setHierarchyDeleteId(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Academic Hierarchy Add/Edit Modal */}
+      <AnimatePresence>
+        {showHierarchyModal && (
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-lg w-full shadow-xl my-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text capitalize">
+                  {hierarchyEditItem ? 'Edit' : 'Add'} {hierarchyEditItem ? hierarchyEditItem._tab.slice(0, -1) : hierarchyTab.slice(0, -1)}
+                </h3>
+                <button onClick={closeHierarchyModal}><X size={18} className="text-brand-muted" /></button>
+              </div>
+              
+              <div className="space-y-4">
+                {/* Course level: parent College is required */}
+                {(hierarchyEditItem ? hierarchyEditItem._tab : hierarchyTab) === 'courses' && (
+                  <Field label="College *">
+                    <select
+                      value={hFormCollegeId}
+                      onChange={e => setHFormCollegeId(e.target.value ? Number(e.target.value) : '')}
+                      className={inputCls}
+                      disabled={!!hierarchyEditItem}
+                    >
+                      <option value="">Select College...</option>
+                      {modalColleges.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </Field>
+                )}
+
+                {/* Branch level: College -> Course required */}
+                {(hierarchyEditItem ? hierarchyEditItem._tab : hierarchyTab) === 'branches' && (
+                  <>
+                    <Field label="College *">
+                      <select
+                        value={hFormCollegeId}
+                        onChange={e => setHFormCollegeId(e.target.value ? Number(e.target.value) : '')}
+                        className={inputCls}
+                        disabled={!!hierarchyEditItem}
+                      >
+                        <option value="">Select College...</option>
+                        {modalColleges.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Course *">
+                      <select
+                        value={hFormCourseId}
+                        onChange={e => setHFormCourseId(e.target.value ? Number(e.target.value) : '')}
+                        className={inputCls}
+                        disabled={!hFormCollegeId || !!hierarchyEditItem}
+                      >
+                        <option value="">Select Course...</option>
+                        {modalCourses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </Field>
+                  </>
+                )}
+
+                {/* Semester level: College -> Course -> Branch required */}
+                {(hierarchyEditItem ? hierarchyEditItem._tab : hierarchyTab) === 'semesters' && (
+                  <>
+                    <Field label="College *">
+                      <select
+                        value={hFormCollegeId}
+                        onChange={e => setHFormCollegeId(e.target.value ? Number(e.target.value) : '')}
+                        className={inputCls}
+                        disabled={!!hierarchyEditItem}
+                      >
+                        <option value="">Select College...</option>
+                        {modalColleges.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Course *">
+                      <select
+                        value={hFormCourseId}
+                        onChange={e => setHFormCourseId(e.target.value ? Number(e.target.value) : '')}
+                        className={inputCls}
+                        disabled={!hFormCollegeId || !!hierarchyEditItem}
+                      >
+                        <option value="">Select Course...</option>
+                        {modalCourses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Branch *">
+                      <select
+                        value={hFormBranchId}
+                        onChange={e => setHFormBranchId(e.target.value ? Number(e.target.value) : '')}
+                        className={inputCls}
+                        disabled={!hFormCourseId || !!hierarchyEditItem}
+                      >
+                        <option value="">Select Branch...</option>
+                        {modalBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </select>
+                    </Field>
+                  </>
+                )}
+
+                {/* Subject level: College -> Course -> Branch -> Semester required */}
+                {(hierarchyEditItem ? hierarchyEditItem._tab : hierarchyTab) === 'subjects' && (
+                  <>
+                    <Field label="College *">
+                      <select
+                        value={hFormCollegeId}
+                        onChange={e => setHFormCollegeId(e.target.value ? Number(e.target.value) : '')}
+                        className={inputCls}
+                        disabled={!!hierarchyEditItem}
+                      >
+                        <option value="">Select College...</option>
+                        {modalColleges.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Course *">
+                      <select
+                        value={hFormCourseId}
+                        onChange={e => setHFormCourseId(e.target.value ? Number(e.target.value) : '')}
+                        className={inputCls}
+                        disabled={!hFormCollegeId || !!hierarchyEditItem}
+                      >
+                        <option value="">Select Course...</option>
+                        {modalCourses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Branch *">
+                      <select
+                        value={hFormBranchId}
+                        onChange={e => setHFormBranchId(e.target.value ? Number(e.target.value) : '')}
+                        className={inputCls}
+                        disabled={!hFormCourseId || !!hierarchyEditItem}
+                      >
+                        <option value="">Select Branch...</option>
+                        {modalBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Semester *">
+                      <select
+                        value={hFormSemesterId}
+                        onChange={e => setHFormSemesterId(e.target.value ? Number(e.target.value) : '')}
+                        className={inputCls}
+                        disabled={!hFormBranchId || !!hierarchyEditItem}
+                      >
+                        <option value="">Select Semester...</option>
+                        {modalSemesters.map(s => <option key={s.id} value={s.id}>Semester {s.semester_number}</option>)}
+                      </select>
+                    </Field>
+                  </>
+                )}
+
+                {/* Common / Specific Detail inputs */}
+                {(hierarchyEditItem ? hierarchyEditItem._tab : hierarchyTab) === 'colleges' && (
+                  <>
+                    <Field label="College Name *">
+                      <input value={hFormName} onChange={e => setHFormName(e.target.value)} className={inputCls} placeholder="e.g. Delhi Technological University" />
+                    </Field>
+                    <Field label="Short Name">
+                      <input value={hFormShortName} onChange={e => setHFormShortName(e.target.value)} className={inputCls} placeholder="e.g. DTU" />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-4">
+                      <Field label="City">
+                        <input value={hFormCity} onChange={e => setHFormCity(e.target.value)} className={inputCls} placeholder="e.g. New Delhi" />
+                      </Field>
+                      <Field label="State">
+                        <input value={hFormState} onChange={e => setHFormState(e.target.value)} className={inputCls} placeholder="e.g. Delhi" />
+                      </Field>
+                    </div>
+                  </>
+                )}
+
+                {(hierarchyEditItem ? hierarchyEditItem._tab : hierarchyTab) === 'courses' && (
+                  <>
+                    <Field label="Course Name *">
+                      <input value={hFormName} onChange={e => setHFormName(e.target.value)} className={inputCls} placeholder="e.g. Bachelor of Technology" />
+                    </Field>
+                    <Field label="Duration">
+                      <input value={hFormDuration} onChange={e => setHFormDuration(e.target.value)} className={inputCls} placeholder="e.g. 4 Years" />
+                    </Field>
+                  </>
+                )}
+
+                {(hierarchyEditItem ? hierarchyEditItem._tab : hierarchyTab) === 'branches' && (
+                  <>
+                    <Field label="Branch Name *">
+                      <input value={hFormName} onChange={e => setHFormName(e.target.value)} className={inputCls} placeholder="e.g. Computer Science & Engineering" />
+                    </Field>
+                    <Field label="Code">
+                      <input value={hFormCode} onChange={e => setHFormCode(e.target.value)} className={inputCls} placeholder="e.g. CSE" />
+                    </Field>
+                  </>
+                )}
+
+                {(hierarchyEditItem ? hierarchyEditItem._tab : hierarchyTab) === 'semesters' && (
+                  <Field label="Semester Number *">
+                    <input type="number" min="1" max="10" value={hFormSemesterNumber} onChange={e => setHFormSemesterNumber(e.target.value ? Number(e.target.value) : '')} className={inputCls} placeholder="e.g. 1" />
+                  </Field>
+                )}
+
+                {(hierarchyEditItem ? hierarchyEditItem._tab : hierarchyTab) === 'subjects' && (
+                  <>
+                    <Field label="Subject Name *">
+                      <input value={hFormName} onChange={e => setHFormName(e.target.value)} className={inputCls} placeholder="e.g. Database Management Systems" />
+                    </Field>
+                    <Field label="Code">
+                      <input value={hFormCode} onChange={e => setHFormCode(e.target.value)} className={inputCls} placeholder="e.g. CS-301" />
+                    </Field>
+                  </>
+                )}
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button onClick={closeHierarchyModal} className="flex-1 py-3 border border-brand-border dark:border-brand-dark-border rounded-xl text-sm font-semibold text-brand-text dark:text-brand-dark-text">Cancel</button>
+                <button onClick={handleHierarchySave} disabled={hierarchySaving} className="flex-1 py-3 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600 disabled:opacity-60 flex items-center justify-center gap-2">
+                  {hierarchySaving && <Loader2 size={14} className="animate-spin" />}
+                  {hierarchyEditItem ? 'Update' : 'Add'} Record
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </AnimatePresence>
     </div>
   )

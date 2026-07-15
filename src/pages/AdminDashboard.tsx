@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, FileText, HelpCircle, Map,
   Users, Settings, Plus, Edit2, Trash2, Search,
   X, Shield, TrendingUp, Eye, Download, EyeOff,
-  CheckCircle, Zap, Video, Loader2, RotateCw
+  CheckCircle, Zap, Video, Loader2, RotateCw, Compass
 } from 'lucide-react'
 import { useContentStore, Course, Resource, Quiz, Roadmap } from '../store/contentStore'
 import { useMentorStore } from '../store/mentorStore'
@@ -50,11 +50,40 @@ import {
   uploadResourceFile,
   deleteResourceFile,
 } from '../lib/resourceService'
+import {
+  getCareerPaths,
+  createCareerPath,
+  updateCareerPath,
+  deleteCareerPath,
+} from '../lib/careerService'
+import {
+  getExams,
+  createExam,
+  updateExam,
+  deleteExam,
+} from '../lib/examService'
+import {
+  getCareerMappings,
+  getMappingsForCareer,
+  createCareerMapping,
+  updateCareerMapping,
+  deleteCareerMapping,
+} from '../lib/mappingService'
+import type {
+  CareerMappingRow,
+  CareerPathInput,
+  CareerPathRow,
+  ExamInput,
+  ExamRow,
+  PathFinderExamStatus,
+  PathFinderExamType,
+} from '../lib/pathfinderTypes'
 import toast from 'react-hot-toast'
 
 type AdminTab =
   | 'overview' | 'courses' | 'resources' | 'quizzes' | 'roadmaps'
   | 'mentorship' | 'youtube-videos' | 'users' | 'settings' | 'hierarchy'
+  | 'pathfinder-careers' | 'pathfinder-exams' | 'pathfinder-mappings'
 
 const sidebarItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard; group?: string }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -65,6 +94,9 @@ const sidebarItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard;
   { id: 'youtube-videos', label: 'YouTube Videos', icon: Video, group: 'Content' },
   { id: 'mentorship', label: 'Mentorship', icon: Users, group: 'Services' },
   { id: 'hierarchy', label: 'Academic Hierarchy', icon: BookOpen, group: 'Content' },
+  { id: 'pathfinder-careers', label: 'Career Paths', icon: Compass, group: '🧭 Skills021 PathFinder' },
+  { id: 'pathfinder-exams', label: 'Exams', icon: FileText, group: '🧭 Skills021 PathFinder' },
+  { id: 'pathfinder-mappings', label: 'Career Mapping', icon: Map, group: '🧭 Skills021 PathFinder' },
   { id: 'users', label: 'Users', icon: Users, group: 'Admin' },
   { id: 'settings', label: 'Settings', icon: Settings, group: 'Admin' },
 ]
@@ -129,6 +161,9 @@ function StatusBadge({ status }: { status: string }) {
     Pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
     Confirmed: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
     Inactive: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
+    Open: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    'Closing Soon': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    Closed: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
   }
   return <span className={`badge text-xs ${cfg[status] || 'bg-gray-100 text-gray-600'}`}>{status}</span>
 }
@@ -144,6 +179,79 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 const inputCls = "w-full px-4 py-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-sm text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500"
+
+const pathfinderExamTypes: PathFinderExamType[] = ['Government', 'Private', 'National', 'State']
+const pathfinderExamStatuses: PathFinderExamStatus[] = ['Open', 'Closing Soon', 'Upcoming', 'Closed']
+
+const emptyCareerForm: CareerPathInput = {
+  icon: 'Compass',
+  title: '',
+  short_description: '',
+  full_description: '',
+  average_salary: '',
+  career_growth: '',
+  education_required: '',
+  required_skills: [],
+  industries: [],
+  future_scope: '',
+}
+
+const emptyExamForm: ExamInput = {
+  title: '',
+  conducting_body: '',
+  description: '',
+  exam_type: 'National',
+  official_website: '',
+  registration_start: '',
+  registration_end: '',
+  exam_date: '',
+  result_date: '',
+  application_fee: 0,
+  selection_process: '',
+  eligibility: '',
+  course: '',
+  branch: '',
+  minimum_semester: 1,
+  maximum_age: null,
+  minimum_percentage: null,
+  average_salary: '',
+  status: 'Upcoming',
+}
+
+const splitList = (value: string | string[] | null | undefined) => {
+  if (Array.isArray(value)) return value
+  if (!value) return []
+  return value.split(',').map(item => item.trim()).filter(Boolean)
+}
+
+const joinList = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return value.join(", ");
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  return "";
+};
+
+const formatAdminDate = (date?: string | null) => {
+  if (!date) return '—'
+  const parsed = new Date(date)
+  if (Number.isNaN(parsed.getTime())) return '—'
+  return parsed.toLocaleDateString()
+}
+
+const isValidUrl = (value?: string | null) => {
+  if (!value) return true
+  try {
+    new URL(value)
+    return true
+  } catch {
+    return false
+  }
+}
 
 // ─── Admin Dashboard ─────────────────────────────────────────────────────────
 export default function AdminDashboard() {
@@ -203,12 +311,12 @@ export default function AdminDashboard() {
   // Hierarchy Form/Modal States
   const [showHierarchyModal, setShowHierarchyModal] = useState(false)
   const [hierarchyEditItem, setHierarchyEditItem] = useState<any>(null) // null for Add, object for Edit
-  
+
   const [hFormCollegeId, setHFormCollegeId] = useState<number | ''>('')
   const [hFormCourseId, setHFormCourseId] = useState<number | ''>('')
   const [hFormBranchId, setHFormBranchId] = useState<number | ''>('')
   const [hFormSemesterId, setHFormSemesterId] = useState<number | ''>('')
-  
+
   const [hFormName, setHFormName] = useState('')
   const [hFormShortName, setHFormShortName] = useState('')
   const [hFormCity, setHFormCity] = useState('')
@@ -225,6 +333,17 @@ export default function AdminDashboard() {
   const [modalSemesters, setModalSemesters] = useState<Semester[]>([])
 
   const isPrefillingRef = useRef(false)
+
+  // ─── PathFinder Admin State ───────────────────────────────────────────────
+  const [careerPaths, setCareerPaths] = useState<CareerPathRow[]>([])
+  const [pathfinderExams, setPathfinderExams] = useState<ExamRow[]>([])
+  const [careerMappings, setCareerMappings] = useState<CareerMappingRow[]>([])
+  const [pathfinderLoading, setPathfinderLoading] = useState(false)
+  const [pathfinderSaving, setPathfinderSaving] = useState(false)
+  const [pathfinderErrors, setPathfinderErrors] = useState<Record<string, string>>({})
+  const [examPage, setExamPage] = useState(1)
+  const [examSort, setExamSort] = useState<'title' | 'registration_end' | 'exam_date' | 'status'>('registration_end')
+  const [examSortDir, setExamSortDir] = useState<'asc' | 'desc'>('asc')
 
   // ─── Load resources from Supabase ──────────────────────────────────────────
   const loadDbResources = useCallback(async () => {
@@ -248,6 +367,55 @@ export default function AdminDashboard() {
       loadDbResources()
     }
   }, [activeTab, loadDbResources])
+
+  const loadPathfinderCareers = useCallback(async () => {
+    setPathfinderLoading(true)
+    try {
+      setCareerPaths(await getCareerPaths())
+    } catch (err) {
+      console.error('Failed to load career paths from Supabase:', err)
+      toast.error(err instanceof Error ? err.message : 'Failed to load career paths')
+    } finally {
+      setPathfinderLoading(false)
+    }
+  }, [])
+
+  const loadPathfinderExams = useCallback(async () => {
+    setPathfinderLoading(true)
+    try {
+      setPathfinderExams(await getExams())
+    } catch (err) {
+      console.error('Failed to load exams from Supabase:', err)
+      toast.error(err instanceof Error ? err.message : 'Failed to load exams')
+    } finally {
+      setPathfinderLoading(false)
+    }
+  }, [])
+
+  const loadPathfinderMappings = useCallback(async () => {
+    setPathfinderLoading(true)
+    try {
+      const [careerData, examData, mappingData] = await Promise.all([
+        getCareerPaths(),
+        getExams(),
+        getCareerMappings(),
+      ])
+      setCareerPaths(careerData)
+      setPathfinderExams(examData)
+      setCareerMappings(mappingData)
+    } catch (err) {
+      console.error('Failed to load mappings from Supabase:', err)
+      toast.error(err instanceof Error ? err.message : 'Failed to load career mappings')
+    } finally {
+      setPathfinderLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'pathfinder-careers') loadPathfinderCareers()
+    if (activeTab === 'pathfinder-exams') loadPathfinderExams()
+    if (activeTab === 'pathfinder-mappings') loadPathfinderMappings()
+  }, [activeTab, loadPathfinderCareers, loadPathfinderExams, loadPathfinderMappings])
 
   // ─── Load hierarchy dropdowns ──────────────────────────────────────────────
   useEffect(() => {
@@ -382,7 +550,7 @@ export default function AdminDashboard() {
   const openEditHierarchy = async (tab: string, item: any) => {
     isPrefillingRef.current = true
     setHierarchyEditItem({ ...item, _tab: tab })
-    
+
     setHFormName(item.name || '')
     setHFormShortName(item.short_name || '')
     setHFormCity(item.city || '')
@@ -398,7 +566,7 @@ export default function AdminDashboard() {
       } else if (tab === 'branches') {
         const colId = item.courses?.colleges?.id
         const crsId = item.course_id || item.courses?.id
-        
+
         if (colId) {
           const crsList = await fetchCourses(colId)
           setModalCourses(crsList)
@@ -409,7 +577,7 @@ export default function AdminDashboard() {
         const colId = item.branches?.courses?.colleges?.id
         const crsId = item.branches?.courses?.id
         const brId = item.branch_id || item.branches?.id
-        
+
         if (colId) {
           const crsList = await fetchCourses(colId)
           setModalCourses(crsList)
@@ -426,7 +594,7 @@ export default function AdminDashboard() {
         const crsId = item.semesters?.branches?.courses?.id
         const brId = item.semesters?.branches?.id
         const semId = item.semester_id || item.semesters?.id
-        
+
         if (colId) {
           const crsList = await fetchCourses(colId)
           setModalCourses(crsList)
@@ -539,7 +707,7 @@ export default function AdminDashboard() {
           toast.success('Subject added!')
         }
       }
-      
+
       closeHierarchyModal()
       loadHierarchyData(activeLvl)
     } catch (err) {
@@ -583,10 +751,19 @@ export default function AdminDashboard() {
       setSelectedSemesterId(''); setSelectedSubjectId(''); setSelectedResourceTypeId('')
       setCourses([]); setBranches([]); setSemesters([]); setSubjects([])
     }
-    setEditItem({ _type: type })
+    setPathfinderErrors({})
+    if (type === 'pathfinder-career') {
+      setEditItem({ ...emptyCareerForm, _type: type })
+    } else if (type === 'pathfinder-exam') {
+      setEditItem({ ...emptyExamForm, _type: type })
+    } else if (type === 'pathfinder-mapping') {
+      setEditItem({ _type: type, career_path_id: '', exam_ids: [] })
+    } else {
+      setEditItem({ _type: type })
+    }
     setShowModal(true)
   }
-  const openEdit = (item: any) => {
+  const openEdit = async (item: any) => {
     if (item._type === 'resource') {
       // Pre-fill resource form fields for editing
       setResTitle(item.title || ''); setResDescription(item.description || '')
@@ -600,10 +777,46 @@ export default function AdminDashboard() {
       setSelectedSemesterId(''); setSelectedSubjectId(''); setSelectedResourceTypeId('')
       setCourses([]); setBranches([]); setSemesters([]); setSubjects([])
     }
-    setEditItem(item)
-    setShowModal(true)
+    setPathfinderErrors({})
+    if (item._type === 'pathfinder-career') {
+      setEditItem({
+        ...emptyCareerForm,
+        ...item,
+        required_skills_text: joinList(item.required_skills),
+        industries_text: joinList(item.industries),
+      })
+      setShowModal(true)
+    } else if (item._type === 'pathfinder-mapping') {
+      setPathfinderLoading(true)
+      try {
+        const freshMapping = await getMappingsForCareer(item.career_path_id)
+        if (freshMapping) {
+          setEditItem({
+            ...freshMapping,
+            _type: 'pathfinder-mapping',
+            id: String(freshMapping.career_path_id),
+            career_path_id: String(freshMapping.career_path_id),
+            exam_ids: freshMapping.exam_ids || []
+          })
+        } else {
+          setEditItem({
+            ...item,
+            exam_ids: []
+          })
+        }
+        setShowModal(true)
+      } catch (err) {
+        console.error('Failed to load mapping for edit:', err)
+        toast.error('Failed to load mapping details')
+      } finally {
+        setPathfinderLoading(false)
+      }
+    } else {
+      setEditItem(item)
+      setShowModal(true)
+    }
   }
-  const closeModal = () => { setShowModal(false); setEditItem(null) }
+  const closeModal = () => { setShowModal(false); setEditItem(null); setPathfinderErrors({}) }
 
   // ─── Overview ───────────────────────────────────────────────────────────────
   const renderOverview = () => {
@@ -1209,7 +1422,7 @@ export default function AdminDashboard() {
   // ─── Academic Hierarchy Tab ──────────────────────────────────────────────────
   const renderHierarchy = () => {
     const searchLower = search.toLowerCase()
-    
+
     let filteredItems: any[] = []
     if (hierarchyTab === 'colleges') {
       filteredItems = hColleges.filter(c =>
@@ -1293,11 +1506,10 @@ export default function AdminDashboard() {
             <button
               key={tab.id}
               onClick={() => { setHierarchyTab(tab.id); setSearch('') }}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
-                hierarchyTab === tab.id
-                  ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black shadow-sm'
-                  : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'
-              }`}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${hierarchyTab === tab.id
+                ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black shadow-sm'
+                : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'
+                }`}
             >
               {tab.label}
             </button>
@@ -1452,6 +1664,225 @@ export default function AdminDashboard() {
     )
   }
 
+  // ─── PathFinder Career Paths ──────────────────────────────────────────────
+  const renderPathfinderCareers = () => {
+    const filtered = careerPaths.filter(c =>
+      c.title.toLowerCase().includes(search.toLowerCase()) ||
+      c.short_description.toLowerCase().includes(search.toLowerCase())
+    )
+
+    return (
+      <div>
+        <SectionHeader title="Career Paths" count={careerPaths.length} onAdd={() => openAdd('pathfinder-career')} addLabel="Add Career Path" />
+        <SearchBar value={search} onChange={setSearch} placeholder="Search career paths..." />
+
+        {pathfinderLoading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <Loader2 size={32} className="animate-spin text-brand-muted dark:text-brand-dark-muted mb-3" />
+            <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Loading career paths...</p>
+          </div>
+        ) : (
+          <div className="card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-white/5">
+                  <tr>{['Icon', 'Career Name', 'Short Description', 'Average Salary', 'Education Required', 'Created Date', 'Actions'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  ))}</tr>
+                </thead>
+                <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
+                  {filtered.map(career => (
+                    <tr key={career.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                      <td className="px-4 py-3">
+                        <div className="w-9 h-9 rounded-xl bg-primary-50 dark:bg-primary-900/20 text-primary-500 flex items-center justify-center">
+                          <Compass size={16} />
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-brand-text dark:text-brand-dark-text whitespace-nowrap">{career.title}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs max-w-[260px] truncate">{career.short_description}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs whitespace-nowrap">{career.average_salary || '—'}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs max-w-[220px] truncate">{career.education_required || '—'}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs whitespace-nowrap">{formatAdminDate(career.created_at)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => openEdit({ ...career, _type: 'pathfinder-career' })} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500"><Edit2 size={14} /></button>
+                          <button onClick={() => setDeleteId({ id: career.id, title: career.title, type: 'pathfinder-career' })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 size={14} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {filtered.length === 0 && (
+                    <tr><td colSpan={7} className="px-4 py-8 text-center text-brand-muted text-sm">No career paths found.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ─── PathFinder Exams ─────────────────────────────────────────────────────
+  const renderPathfinderExams = () => {
+    const pageSize = 8
+    const filtered = pathfinderExams
+      .filter(exam =>
+        exam.title.toLowerCase().includes(search.toLowerCase()) ||
+        exam.conducting_body.toLowerCase().includes(search.toLowerCase()) ||
+        (exam.course || '').toLowerCase().includes(search.toLowerCase()) ||
+        (exam.branch || '').toLowerCase().includes(search.toLowerCase())
+      )
+      .sort((a, b) => {
+        const aVal = a[examSort] || ''
+        const bVal = b[examSort] || ''
+        const result = String(aVal).localeCompare(String(bVal))
+        return examSortDir === 'asc' ? result : -result
+      })
+    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+    const currentPage = Math.min(examPage, totalPages)
+    const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+
+    const toggleSort = (key: typeof examSort) => {
+      if (examSort === key) setExamSortDir(prev => prev === 'asc' ? 'desc' : 'asc')
+      else {
+        setExamSort(key)
+        setExamSortDir('asc')
+      }
+    }
+
+    return (
+      <div>
+        <SectionHeader title="PathFinder Exams" count={pathfinderExams.length} onAdd={() => openAdd('pathfinder-exam')} addLabel="Add Exam" />
+        <SearchBar value={search} onChange={(value) => { setSearch(value); setExamPage(1) }} placeholder="Search exams..." />
+
+        {pathfinderLoading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <Loader2 size={32} className="animate-spin text-brand-muted dark:text-brand-dark-muted mb-3" />
+            <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Loading exams...</p>
+          </div>
+        ) : (
+          <div className="card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-white/5">
+                  <tr>
+                    {[
+                      ['Exam Name', 'title'],
+                      ['Conducting Body', null],
+                      ['Exam Type', null],
+                      ['Registration End', 'registration_end'],
+                      ['Exam Date', 'exam_date'],
+                      ['Course', null],
+                      ['Branch', null],
+                      ['Status', 'status'],
+                      ['Actions', null],
+                    ].map(([label, key]) => (
+                      <th key={label} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">
+                        {key ? (
+                          <button onClick={() => toggleSort(key as typeof examSort)} className="font-semibold hover:text-primary-500 transition-colors">
+                            {label} {examSort === key ? (examSortDir === 'asc' ? '↑' : '↓') : ''}
+                          </button>
+                        ) : label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
+                  {paginated.map(exam => (
+                    <tr key={exam.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                      <td className="px-4 py-3 font-semibold text-brand-text dark:text-brand-dark-text max-w-[220px] truncate">{exam.title}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{exam.conducting_body}</td>
+                      <td className="px-4 py-3"><span className="badge bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 text-xs">{exam.exam_type}</span></td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs whitespace-nowrap">{formatAdminDate(exam.registration_end)}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs whitespace-nowrap">{formatAdminDate(exam.exam_date)}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{exam.course || '—'}</td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{exam.branch || '—'}</td>
+                      <td className="px-4 py-3"><StatusBadge status={exam.status} /></td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => openEdit({ ...exam, _type: 'pathfinder-exam' })} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500"><Edit2 size={14} /></button>
+                          <button onClick={() => setDeleteId({ id: exam.id, title: exam.title, type: 'pathfinder-exam' })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 size={14} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {paginated.length === 0 && (
+                    <tr><td colSpan={9} className="px-4 py-8 text-center text-brand-muted text-sm">No exams found.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-brand-border dark:border-brand-dark-border">
+              <p className="text-xs text-brand-muted dark:text-brand-dark-muted">Page {currentPage} of {totalPages}</p>
+              <div className="flex gap-2">
+                <button onClick={() => setExamPage(page => Math.max(1, page - 1))} disabled={currentPage === 1} className="px-3 py-2 rounded-lg border border-brand-border dark:border-brand-dark-border text-xs font-semibold disabled:opacity-40">Previous</button>
+                <button onClick={() => setExamPage(page => Math.min(totalPages, page + 1))} disabled={currentPage === totalPages} className="px-3 py-2 rounded-lg border border-brand-border dark:border-brand-dark-border text-xs font-semibold disabled:opacity-40">Next</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ─── PathFinder Career Mapping ────────────────────────────────────────────
+  const renderPathfinderMappings = () => {
+    const filtered = careerMappings.filter(mapping => {
+      const careerName = careerPaths.find(career => career.id === mapping.career_path_id)?.title || mapping.career_paths?.title || ''
+      return careerName.toLowerCase().includes(search.toLowerCase())
+    })
+
+    const getExamNames = (mapping: CareerMappingRow) =>
+      mapping.exams?.map(exam => exam.title).filter(Boolean).join(', ') || '—'
+
+    return (
+      <div>
+        <SectionHeader title="Career Mapping" count={careerMappings.length} onAdd={() => openAdd('pathfinder-mapping')} addLabel="Add Mapping" />
+        <SearchBar value={search} onChange={setSearch} placeholder="Search mappings..." />
+
+        {pathfinderLoading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <Loader2 size={32} className="animate-spin text-brand-muted dark:text-brand-dark-muted mb-3" />
+            <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Loading mappings...</p>
+          </div>
+        ) : (
+          <div className="card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-white/5">
+                  <tr>{['Career', 'Related Exams', 'Actions'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  ))}</tr>
+                </thead>
+                <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
+                  {filtered.map(mapping => {
+                    const career = careerPaths.find(item => item.id === mapping.career_path_id)
+                    return (
+                      <tr key={mapping.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                        <td className="px-4 py-3 font-semibold text-brand-text dark:text-brand-dark-text">{career?.title || mapping.career_paths?.title || '—'}</td>
+                        <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs max-w-[520px]">{getExamNames(mapping)}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => openEdit({ ...mapping, _type: 'pathfinder-mapping' })} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500"><Edit2 size={14} /></button>
+                            <button onClick={() => setDeleteId({ id: mapping.career_path_id, title: career?.title || 'Career Mapping', type: 'pathfinder-mapping' })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 size={14} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {filtered.length === 0 && (
+                    <tr><td colSpan={3} className="px-4 py-8 text-center text-brand-muted text-sm">No mappings found.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // ─── Delete handler ──────────────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!deleteId) return
@@ -1465,6 +1896,33 @@ export default function AdminDashboard() {
         toast.success(`${title} deleted successfully`)
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Failed to delete resource')
+      }
+    } else if (type === 'pathfinder-career') {
+      try {
+        await deleteCareerPath(id)
+        await loadPathfinderCareers()
+        toast.success(`${title} deleted successfully`)
+      } catch (err) {
+        console.error('Failed to delete career path:', err)
+        toast.error(err instanceof Error ? err.message : 'Failed to delete career path')
+      }
+    } else if (type === 'pathfinder-exam') {
+      try {
+        await deleteExam(id)
+        await loadPathfinderExams()
+        toast.success(`${title} deleted successfully`)
+      } catch (err) {
+        console.error('Failed to delete exam:', err)
+        toast.error(err instanceof Error ? err.message : 'Failed to delete exam')
+      }
+    } else if (type === 'pathfinder-mapping') {
+      try {
+        await deleteCareerMapping(id)
+        await loadPathfinderMappings()
+        toast.success(`${title} deleted successfully`)
+      } catch (err) {
+        console.error('Failed to delete mapping:', err)
+        toast.error(err instanceof Error ? err.message : 'Failed to delete mapping')
       }
     } else {
       switch (type) {
@@ -1483,6 +1941,334 @@ export default function AdminDashboard() {
     if (!editItem) return null
     const type = editItem._type
 
+    if (type === 'pathfinder-career') {
+      const isEditing = !!editItem.id
+      const errors = pathfinderErrors
+
+      const handleCareerSave = async () => {
+        const nextErrors: Record<string, string> = {}
+        if (!editItem.title?.trim()) nextErrors.title = 'Title is required'
+        if (!editItem.short_description?.trim()) nextErrors.short_description = 'Short description is required'
+        const duplicate = careerPaths.some(career =>
+          career.title.toLowerCase() === editItem.title?.trim().toLowerCase() &&
+          career.id !== editItem.id
+        )
+        if (duplicate) nextErrors.title = 'A career path with this title already exists'
+
+        setPathfinderErrors(nextErrors)
+        if (Object.keys(nextErrors).length > 0) return
+
+        const payload: CareerPathInput = {
+          icon: editItem.icon || 'Compass',
+          title: editItem.title.trim(),
+          short_description: editItem.short_description.trim(),
+          full_description: editItem.full_description || '',
+          average_salary: editItem.average_salary || '',
+          career_growth: editItem.career_growth || '',
+          education_required: editItem.education_required || '',
+          required_skills: splitList(editItem.required_skills_text ?? editItem.required_skills),
+          industries: splitList(editItem.industries_text ?? editItem.industries),
+          future_scope: editItem.future_scope || '',
+        }
+
+        setPathfinderSaving(true)
+        try {
+          if (isEditing) {
+            await updateCareerPath(editItem.id, payload)
+            toast.success('Career path updated!')
+          } else {
+            await createCareerPath(payload)
+            toast.success('Career path added!')
+          }
+          await loadPathfinderCareers()
+          closeModal()
+        } catch (err) {
+          console.error('Failed to save career path:', err)
+          toast.error(err instanceof Error ? err.message : 'Failed to save career path')
+        } finally {
+          setPathfinderSaving(false)
+        }
+      }
+
+      return (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
+          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-2xl w-full shadow-xl my-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">{isEditing ? 'Edit Career Path' : 'Add Career Path'}</h3>
+              <button onClick={closeModal}><X size={18} className="text-brand-muted" /></button>
+            </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Field label="Career Name *">
+                  <input value={editItem.title || ''} onChange={e => setEditItem((p: any) => ({ ...p, title: e.target.value }))} className={inputCls} placeholder="Fighter Pilot" />
+                  {errors.title && <p className="text-xs text-red-500 mt-1">{errors.title}</p>}
+                </Field>
+                <Field label="Icon">
+                  <input value={editItem.icon || ''} onChange={e => setEditItem((p: any) => ({ ...p, icon: e.target.value }))} className={inputCls} placeholder="Compass" />
+                </Field>
+              </div>
+              <Field label="Short Description *">
+                <input value={editItem.short_description || ''} onChange={e => setEditItem((p: any) => ({ ...p, short_description: e.target.value }))} className={inputCls} placeholder="Short card description" />
+                {errors.short_description && <p className="text-xs text-red-500 mt-1">{errors.short_description}</p>}
+              </Field>
+              <Field label="Full Description">
+                <textarea value={editItem.full_description || ''} onChange={e => setEditItem((p: any) => ({ ...p, full_description: e.target.value }))} rows={4} className={inputCls + ' resize-none'} placeholder="Complete career overview" />
+              </Field>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Field label="Average Salary"><input value={editItem.average_salary || ''} onChange={e => setEditItem((p: any) => ({ ...p, average_salary: e.target.value }))} className={inputCls} placeholder="₹8-25 LPA" /></Field>
+                <Field label="Career Growth"><input value={editItem.career_growth || ''} onChange={e => setEditItem((p: any) => ({ ...p, career_growth: e.target.value }))} className={inputCls} placeholder="Junior to leadership track" /></Field>
+              </div>
+              <Field label="Education Required"><input value={editItem.education_required || ''} onChange={e => setEditItem((p: any) => ({ ...p, education_required: e.target.value }))} className={inputCls} placeholder="10+2 PCM, B.Tech, Graduation..." /></Field>
+              <Field label="Required Skills">
+                <input value={editItem.required_skills_text ?? joinList(editItem.required_skills)} onChange={e => setEditItem((p: any) => ({ ...p, required_skills_text: e.target.value }))} className={inputCls} placeholder="Leadership, Physics, Problem solving" />
+                <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted mt-1">Separate values with commas.</p>
+              </Field>
+              <Field label="Industries">
+                <input value={editItem.industries_text ?? joinList(editItem.industries)} onChange={e => setEditItem((p: any) => ({ ...p, industries_text: e.target.value }))} className={inputCls} placeholder="Defense, Aerospace, Research" />
+              </Field>
+              <Field label="Future Scope"><textarea value={editItem.future_scope || ''} onChange={e => setEditItem((p: any) => ({ ...p, future_scope: e.target.value }))} rows={3} className={inputCls + ' resize-none'} placeholder="Future opportunities and growth scope" /></Field>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={closeModal} disabled={pathfinderSaving} className="flex-1 py-3 border border-brand-border dark:border-brand-dark-border rounded-xl text-sm font-semibold text-brand-text dark:text-brand-dark-text">Cancel</button>
+              <button onClick={handleCareerSave} disabled={pathfinderSaving} className="flex-1 py-3 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600 disabled:opacity-60 flex items-center justify-center gap-2">
+                {pathfinderSaving && <Loader2 size={14} className="animate-spin" />}
+                {isEditing ? 'Update' : 'Add'} Career
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )
+    }
+
+    if (type === 'pathfinder-exam') {
+      const isEditing = !!editItem.id
+      const errors = pathfinderErrors
+
+      const handleExamSave = async () => {
+        const nextErrors: Record<string, string> = {}
+        if (!editItem.title?.trim()) nextErrors.title = 'Exam name is required'
+        if (!editItem.conducting_body?.trim()) nextErrors.conducting_body = 'Conducting body is required'
+        if (!editItem.exam_type) nextErrors.exam_type = 'Exam type is required'
+        if (!editItem.status) nextErrors.status = 'Status is required'
+        if (editItem.official_website && !isValidUrl(editItem.official_website)) nextErrors.official_website = 'Enter a valid URL'
+        if (editItem.registration_start && editItem.registration_end && new Date(editItem.registration_end) < new Date(editItem.registration_start)) {
+          nextErrors.registration_end = 'Registration end must be after registration start'
+        }
+        if (editItem.registration_end && editItem.exam_date && new Date(editItem.exam_date) < new Date(editItem.registration_end)) {
+          nextErrors.exam_date = 'Exam date must be after registration end'
+        }
+        if (Number(editItem.application_fee ?? 0) < 0) nextErrors.application_fee = 'Application fee cannot be negative'
+        if (editItem.minimum_semester !== null && editItem.minimum_semester !== '' && Number(editItem.minimum_semester) < 1) nextErrors.minimum_semester = 'Minimum semester must be at least 1'
+        if (editItem.minimum_percentage !== null && editItem.minimum_percentage !== '' && (Number(editItem.minimum_percentage) < 0 || Number(editItem.minimum_percentage) > 100)) {
+          nextErrors.minimum_percentage = 'Minimum percentage must be between 0 and 100'
+        }
+
+        setPathfinderErrors(nextErrors)
+        if (Object.keys(nextErrors).length > 0) return
+
+        const payload: ExamInput = {
+          title: editItem.title.trim(),
+          conducting_body: editItem.conducting_body.trim(),
+          description: editItem.description || '',
+          exam_type: editItem.exam_type,
+          official_website: editItem.official_website || '',
+          registration_start: editItem.registration_start || null,
+          registration_end: editItem.registration_end || null,
+          exam_date: editItem.exam_date || null,
+          result_date: editItem.result_date || null,
+          application_fee: editItem.application_fee === '' ? 0 : Number(editItem.application_fee ?? 0),
+          selection_process: editItem.selection_process || '',
+          eligibility: editItem.eligibility || '',
+          course: editItem.course || '',
+          branch: editItem.branch || '',
+          minimum_semester: editItem.minimum_semester === '' ? null : Number(editItem.minimum_semester ?? 1),
+          maximum_age: editItem.maximum_age === '' ? null : Number(editItem.maximum_age ?? 0) || null,
+          minimum_percentage: editItem.minimum_percentage === '' ? null : Number(editItem.minimum_percentage ?? 0),
+          average_salary: editItem.average_salary || '',
+          status: editItem.status,
+        }
+
+        setPathfinderSaving(true)
+        try {
+          if (isEditing) {
+            await updateExam(editItem.id, payload)
+            toast.success('Exam updated!')
+          } else {
+            await createExam(payload)
+            toast.success('Exam added!')
+          }
+          await loadPathfinderExams()
+          closeModal()
+        } catch (err) {
+          console.error('Failed to save exam:', err)
+          toast.error(err instanceof Error ? err.message : 'Failed to save exam')
+        } finally {
+          setPathfinderSaving(false)
+        }
+      }
+
+      const textInput = (key: string, label: string, placeholder = '') => (
+        <Field label={label}>
+          <input value={editItem[key] || ''} onChange={e => setEditItem((p: any) => ({ ...p, [key]: e.target.value }))} className={inputCls} placeholder={placeholder} />
+          {errors[key] && <p className="text-xs text-red-500 mt-1">{errors[key]}</p>}
+        </Field>
+      )
+
+      return (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
+          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-3xl w-full shadow-xl my-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">{isEditing ? 'Edit Exam' : 'Add Exam'}</h3>
+              <button onClick={closeModal}><X size={18} className="text-brand-muted" /></button>
+            </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {textInput('title', 'Exam Name *', 'AFCAT')}
+                {textInput('conducting_body', 'Conducting Body *', 'Indian Air Force')}
+              </div>
+              <Field label="Description"><textarea value={editItem.description || ''} onChange={e => setEditItem((p: any) => ({ ...p, description: e.target.value }))} rows={3} className={inputCls + ' resize-none'} placeholder="Exam description" /></Field>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Field label="Exam Type *">
+                  <select value={editItem.exam_type || 'National'} onChange={e => setEditItem((p: any) => ({ ...p, exam_type: e.target.value }))} className={inputCls}>
+                    {pathfinderExamTypes.map(item => <option key={item}>{item}</option>)}
+                  </select>
+                </Field>
+                <Field label="Status *">
+                  <select value={editItem.status || 'Upcoming'} onChange={e => setEditItem((p: any) => ({ ...p, status: e.target.value }))} className={inputCls}>
+                    {pathfinderExamStatuses.map(item => <option key={item}>{item}</option>)}
+                  </select>
+                </Field>
+                {textInput('official_website', 'Official Website', 'https://example.com')}
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {textInput('registration_start', 'Registration Start')}
+                {textInput('registration_end', 'Registration End')}
+                {textInput('exam_date', 'Exam Date')}
+                {textInput('result_date', 'Result Date')}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {textInput('application_fee', 'Application Fee', '250')}
+                {textInput('average_salary', 'Average Salary', '₹8-25 LPA')}
+              </div>
+              <Field label="Selection Process"><textarea value={editItem.selection_process || ''} onChange={e => setEditItem((p: any) => ({ ...p, selection_process: e.target.value }))} rows={2} className={inputCls + ' resize-none'} placeholder="Written exam, interview, medical..." /></Field>
+              <Field label="Eligibility"><textarea value={editItem.eligibility || ''} onChange={e => setEditItem((p: any) => ({ ...p, eligibility: e.target.value }))} rows={2} className={inputCls + ' resize-none'} placeholder="Eligibility summary" /></Field>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {textInput('course', 'Course', 'B.Tech')}
+                {textInput('branch', 'Branch', 'CSE / ECE / Mechanical')}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {textInput('minimum_semester', 'Minimum Semester', '1')}
+                {textInput('maximum_age', 'Maximum Age', '24')}
+                {textInput('minimum_percentage', 'Minimum Percentage', '60')}
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={closeModal} disabled={pathfinderSaving} className="flex-1 py-3 border border-brand-border dark:border-brand-dark-border rounded-xl text-sm font-semibold text-brand-text dark:text-brand-dark-text">Cancel</button>
+              <button onClick={handleExamSave} disabled={pathfinderSaving} className="flex-1 py-3 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600 disabled:opacity-60 flex items-center justify-center gap-2">
+                {pathfinderSaving && <Loader2 size={14} className="animate-spin" />}
+                {isEditing ? 'Update' : 'Add'} Exam
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )
+    }
+
+    if (type === 'pathfinder-mapping') {
+      const isEditing = !!editItem.id
+      const errors = pathfinderErrors
+      const selectedExamIds: string[] = editItem.exam_ids || []
+
+      const handleMappingSave = async () => {
+        const nextErrors: Record<string, string> = {}
+        if (!editItem.career_path_id) nextErrors.career_path_id = 'Career is required'
+        if (selectedExamIds.length === 0) nextErrors.exam_ids = 'Select at least one exam'
+        const duplicate = careerMappings.some(mapping =>
+          mapping.career_path_id === editItem.career_path_id &&
+          mapping.career_path_id !== editItem.id
+        )
+        if (!isEditing && duplicate) nextErrors.career_path_id = 'This career already has a mapping. Edit the existing one instead.'
+
+        setPathfinderErrors(nextErrors)
+        if (Object.keys(nextErrors).length > 0) return
+
+        setPathfinderSaving(true)
+        try {
+          if (isEditing) {
+            await updateCareerMapping(editItem.career_path_id, { career_path_id: editItem.career_path_id, exam_ids: selectedExamIds })
+            toast.success('Mapping updated!')
+          } else {
+            await createCareerMapping({ career_path_id: editItem.career_path_id, exam_ids: selectedExamIds })
+            toast.success('Mapping added!')
+          }
+          await loadPathfinderMappings()
+          closeModal()
+        } catch (err) {
+          console.error('Failed to save mapping:', err)
+          toast.error(err instanceof Error ? err.message : 'Failed to save mapping')
+        } finally {
+          setPathfinderSaving(false)
+        }
+      }
+
+      const toggleExam = (examId: any) => {
+        const examIdStr = String(examId)
+        setEditItem((prev: any) => ({
+          ...prev,
+          exam_ids: selectedExamIds.includes(examIdStr)
+            ? selectedExamIds.filter(id => id !== examIdStr)
+            : [...selectedExamIds, examIdStr],
+        }))
+      }
+
+      return (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
+          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-xl w-full shadow-xl my-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">{isEditing ? 'Edit Career Mapping' : 'Add Career Mapping'}</h3>
+              <button onClick={closeModal}><X size={18} className="text-brand-muted" /></button>
+            </div>
+            <div className="space-y-5">
+              <Field label="Career *">
+                <select value={editItem.career_path_id || ''} onChange={e => setEditItem((p: any) => ({ ...p, career_path_id: e.target.value, id: e.target.value || p.id }))} className={inputCls} disabled={isEditing}>
+                  <option value="">Select Career...</option>
+                  {careerPaths.map(career => <option key={career.id} value={career.id}>{career.title}</option>)}
+                </select>
+                {errors.career_path_id && <p className="text-xs text-red-500 mt-1">{errors.career_path_id}</p>}
+              </Field>
+
+              <div>
+                <p className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-2">Related Exams *</p>
+                <div className="border border-brand-border dark:border-brand-dark-border rounded-2xl divide-y divide-brand-border dark:divide-brand-dark-border max-h-72 overflow-y-auto">
+                  {pathfinderExams.map(exam => {
+                    const isChecked = selectedExamIds.includes(String(exam.id))
+                    return (
+                      <label key={exam.id} className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer">
+                        <input type="checkbox" checked={isChecked} onChange={() => toggleExam(exam.id)} className="mt-0.5 w-4 h-4 accent-primary-500" />
+                        <span>
+                          <span className="block text-sm font-semibold text-brand-text dark:text-brand-dark-text">{exam.title}</span>
+                          <span className="block text-xs text-brand-muted dark:text-brand-dark-muted">{exam.conducting_body} · {exam.status}</span>
+                        </span>
+                      </label>
+                    )
+                  })}
+                  {pathfinderExams.length === 0 && <p className="px-4 py-6 text-center text-sm text-brand-muted">No exams available.</p>}
+                </div>
+                {errors.exam_ids && <p className="text-xs text-red-500 mt-1">{errors.exam_ids}</p>}
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={closeModal} disabled={pathfinderSaving} className="flex-1 py-3 border border-brand-border dark:border-brand-dark-border rounded-xl text-sm font-semibold text-brand-text dark:text-brand-dark-text">Cancel</button>
+              <button onClick={handleMappingSave} disabled={pathfinderSaving} className="flex-1 py-3 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600 disabled:opacity-60 flex items-center justify-center gap-2">
+                {pathfinderSaving && <Loader2 size={14} className="animate-spin" />}
+                Save Mapping
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )
+    }
+
     // ─── Resource Modal with cascading dropdowns ────────────────────────────
     if (type === 'resource') {
       const isEditing = !!editItem.id
@@ -1497,7 +2283,7 @@ export default function AdminDashboard() {
         }
 
         setResourceSaving(true)
-        
+
         let uploadInterval: any = undefined
         try {
           let fileUrl = resExistingFileUrl
@@ -1573,7 +2359,7 @@ export default function AdminDashboard() {
 
             // Perform storage upload
             fileUrl = await uploadResourceFile(resUploadFile, storagePath)
-            
+
             clearInterval(uploadInterval)
             setResUploadProgress(100)
             setResUploadStatus('success')
@@ -1947,6 +2733,9 @@ export default function AdminDashboard() {
       case 'mentorship': return renderMentorship()
       case 'youtube-videos': return renderYoutubeVideos()
       case 'hierarchy': return renderHierarchy()
+      case 'pathfinder-careers': return renderPathfinderCareers()
+      case 'pathfinder-exams': return renderPathfinderExams()
+      case 'pathfinder-mappings': return renderPathfinderMappings()
       case 'users': return renderUsers()
       case 'settings': return renderSettings()
       default: return null
@@ -1985,11 +2774,10 @@ export default function AdminDashboard() {
                         <button
                           key={item.id}
                           onClick={() => { setActiveTab(item.id); setSearch('') }}
-                          className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
-                            activeTab === item.id
-                              ? 'bg-primary-500 text-white'
-                              : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-100 dark:hover:bg-white/10'
-                          }`}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${activeTab === item.id
+                            ? 'bg-primary-500 text-white'
+                            : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-100 dark:hover:bg-white/10'
+                            }`}
                         >
                           <item.icon size={16} />
                           {item.label}
@@ -2004,13 +2792,12 @@ export default function AdminDashboard() {
 
           {/* Mobile Tab Bar */}
           <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-brand-dark-card border-t border-brand-border dark:border-brand-dark-border flex overflow-x-auto">
-            {sidebarItems.slice(0, 6).map(item => (
+            {sidebarItems.map(item => (
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`flex-shrink-0 flex flex-col items-center gap-1 px-3 py-3 text-xs transition-colors ${
-                  activeTab === item.id ? 'text-primary-500' : 'text-brand-muted dark:text-brand-dark-muted'
-                }`}
+                className={`flex-shrink-0 flex flex-col items-center gap-1 px-3 py-3 text-xs transition-colors ${activeTab === item.id ? 'text-primary-500' : 'text-brand-muted dark:text-brand-dark-muted'
+                  }`}
               >
                 <item.icon size={18} />
                 <span className="hidden sm:block">{item.label.split(' ')[0]}</span>
@@ -2084,7 +2871,7 @@ export default function AdminDashboard() {
                 </h3>
                 <button onClick={closeHierarchyModal}><X size={18} className="text-brand-muted" /></button>
               </div>
-              
+
               <div className="space-y-4">
                 {/* Course level: parent College is required */}
                 {(hierarchyEditItem ? hierarchyEditItem._tab : hierarchyTab) === 'courses' && (

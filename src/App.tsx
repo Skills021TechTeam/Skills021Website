@@ -10,6 +10,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import Courses from './pages/Courses'
 import Resources from './pages/Resources'
+import PathFinder from './pages/PathFinder'
 import VideosBrowse from './pages/VideosBrowse'
 import Quizzes from './pages/Quizzes'
 import Roadmaps from './pages/Roadmaps'
@@ -60,6 +61,7 @@ function AnimatedRoutes() {
             {/* Resources */}
             <Route path="/resources" element={<Resources />} />
             <Route path="/resources/videos" element={<VideosBrowse />} />
+            <Route path="/pathfinder" element={<PathFinder />} />
             <Route path="/quizzes" element={<Quizzes />} />
             <Route path="/roadmaps" element={<Roadmaps />} />
             {/* Mentorship */}

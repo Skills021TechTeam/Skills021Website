@@ -5,7 +5,7 @@ import {
   Menu, X, Sun, Moon, ChevronDown,
   BookOpen, FileText, Users,
   Code2, Target, HelpCircle,
-  FileQuestion, ArrowRight, Home, LogIn, LogOut, UserCircle2, LayoutDashboard
+  FileQuestion, ArrowRight, Home, LogIn, LogOut, UserCircle2, LayoutDashboard, Compass
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 
@@ -88,6 +88,20 @@ const NAV_ITEMS = [
       ],
       cta: { label: 'Explore All Resources', path: '/resources' },
     },
+  },
+  {
+    id: 'pathfinder',
+    label: 'Skills021 PathFinder',
+    path: '/pathfinder',
+    icon: Compass,
+    description: 'Discover careers, exams and future-ready roadmaps',
+  },
+  {
+    id: 'mentorship',
+    label: 'Mentorship',
+    path: '/mentorship',
+    icon: Users,
+    description: 'Get personalized guidance from expert mentors',
   },
 ]
 

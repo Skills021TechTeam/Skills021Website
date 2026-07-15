@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { User, Mail, Lock, Eye, EyeOff, Zap, AlertCircle, School } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
+import PageShell from '../components/PageShell'
 
 const colleges = [
   'AKTU-affiliated',
@@ -79,7 +80,8 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen bg-brand-bg dark:bg-brand-dark-bg flex items-center justify-center px-4 pt-20 pb-10">
+    <PageShell eyebrow="Account" title="Create your account" description="Join thousands of learners and build your future with Skills021." compact>
+      <div className="flex items-center justify-center px-4 pb-10">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -114,7 +116,7 @@ export default function Register() {
                   className={`w-full pl-10 pr-4 py-3 rounded-xl border text-sm bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${errors.name ? 'border-red-400' : 'border-brand-border dark:border-brand-dark-border'}`}
                 />
               </div>
-              {errors.name && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={12}/>{errors.name}</p>}
+              {errors.name && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={12} />{errors.name}</p>}
             </div>
 
             {/* Email */}
@@ -131,7 +133,7 @@ export default function Register() {
                   className={`w-full pl-10 pr-4 py-3 rounded-xl border text-sm bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${errors.email ? 'border-red-400' : 'border-brand-border dark:border-brand-dark-border'}`}
                 />
               </div>
-              {errors.email && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={12}/>{errors.email}</p>}
+              {errors.email && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={12} />{errors.email}</p>}
             </div>
 
             {/* College */}
@@ -149,7 +151,7 @@ export default function Register() {
                   {colleges.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
-              {errors.college && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={12}/>{errors.college}</p>}
+              {errors.college && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={12} />{errors.college}</p>}
             </div>
 
             {/* Password */}
@@ -166,10 +168,10 @@ export default function Register() {
                   className={`w-full pl-10 pr-12 py-3 rounded-xl border text-sm bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${errors.password ? 'border-red-400' : 'border-brand-border dark:border-brand-dark-border'}`}
                 />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-brand-muted">
-                  {showPassword ? <EyeOff size={16}/> : <Eye size={16}/>}
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-              {errors.password && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={12}/>{errors.password}</p>}
+              {errors.password && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={12} />{errors.password}</p>}
             </div>
 
             {/* Confirm Password */}
@@ -186,7 +188,7 @@ export default function Register() {
                   className={`w-full pl-10 pr-4 py-3 rounded-xl border text-sm bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${errors.confirmPassword ? 'border-red-400' : 'border-brand-border dark:border-brand-dark-border'}`}
                 />
               </div>
-              {errors.confirmPassword && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={12}/>{errors.confirmPassword}</p>}
+              {errors.confirmPassword && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={12} />{errors.confirmPassword}</p>}
             </div>
 
             {/* Terms Checkbox */}
@@ -206,7 +208,7 @@ export default function Register() {
                   <Link to="/" className="text-primary-500 hover:underline">Privacy Policy</Link>
                 </span>
               </label>
-              {errors.agreed && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={12}/>{errors.agreed}</p>}
+              {errors.agreed && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={12} />{errors.agreed}</p>}
             </div>
 
             {/* Submit */}
@@ -233,6 +235,7 @@ export default function Register() {
           </p>
         </div>
       </motion.div>
-    </div>
+      </div>
+    </PageShell>
   )
 }

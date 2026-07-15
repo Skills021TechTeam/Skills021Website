@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useMentorStore } from '../store/mentorStore'
 import toast from 'react-hot-toast'
+import PageShell from '../components/PageShell'
 
 // Guidance type definition
 type GuidanceType = 'Career Guidance' | 'College Selection' | 'Branch Selection' | 'Placement Preparation' | 'Internship Guidance' | 'Higher Studies Guidance' | 'Resume Review' | 'LinkedIn Profile Review' | 'Mock Interview' | 'Skill Roadmap' | 'Startup Guidance' | 'Study Planning'
@@ -131,10 +132,10 @@ export default function Mentorship() {
   }
 
   return (
-    <div className="min-h-screen bg-brand-bg dark:bg-brand-dark-bg pt-16">
+    <PageShell eyebrow="Mentorship" title="Get personalized guidance from industry experts" description="Share your goals, select the support you need, and let expert mentors help you move forward with clarity." compact>
 
       {/* ── Hero ── */}
-      <div className="relative bg-gradient-to-br from-[#0F0F1A] via-[#1A0A2E] to-[#0A1A2E] py-16 px-4 overflow-hidden">
+      <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-gradient-to-br from-[#0F0F1A] via-[#1A0A2E] to-[#0A1A2E] px-4 py-16">
         {/* Background orbs */}
         <div className="orb w-96 h-96 bg-primary-500 top-[-100px] left-[-100px]" />
         <div className="orb w-80 h-80 bg-teal-500 bottom-[-80px] right-[-80px]" />
@@ -445,6 +446,6 @@ export default function Mentorship() {
           </AnimatePresence>
         </motion.div>
       </div>
-    </div>
+    </PageShell>
   )
 }

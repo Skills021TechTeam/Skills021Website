@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Link, useSearchParams } from 'react-router-dom'
-import { BookOpen, Clock, Users, Star, Search, Play, Filter } from 'lucide-react'
-import { useContentStore, CourseGroup, CourseSubcategory } from '../store/contentStore'
+import { BookOpen, Clock, Users, Star, Search, Play } from 'lucide-react'
+import { useContentStore, Course, CourseGroup, CourseSubcategory } from '../store/contentStore'
+import PageShell from '../components/PageShell'
 
 const GROUPS: { label: CourseGroup }[] = [
   { label: 'Foundation Programs' },
@@ -23,7 +24,7 @@ const SUBCATEGORIES: Record<CourseGroup, CourseSubcategory[]> = {
 const LEVELS = ['All Levels', 'Beginner', 'Intermediate', 'Advanced']
 const PRICES = ['All', 'Free', 'Paid']
 
-function CourseCard({ course }: { course: ReturnType<typeof useContentStore>['courses'][0] }) {
+function CourseCard({ course }: { course: Course }) {
   return (
     <motion.div
       layout
@@ -131,61 +132,34 @@ export default function Courses() {
   }))
 
   return (
-    <div className="min-h-screen bg-white dark:bg-brand-dark-bg pt-16">
-      {/* Hero — clean light section */}
-      <div className="bg-gray-50 dark:bg-brand-dark-card border-b border-gray-100 dark:border-brand-dark-border py-12 px-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-8">
-            <span className="inline-block px-3 py-1 text-xs font-semibold text-brand-muted dark:text-brand-dark-muted border border-gray-200 dark:border-brand-dark-border rounded-full mb-4 tracking-widest uppercase">
-              Courses
-            </span>
-            <motion.h1
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-3xl md:text-5xl font-black text-brand-text dark:text-brand-dark-text mb-4 tracking-tight"
-            >
-              Learn Without Limits
-            </motion.h1>
-            <motion.p
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="text-brand-muted dark:text-brand-dark-muted text-lg max-w-2xl mx-auto mb-8"
-            >
-              From Class 1 to placement — explore {published.length}+ expert-curated courses across all domains.
-            </motion.p>
-          </div>
-          {/* Search */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="relative max-w-lg mx-auto"
-          >
-            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-muted" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search courses..."
-              className="input pl-12"
-            />
-          </motion.div>
+    <PageShell
+      eyebrow="Courses"
+      title="Learn without limits"
+      description={`From Class 1 to placement — explore ${published.length}+ expert-curated courses across every domain.`}
+      action={
+        <div className="relative w-full max-w-md">
+          <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-muted" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search courses..."
+            className="input h-11 w-full pl-12"
+          />
         </div>
-      </div>
-
-      {/* Group Tabs */}
-      <div className="sticky top-16 z-30 bg-white dark:bg-brand-dark-bg border-b border-gray-100 dark:border-brand-dark-border shadow-sm">
+      }
+      compact
+    >
+      <div className="sticky top-16 z-30 mb-8 rounded-2xl border border-gray-100 bg-white/90 backdrop-blur dark:border-brand-dark-border dark:bg-brand-dark-card/80">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex gap-1 overflow-x-auto no-scrollbar py-2">
             {groupStats.map(g => (
               <button
                 key={g.label}
                 onClick={() => { setActiveGroup(g.label); setActiveSub(null) }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all ${
-                  activeGroup === g.label
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all ${activeGroup === g.label
                     ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black'
                     : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-100 dark:hover:bg-white/5'
-                }`}
+                  }`}
               >
                 {g.label}
                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeGroup === g.label ? 'bg-white/20 dark:bg-black/20' : 'bg-gray-100 dark:bg-white/10'}`}>
@@ -197,7 +171,7 @@ export default function Courses() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-8 flex gap-6">
+      <div className="flex gap-6">
         {/* Sidebar */}
         <aside className="hidden md:block w-56 flex-shrink-0">
           <div className="sticky top-32">
@@ -243,7 +217,7 @@ export default function Courses() {
         </aside>
 
         {/* Main */}
-        <main className="flex-1 min-w-0">
+        <main className="min-w-0 flex-1">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-xl font-bold text-brand-text dark:text-brand-dark-text">{activeSub || activeGroup}</h2>
@@ -264,6 +238,6 @@ export default function Courses() {
           )}
         </main>
       </div>
-    </div>
+    </PageShell>
   )
 }

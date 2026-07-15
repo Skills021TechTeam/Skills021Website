@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap') layer(base);
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -116,9 +118,6 @@
 /* ═══════════════════════════════════════════════════════════════
    NEW DESIGN SYSTEM — Home Page Redesign
    ═══════════════════════════════════════════════════════════════ */
-
-/* Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 /* CSS Design Tokens — Light */
 :root {

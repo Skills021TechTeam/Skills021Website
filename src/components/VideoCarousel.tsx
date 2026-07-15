@@ -18,7 +18,7 @@ export default function VideoCarousel({ onVideoPlay, showViewAllButton = true }:
   const [touchStart, setTouchStart] = useState(0)
   const [touchEnd, setTouchEnd] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
-  const autoPlayRef = useRef<NodeJS.Timeout>()
+  const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Responsive cards per view
   useEffect(() => {

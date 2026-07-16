@@ -23,6 +23,7 @@ import {
 } from '../lib/resourceService'
 import toast from 'react-hot-toast'
 import ConfirmDownloadDialog from '../components/ConfirmDownloadDialog'
+import PageShell from '../components/PageShell'
 
 const RESOURCE_TYPES: { label: string; icon: typeof FileText }[] = [
   { label: 'Notes', icon: FileText },
@@ -502,46 +503,25 @@ export default function Resources() {
   const totalDownloads = resources.reduce((acc, r) => acc + (r.downloads ?? 0), 0)
 
   return (
-    <div className="min-h-screen bg-white dark:bg-brand-dark-bg pt-16">
-      {/* Hero — clean */}
-      <div className="bg-gray-50 dark:bg-brand-dark-card border-b border-gray-100 dark:border-brand-dark-border py-12 px-4">
-        <div className="max-w-7xl mx-auto text-center">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <span className="inline-block px-3 py-1 text-xs font-semibold text-brand-muted dark:text-brand-dark-muted border border-gray-200 dark:border-brand-dark-border rounded-full mb-4 uppercase tracking-widest">
-              Learning Library
-            </span>
-            <h1 className="text-3xl md:text-5xl font-black text-brand-text dark:text-brand-dark-text mb-4 tracking-tight">
-              The Ultimate Learning Library
-            </h1>
-            <p className="text-brand-muted dark:text-brand-dark-muted max-w-2xl mx-auto mb-6">
-              {resources.length}+ resources across notes, PYQs, roadmaps, cheat sheets and more — curated for every student.
-            </p>
-            <div className="flex items-center justify-center gap-6 text-sm text-brand-muted dark:text-brand-dark-muted mb-8">
-              <span className="flex items-center gap-2"><Download size={14} />{(totalDownloads / 1000).toFixed(0)}K+ downloads</span>
-              <span className="flex items-center gap-2"><Eye size={14} />Expert verified</span>
-              <span className="flex items-center gap-2"><FileText size={14} />Free & Premium</span>
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
-            className="relative max-w-lg mx-auto"
-          >
-            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-muted" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search resources..."
-              className="input pl-12"
-            />
-          </motion.div>
+    <PageShell
+      eyebrow="Resources"
+      title="The ultimate learning library"
+      description={`${resources.length}+ resources across notes, PYQs, roadmaps, cheat sheets and more — curated for every student.`}
+      action={
+        <div className="relative w-full max-w-md">
+          <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-muted" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search resources..."
+            className="input h-11 w-full pl-12"
+          />
         </div>
-      </div>
-
+      }
+      compact
+    >
       {/* Resource Type Tabs */}
-      <div className="sticky top-16 z-30 bg-white dark:bg-brand-dark-bg border-b border-gray-100 dark:border-brand-dark-border">
+      <div className="sticky top-16 z-30 mb-8 rounded-2xl border border-gray-100 bg-white/90 backdrop-blur dark:border-brand-dark-border dark:bg-brand-dark-card/80">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex gap-1 overflow-x-auto no-scrollbar py-2">
             <button
@@ -568,7 +548,7 @@ export default function Resources() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-8 flex gap-6">
+      <div className="flex gap-6">
         {/* Sidebar */}
         <aside className="hidden md:block w-56 flex-shrink-0">
           <div className="sticky top-32 space-y-3">
@@ -693,6 +673,6 @@ export default function Resources() {
         onCancel={handleCancelDialog}
         onConfirm={handleConfirmDownload}
       />
-    </div>
+    </PageShell>
   )
 }

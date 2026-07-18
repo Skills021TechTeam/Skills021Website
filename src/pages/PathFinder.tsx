@@ -10,7 +10,6 @@ import FilterSidebar from '../features/pathfinder/components/FilterSidebar'
 import { CardSkeletonGrid, FilterSkeleton, HeroSkeleton } from '../features/pathfinder/components/LoadingSkeleton'
 import PathFinderHero from '../features/pathfinder/components/PathFinderHero'
 import RecommendedSection from '../features/pathfinder/components/RecommendedSection'
-import PageShell from '../components/PageShell'
 
 import { getCareerPaths } from '../lib/careerService'
 import { getExams } from '../lib/examService'
@@ -240,21 +239,21 @@ export default function PathFinder() {
 
   if (isLoading) {
     return (
-      <PageShell eyebrow="PathFinder" title="Choose a career path with clarity" description="Explore careers, matching exams, and roadmap guidance tailored to your goals." compact>
+      <div className="min-h-screen bg-white dark:bg-brand-dark-bg">
         <HeroSkeleton />
-        <div className="mx-auto flex max-w-7xl gap-6 px-4 py-8">
-          <aside className="hidden w-64 flex-shrink-0 lg:block"><FilterSkeleton /></aside>
+        <div className="max-w-7xl mx-auto px-4 py-8 flex gap-6">
+          <aside className="hidden lg:block w-64 flex-shrink-0"><FilterSkeleton /></aside>
           <main className="flex-1"><CardSkeletonGrid /></main>
         </div>
-      </PageShell>
+      </div>
     )
   }
 
   if (error) {
     return (
-      <PageShell eyebrow="PathFinder" title="Choose a career path with clarity" description="Explore careers, matching exams, and roadmap guidance tailored to your goals." compact>
+      <div className="min-h-screen bg-white dark:bg-brand-dark-bg">
         <PathFinderHero search={search} onSearchChange={setSearch} onExploreClick={handleExploreCareers} />
-        <div className="mx-auto max-w-2xl px-4 py-16 text-center">
+        <div className="max-w-2xl mx-auto px-4 py-16 text-center">
           <div className="card p-8 border border-red-100 dark:border-red-950/20 bg-red-50/50 dark:bg-red-950/10 rounded-2xl">
             <h3 className="text-lg font-bold text-red-600 dark:text-red-400 mb-2">Failed to load Pathfinder data</h3>
             <p className="text-sm text-brand-muted dark:text-brand-dark-muted mb-6 leading-relaxed">
@@ -269,12 +268,12 @@ export default function PathFinder() {
             </button>
           </div>
         </div>
-      </PageShell>
+      </div>
     )
   }
 
   return (
-    <PageShell eyebrow="PathFinder" title="Choose a career path with clarity" description="Explore careers, matching exams, and roadmap guidance tailored to your goals." compact>
+    <div className="min-h-screen bg-white dark:bg-brand-dark-bg">
       <PathFinderHero search={search} onSearchChange={setSearch} onExploreClick={handleExploreCareers} />
 
       <section ref={careersRef} className="max-w-7xl mx-auto px-4 py-10">
@@ -416,6 +415,6 @@ export default function PathFinder() {
           </div>
         </section>
       )}
-    </PageShell>
+    </div>
   )
 }

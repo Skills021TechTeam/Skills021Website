@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Map, ChevronRight, Clock, Eye, CheckCircle, Circle, ArrowRight, Zap } from 'lucide-react'
 import { useContentStore } from '../store/contentStore'
-import PageShell from '../components/PageShell'
 
 const LEVEL_COLORS = {
   Foundation: { bg: 'bg-blue-50 dark:bg-blue-900/20', text: 'text-blue-600 dark:text-blue-400', border: 'border-blue-200 dark:border-blue-800', dot: 'bg-blue-500' },
@@ -34,7 +33,7 @@ export default function Roadmaps() {
   if (selected) {
     const prog = getProgress(selected.id, selected.steps.length)
     return (
-      <PageShell eyebrow="Roadmaps" title="Follow a guided path to your goal" description="Turn big ambitions into clear milestones with step-by-step roadmaps." compact>
+      <div className="min-h-screen bg-brand-bg dark:bg-brand-dark-bg pt-16">
         {/* Header */}
         <div className="bg-gradient-to-br from-[#0F0F1A] to-[#1A1040] py-10 px-4">
           <div className="max-w-3xl mx-auto">
@@ -139,14 +138,31 @@ export default function Roadmaps() {
             </motion.div>
           )}
         </div>
-      </PageShell>
+      </div>
     )
   }
 
   return (
-    <PageShell eyebrow="Roadmaps" title="Follow a guided path to your goal" description="Turn big ambitions into clear milestones with step-by-step roadmaps." compact>
+    <div className="min-h-screen bg-brand-bg dark:bg-brand-dark-bg pt-16">
+      {/* Hero */}
+      <div className="bg-gradient-to-br from-[#0F0F1A] via-[#1A1040] to-[#0F1A0F] py-12 px-4">
+        <div className="max-w-5xl mx-auto text-center">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+            <span className="inline-flex items-center gap-2 px-4 py-1.5 text-xs font-bold text-green-400 bg-green-400/10 border border-green-400/30 rounded-full mb-4 uppercase tracking-widest">
+              <Map size={13} /> Career Roadmaps
+            </span>
+            <h1 className="text-3xl md:text-5xl font-bold text-white mb-4">
+              Your Path to <span className="gradient-text">Success</span>
+            </h1>
+            <p className="text-slate-400 max-w-xl mx-auto">
+              Visual, step-by-step roadmaps for every career goal. Track your progress and stay on course.
+            </p>
+          </motion.div>
+        </div>
+      </div>
+
       {/* Roadmap Grid */}
-      <div className="mx-auto max-w-5xl py-4">
+      <div className="max-w-5xl mx-auto px-4 py-10">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {published.map((rm, idx) => {
             const prog = getProgress(rm.id, rm.steps.length)
@@ -205,6 +221,6 @@ export default function Roadmaps() {
           </div>
         )}
       </div>
-    </PageShell>
+    </div>
   )
 }

@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Users, Star, Clock, Briefcase, CheckCircle, Calendar,
   FileText, Link2, Video, Target, Lightbulb, BookOpen,
   ArrowRight, Phone, MessageCircle, Mail, MapPin, GraduationCap,
-  Send, ChevronRight, Sparkles, Shield, Zap,
+  Send, ChevronRight, Shield, Zap, Check, Search, X, ExternalLink,
+  ChevronDown, IndianRupee, Info,
 } from 'lucide-react'
-import { useMentorStore } from '../store/mentorStore'
+import { fetchActiveMentors, createGuidanceRequest, type Mentor } from '../lib/mentorService'
 import toast from 'react-hot-toast'
 
 // Guidance type definition
@@ -14,18 +15,18 @@ type GuidanceType = 'Career Guidance' | 'College Selection' | 'Branch Selection'
 
 // ─── Guidance type options ────────────────────────────────────────────────────
 const GUIDANCE_TYPES: { label: GuidanceType; icon: typeof Users; color: string }[] = [
-  { label: 'Career Guidance', icon: Briefcase, color: 'text-blue-500' },
-  { label: 'College Selection', icon: GraduationCap, color: 'text-purple-500' },
-  { label: 'Branch Selection', icon: Target, color: 'text-teal-500' },
-  { label: 'Placement Preparation', icon: CheckCircle, color: 'text-green-500' },
-  { label: 'Internship Guidance', icon: Lightbulb, color: 'text-orange-500' },
-  { label: 'Higher Studies Guidance', icon: BookOpen, color: 'text-indigo-500' },
-  { label: 'Resume Review', icon: FileText, color: 'text-red-500' },
-  { label: 'LinkedIn Profile Review', icon: Link2, color: 'text-sky-500' },
-  { label: 'Mock Interview', icon: Video, color: 'text-pink-500' },
-  { label: 'Skill Roadmap', icon: ArrowRight, color: 'text-amber-500' },
-  { label: 'Startup Guidance', icon: Zap, color: 'text-violet-500' },
-  { label: 'Study Planning', icon: Calendar, color: 'text-cyan-500' },
+  { label: 'Career Guidance', icon: Briefcase, color: 'text-gray-700 dark:text-gray-300' },
+  { label: 'College Selection', icon: GraduationCap, color: 'text-gray-700 dark:text-gray-300' },
+  { label: 'Branch Selection', icon: Target, color: 'text-gray-700 dark:text-gray-300' },
+  { label: 'Placement Preparation', icon: CheckCircle, color: 'text-gray-700 dark:text-gray-300' },
+  { label: 'Internship Guidance', icon: Lightbulb, color: 'text-gray-700 dark:text-gray-300' },
+  { label: 'Higher Studies Guidance', icon: BookOpen, color: 'text-gray-700 dark:text-gray-300' },
+  { label: 'Resume Review', icon: FileText, color: 'text-gray-700 dark:text-gray-300' },
+  { label: 'LinkedIn Profile Review', icon: Link2, color: 'text-gray-700 dark:text-gray-300' },
+  { label: 'Mock Interview', icon: Video, color: 'text-gray-700 dark:text-gray-300' },
+  { label: 'Skill Roadmap', icon: ArrowRight, color: 'text-gray-700 dark:text-gray-300' },
+  { label: 'Startup Guidance', icon: Zap, color: 'text-gray-700 dark:text-gray-300' },
+  { label: 'Study Planning', icon: Calendar, color: 'text-gray-700 dark:text-gray-300' },
 ]
 
 const STATES_LIST = [
@@ -37,15 +38,167 @@ const STATES_LIST = [
 ]
 
 const inputCls =
-  'w-full px-4 py-3 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-sm text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all'
+  'w-full px-4 py-3 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-sm text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all'
 
 const INIT_FORM = {
   fullName: '', mobile: '', whatsapp: '', email: '',
   city: '', state: '',
   classYear: '', schoolCollege: '', boardUniversity: '', stream: '', percentage: '',
   guidanceTypes: [] as GuidanceType[],
+  preferredMentors: [] as string[],
   additionalQuery: '',
   consent: false,
+}
+
+const FAQS = [
+  { q: 'Is this mentorship service really free?', a: 'Yes, completely free. Skill021 does not charge students anything for guidance requests or mentor sessions arranged through this page.' },
+  { q: 'How do I get matched with a mentor?', a: 'Submit the guidance request form below. You can optionally select one or more preferred mentors, or leave it to our team to assign the best-fit mentor based on your goals.' },
+  { q: 'How soon will someone contact me?', a: "Our team typically reviews and responds within 24 hours via call, WhatsApp, or email — whichever you're comfortable with." },
+  { q: 'Can I request more than one type of guidance?', a: 'Absolutely. You can select multiple guidance types in the form, such as Resume Review and Mock Interview together.' },
+  { q: 'What if I don\u2019t see a mentor who matches my field?', a: "That's okay — leave the mentor selection blank and describe your needs in the Additional Query field. We'll assign the most relevant mentor available." },
+  { q: 'Do I need any prior experience to request mentorship?', a: 'No. Students at any stage — school, college, or early career — can request guidance.' },
+]
+
+// ─── FAQ Section ────────────────────────────────────────────────────────────────
+function FAQSection() {
+  const [open, setOpen] = useState<number | null>(0)
+  return (
+    <div className="bg-gray-50 dark:bg-brand-dark-card border-t border-gray-100 dark:border-brand-dark-border py-10 px-4">
+      <div className="max-w-3xl mx-auto">
+        <h2 className="text-xl font-bold text-brand-text dark:text-brand-dark-text mb-1 text-center">Frequently Asked Questions</h2>
+        <p className="text-sm text-brand-muted dark:text-brand-dark-muted mb-6 text-center">Everything you need to know before requesting guidance.</p>
+        <div className="space-y-2">
+          {FAQS.map((item, idx) => {
+            const isOpen = open === idx
+            return (
+              <div key={item.q} className="card overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setOpen(isOpen ? null : idx)}
+                  className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left"
+                >
+                  <span className="text-sm font-semibold text-brand-text dark:text-brand-dark-text">{item.q}</span>
+                  <ChevronDown size={16} className={`flex-shrink-0 text-brand-muted transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                </button>
+                <AnimatePresence initial={false}>
+                  {isOpen && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <p className="px-5 pb-4 text-sm text-brand-muted dark:text-brand-dark-muted leading-relaxed">{item.a}</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Mentor Profile Modal ────────────────────────────────────────────────────────
+function MentorProfileModal({ mentor, selected, onToggle, onClose }: { mentor: Mentor; selected: boolean; onToggle: () => void; onClose: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white dark:bg-brand-dark-card rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-xl"
+      >
+        <div className="flex items-start justify-between p-6 border-b border-gray-100 dark:border-brand-dark-border">
+          <div className="flex items-center gap-4">
+            {mentor.photo ? (
+              <img src={mentor.photo} alt={mentor.name} className="w-16 h-16 rounded-2xl object-cover flex-shrink-0" />
+            ) : (
+              <div className="w-16 h-16 rounded-2xl bg-black dark:bg-white flex items-center justify-center text-white dark:text-black text-2xl font-bold flex-shrink-0">
+                {mentor.name[0]}
+              </div>
+            )}
+            <div>
+              <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">{mentor.name}</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 font-semibold">{mentor.designation} · {mentor.company}</p>
+              <div className="flex items-center gap-3 text-xs text-brand-muted dark:text-brand-dark-muted mt-1.5">
+                <span className="flex items-center gap-1"><Star size={11} className="text-black dark:text-white fill-black dark:fill-white" />{mentor.rating} ({mentor.reviews} reviews)</span>
+                <span className="flex items-center gap-1"><Clock size={11} />{mentor.experience}</span>
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted flex-shrink-0"><X size={18} /></button>
+        </div>
+
+        <div className="p-6 space-y-5">
+          <div>
+            <h4 className="text-xs font-bold uppercase tracking-wide text-brand-muted dark:text-brand-dark-muted mb-1.5">About</h4>
+            <p className="text-sm text-brand-text dark:text-brand-dark-text leading-relaxed">{mentor.bio}</p>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-bold uppercase tracking-wide text-brand-muted dark:text-brand-dark-muted mb-2">Expertise</h4>
+            <div className="flex flex-wrap gap-1.5">
+              {mentor.expertise.map((e) => (
+                <span key={e} className="text-[11px] px-2.5 py-1 bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-gray-200 rounded-full font-medium">{e}</span>
+              ))}
+              {mentor.expertise.length === 0 && <p className="text-sm text-brand-muted">No expertise tags added.</p>}
+            </div>
+          </div>
+
+          {mentor.services.length > 0 && (
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wide text-brand-muted dark:text-brand-dark-muted mb-2">Services & Fees</h4>
+              <div className="space-y-1.5">
+                {mentor.services.map((s) => (
+                  <div key={s} className="flex items-center justify-between text-sm px-3 py-2 rounded-lg bg-gray-50 dark:bg-white/5">
+                    <span className="text-brand-text dark:text-brand-dark-text">{s}</span>
+                    <span className="flex items-center gap-0.5 font-semibold text-brand-text dark:text-brand-dark-text">
+                      {mentor.fees?.[s] ? <><IndianRupee size={12} />{mentor.fees[s]}</> : 'Free'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {mentor.linkedIn && (
+            <a
+              href={mentor.linkedIn}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-sm font-semibold text-brand-text dark:text-brand-dark-text hover:underline"
+            >
+              <ExternalLink size={15} /> View LinkedIn Profile
+            </a>
+          )}
+        </div>
+
+        <div className="p-6 pt-0">
+          <button
+            type="button"
+            onClick={() => { onToggle(); onClose() }}
+            className={`w-full py-3 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2 ${
+              selected
+                ? 'border border-brand-border dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5'
+                : 'bg-black dark:bg-white text-white dark:text-black hover:opacity-90'
+            }`}
+          >
+            {selected ? <><X size={16} /> Remove from Request</> : <><Check size={16} /> Select for Guidance Request</>}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
 }
 
 // ─── Success Screen ───────────────────────────────────────────────────────────
@@ -56,24 +209,24 @@ function SuccessScreen({ onReset }: { onReset: () => void }) {
       animate={{ opacity: 1, scale: 1 }}
       className="text-center py-16 px-6"
     >
-      <div className="w-20 h-20 bg-gradient-to-br from-primary-500 to-teal-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-primary-500/30">
-        <CheckCircle size={36} className="text-white" />
+      <div className="w-20 h-20 bg-black dark:bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-black/20 dark:shadow-white/20">
+        <CheckCircle size={36} className="text-white dark:text-black" />
       </div>
       <h3 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text mb-3">
         Request Submitted Successfully!
       </h3>
       <p className="text-brand-muted dark:text-brand-dark-muted max-w-md mx-auto mb-2 leading-relaxed">
         Thank you for contacting Skill021. Our team will review your request and contact you soon via{' '}
-        <span className="font-semibold text-primary-500">call, WhatsApp, or email</span>.
+        <span className="font-semibold text-black dark:text-white">call, WhatsApp, or email</span>.
       </p>
       <p className="text-sm text-brand-muted dark:text-brand-dark-muted mb-8">
-        Expected response time: <span className="font-semibold text-green-500">Within 24 hours</span>
+        Expected response time: <span className="font-semibold text-black dark:text-white">Within 24 hours</span>
       </p>
       <div className="flex flex-wrap items-center justify-center gap-4 mb-8">
         {[
-          { icon: Phone, label: 'Phone Call', color: 'text-green-500 bg-green-50 dark:bg-green-900/20' },
-          { icon: MessageCircle, label: 'WhatsApp', color: 'text-teal-500 bg-teal-50 dark:bg-teal-900/20' },
-          { icon: Mail, label: 'Email', color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
+          { icon: Phone, label: 'Phone Call', color: 'text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-white/10' },
+          { icon: MessageCircle, label: 'WhatsApp', color: 'text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-white/10' },
+          { icon: Mail, label: 'Email', color: 'text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-white/10' },
         ].map(({ icon: Icon, label, color }) => (
           <div key={label} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold ${color}`}>
             <Icon size={15} /> {label}
@@ -92,12 +245,41 @@ function SuccessScreen({ onReset }: { onReset: () => void }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function Mentorship() {
-  const { mentors } = useMentorStore()
+  const [activeMentors, setActiveMentors] = useState<Mentor[]>([])
+  const [mentorsLoading, setMentorsLoading] = useState(true)
   const [form, setForm] = useState(INIT_FORM)
   const [submitted, setSubmitted] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [mentorSearch, setMentorSearch] = useState('')
+  const [expertiseFilter, setExpertiseFilter] = useState<string | null>(null)
+  const [viewMentor, setViewMentor] = useState<Mentor | null>(null)
 
-  const activeMentors = mentors.filter((m) => m.status === 'Active')
+  useEffect(() => {
+    (async () => {
+      setMentorsLoading(true)
+      try {
+        setActiveMentors(await fetchActiveMentors())
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to load mentors')
+      } finally {
+        setMentorsLoading(false)
+      }
+    })()
+  }, [])
+
+  const allExpertise = Array.from(new Set(activeMentors.flatMap((m) => m.expertise))).sort()
+
+  const filteredMentors = activeMentors.filter((m) => {
+    const q = mentorSearch.trim().toLowerCase()
+    const matchesSearch =
+      !q ||
+      m.name.toLowerCase().includes(q) ||
+      m.company.toLowerCase().includes(q) ||
+      m.designation.toLowerCase().includes(q) ||
+      m.expertise.some((e) => e.toLowerCase().includes(q))
+    const matchesExpertise = !expertiseFilter || m.expertise.includes(expertiseFilter)
+    return matchesSearch && matchesExpertise
+  })
 
   const toggleGuidanceType = (type: GuidanceType) => {
     setForm((p) => ({
@@ -108,7 +290,16 @@ export default function Mentorship() {
     }))
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const toggleMentor = (id: string) => {
+    setForm((p) => ({
+      ...p,
+      preferredMentors: p.preferredMentors.includes(id)
+        ? p.preferredMentors.filter((m) => m !== id)
+        : [...p.preferredMentors, id],
+    }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.fullName || !form.mobile || !form.email) {
       toast.error('Please fill all required fields')
@@ -123,83 +314,94 @@ export default function Mentorship() {
       return
     }
     setLoading(true)
-    setTimeout(() => {
-      setLoading(false)
+    try {
+      await createGuidanceRequest({
+        fullName: form.fullName,
+        mobile: form.mobile,
+        whatsapp: form.whatsapp,
+        email: form.email,
+        city: form.city,
+        state: form.state,
+        classYear: form.classYear,
+        schoolCollege: form.schoolCollege,
+        boardUniversity: form.boardUniversity,
+        stream: form.stream,
+        percentage: form.percentage,
+        guidanceTypes: form.guidanceTypes,
+        preferredMentors: form.preferredMentors,
+        additionalQuery: form.additionalQuery,
+      })
       setSubmitted(true)
       toast.success('Guidance request submitted!')
-    }, 800)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to submit request')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <div className="min-h-screen bg-brand-bg dark:bg-brand-dark-bg pt-16">
+    <div className="min-h-screen bg-white dark:bg-brand-dark-bg pt-16">
 
-      {/* ── Hero ── */}
-      <div className="relative bg-gradient-to-br from-[#0F0F1A] via-[#1A0A2E] to-[#0A1A2E] py-16 px-4 overflow-hidden">
-        {/* Background orbs */}
-        <div className="orb w-96 h-96 bg-primary-500 top-[-100px] left-[-100px]" />
-        <div className="orb w-80 h-80 bg-teal-500 bottom-[-80px] right-[-80px]" />
-
-        <div className="max-w-5xl mx-auto text-center relative z-10">
-          <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
-            <span className="inline-flex items-center gap-2 px-4 py-1.5 text-xs font-bold text-primary-400 bg-primary-400/10 border border-primary-400/30 rounded-full mb-5 uppercase tracking-widest">
-              <Sparkles size={12} /> Free Guidance & Mentorship
+      {/* ── Hero — clean, matches Courses/Resources ── */}
+      <div className="bg-gray-50 dark:bg-brand-dark-card border-b border-gray-100 dark:border-brand-dark-border py-12 px-4">
+        <div className="max-w-5xl mx-auto text-center">
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+            <span className="inline-block px-3 py-1 text-xs font-semibold text-brand-muted dark:text-brand-dark-muted border border-gray-200 dark:border-brand-dark-border rounded-full mb-4 uppercase tracking-widest">
+              Mentorship
             </span>
-            <h1 className="text-3xl md:text-5xl font-bold text-white mb-5 leading-tight">
-              Get Personalized Guidance from{' '}
-              <span className="gradient-text">Industry Experts</span>
+            <h1 className="text-3xl md:text-5xl font-black text-brand-text dark:text-brand-dark-text mb-4 tracking-tight">
+              Get Personalized Guidance from Industry Experts
             </h1>
-            <p className="text-slate-400 max-w-xl mx-auto mb-8 text-lg">
+            <p className="text-brand-muted dark:text-brand-dark-muted max-w-xl mx-auto mb-6">
               Submit a free guidance request and our expert mentors will contact you via call, WhatsApp, or email to help you achieve your goals.
             </p>
 
             {/* Trust badges */}
-            <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
-              {[
-                { icon: Shield, label: '100% Free', color: 'text-green-400 border-green-400/30 bg-green-400/10' },
-                { icon: Clock, label: 'Response in 24hrs', color: 'text-amber-400 border-amber-400/30 bg-amber-400/10' },
-                { icon: Users, label: 'Expert Mentors', color: 'text-blue-400 border-blue-400/30 bg-blue-400/10' },
-                { icon: Phone, label: 'Direct Contact', color: 'text-teal-400 border-teal-400/30 bg-teal-400/10' },
-              ].map(({ icon: Icon, label, color }) => (
-                <span key={label} className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold border rounded-full ${color}`}>
-                  <Icon size={12} /> {label}
-                </span>
-              ))}
+            <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-brand-muted dark:text-brand-dark-muted mb-6">
+              <span className="flex items-center gap-2"><Shield size={14} />100% Free</span>
+              <span className="flex items-center gap-2"><Clock size={14} />Response in 24hrs</span>
+              {activeMentors.length > 0 && (
+                <span className="flex items-center gap-2"><Users size={14} />{activeMentors.length}+ Expert Mentors</span>
+              )}
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-2xl mx-auto">
-              {[
-                { val: `${activeMentors.length}+`, label: 'Expert Mentors' },
-                { val: `${activeMentors.reduce((a, m) => a + m.sessions, 0).toLocaleString()}+`, label: 'Sessions Done' },
-                { val: activeMentors.length ? (activeMentors.reduce((a, m) => a + m.rating, 0) / activeMentors.length).toFixed(1) : '4.9', label: 'Avg Rating' },
-                { val: '100%', label: 'Free Forever' },
-              ].map((s) => (
-                <div key={s.label} className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center border border-white/20">
-                  <div className="text-xl font-bold text-white">{s.val}</div>
-                  <div className="text-xs text-slate-400 mt-0.5">{s.label}</div>
-                </div>
-              ))}
-            </div>
+            {activeMentors.length > 0 && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-2xl mx-auto">
+                {[
+                  { val: `${activeMentors.length}+`, label: 'Expert Mentors' },
+                  { val: `${activeMentors.reduce((a, m) => a + m.sessions, 0).toLocaleString()}+`, label: 'Sessions Done' },
+                  { val: (activeMentors.reduce((a, m) => a + m.rating, 0) / activeMentors.length).toFixed(1), label: 'Avg Rating' },
+                  { val: '100%', label: 'Free Forever' },
+                ].map((s) => (
+                  <div key={s.label} className="bg-white dark:bg-brand-dark-bg rounded-xl p-3 text-center border border-gray-100 dark:border-brand-dark-border">
+                    <div className="text-xl font-bold text-brand-text dark:text-brand-dark-text">{s.val}</div>
+                    <div className="text-xs text-brand-muted dark:text-brand-dark-muted mt-0.5">{s.label}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </motion.div>
         </div>
       </div>
 
       {/* ── How It Works ── */}
-      <div className="bg-white dark:bg-[#0F0F1A] border-b border-brand-border dark:border-brand-dark-border py-10 px-4">
+      <div className="bg-white dark:bg-brand-dark-bg border-b border-gray-100 dark:border-brand-dark-border py-8 px-4">
         <div className="max-w-4xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-widest text-brand-muted dark:text-brand-dark-muted mb-6">How It Works</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
-              { step: '01', icon: Send, title: 'Submit Your Request', desc: 'Fill the free guidance form with your details and what type of help you need.', color: 'from-primary-500 to-indigo-500' },
-              { step: '02', icon: Users, title: 'We Review & Assign', desc: 'Our team reviews your request and assigns the best-fit mentor within 24 hours.', color: 'from-teal-500 to-cyan-500' },
-              { step: '03', icon: Phone, title: 'Mentor Contacts You', desc: 'Your mentor will call, WhatsApp, or email you to schedule a guidance session.', color: 'from-purple-500 to-pink-500' },
-            ].map(({ step, icon: Icon, title, desc, color }) => (
+              { step: '01', icon: Send, title: 'Submit Your Request', desc: 'Fill the free guidance form with your details and what type of help you need.' },
+              { step: '02', icon: Users, title: 'We Review & Assign', desc: 'Our team reviews your request and assigns the best-fit mentor within 24 hours.' },
+              { step: '03', icon: Phone, title: 'Mentor Contacts You', desc: 'Your mentor will call, WhatsApp, or email you to schedule a guidance session.' },
+            ].map(({ step, icon: Icon, title, desc }) => (
               <div key={step} className="flex gap-4">
-                <div className={`w-10 h-10 bg-gradient-to-br ${color} rounded-xl flex items-center justify-center flex-shrink-0 shadow-md`}>
-                  <Icon size={18} className="text-white" />
+                <div className="w-10 h-10 bg-[#0A0A0A] dark:bg-white rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
+                  <Icon size={18} className="text-white dark:text-black" />
                 </div>
                 <div>
-                  <p className="text-[11px] font-bold text-primary-500 uppercase tracking-wider mb-0.5">Step {step}</p>
+                  <p className="text-[11px] font-bold text-black dark:text-white uppercase tracking-wider mb-0.5">Step {step}</p>
                   <h3 className="font-bold text-brand-text dark:text-brand-dark-text text-sm mb-1">{title}</h3>
                   <p className="text-xs text-brand-muted dark:text-brand-dark-muted leading-relaxed">{desc}</p>
                 </div>
@@ -209,63 +411,154 @@ export default function Mentorship() {
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 py-10">
+      <div className="max-w-5xl mx-auto px-4 py-8">
 
-        {/* ── Guidance Types Overview ── */}
-        <div className="mb-10">
-          <h2 className="text-xl font-bold text-brand-text dark:text-brand-dark-text mb-1">What Guidance Can You Get?</h2>
-          <p className="text-sm text-brand-muted dark:text-brand-dark-muted mb-5">Our mentors cover a wide range of career and academic needs.</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {GUIDANCE_TYPES.map(({ label, icon: Icon, color }) => (
-              <div key={label} className="card p-3 flex items-center gap-2.5 hover:border-primary-500/50 transition-colors">
-                <div className={`w-8 h-8 rounded-lg bg-gray-50 dark:bg-white/5 flex items-center justify-center flex-shrink-0 ${color}`}>
-                  <Icon size={15} />
-                </div>
-                <span className="text-xs font-semibold text-brand-text dark:text-brand-dark-text leading-snug">{label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* ── Our Mentors ── */}
+        {/* ── Our Mentors — click to select one or more for your request ── */}
         {activeMentors.length > 0 && (
-          <div className="mb-10">
+          <div className="mb-8">
             <h2 className="text-xl font-bold text-brand-text dark:text-brand-dark-text mb-1">Meet Our Mentors</h2>
-            <p className="text-sm text-brand-muted dark:text-brand-dark-muted mb-5">Industry experts from top companies who will guide you.</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {activeMentors.map((mentor, idx) => (
-                <motion.div
-                  key={mentor.id}
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.08 }}
-                  className="card p-5"
-                >
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary-500 to-teal-500 flex items-center justify-center text-white text-lg font-bold flex-shrink-0">
-                      {mentor.name[0]}
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="font-bold text-brand-text dark:text-brand-dark-text text-sm truncate">{mentor.name}</h3>
-                      <p className="text-xs text-primary-500 font-semibold">{mentor.company}</p>
-                    </div>
-                  </div>
-                  <p className="text-xs text-brand-muted dark:text-brand-dark-muted mb-3 line-clamp-2 leading-relaxed">{mentor.bio}</p>
-                  <div className="flex items-center gap-3 text-xs text-brand-muted dark:text-brand-dark-muted mb-3">
-                    <span className="flex items-center gap-1"><Star size={10} className="text-amber-400 fill-amber-400" />{mentor.rating}</span>
-                    <span className="flex items-center gap-1"><Clock size={10} />{mentor.experience}</span>
-                    <span className="flex items-center gap-1"><Calendar size={10} />{mentor.sessions} sessions</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {mentor.expertise.slice(0, 3).map((e) => (
-                      <span key={e} className="text-[10px] px-2 py-0.5 bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 rounded-full font-medium">{e}</span>
-                    ))}
-                  </div>
-                </motion.div>
-              ))}
+            <p className="text-sm text-brand-muted dark:text-brand-dark-muted mb-5">Industry experts from top companies. Select one or more mentors you'd like guidance from — it's optional.</p>
+
+            {/* Search + expertise filter */}
+            <div className="mb-5 space-y-3">
+              <div className="relative max-w-sm">
+                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brand-muted" />
+                <input
+                  value={mentorSearch}
+                  onChange={(e) => setMentorSearch(e.target.value)}
+                  placeholder="Search mentors by name, company, or skill..."
+                  className={inputCls + ' pl-10 py-2.5'}
+                />
+                {mentorSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setMentorSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted hover:text-brand-text dark:hover:text-brand-dark-text"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+              {allExpertise.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setExpertiseFilter(null)}
+                    className={`text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                      !expertiseFilter
+                        ? 'bg-black dark:bg-white text-white dark:text-black border-black dark:border-white'
+                        : 'border-brand-border dark:border-brand-dark-border text-brand-muted dark:text-brand-dark-muted hover:border-black/50 dark:hover:border-white/50'
+                    }`}
+                  >
+                    All
+                  </button>
+                  {allExpertise.map((exp) => (
+                    <button
+                      type="button"
+                      key={exp}
+                      onClick={() => setExpertiseFilter(expertiseFilter === exp ? null : exp)}
+                      className={`text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                        expertiseFilter === exp
+                          ? 'bg-black dark:bg-white text-white dark:text-black border-black dark:border-white'
+                          : 'border-brand-border dark:border-brand-dark-border text-brand-muted dark:text-brand-dark-muted hover:border-black/50 dark:hover:border-white/50'
+                      }`}
+                    >
+                      {exp}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
+
+            {mentorsLoading ? (
+              <div className="card p-8 text-center text-sm text-brand-muted dark:text-brand-dark-muted">
+                Loading mentors...
+              </div>
+            ) : filteredMentors.length === 0 ? (
+              <div className="card p-8 text-center text-sm text-brand-muted dark:text-brand-dark-muted">
+                No mentors match your search. Try a different name or skill.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {filteredMentors.map((mentor, idx) => {
+                  const selected = form.preferredMentors.includes(mentor.id)
+                  return (
+                    <motion.div
+                      key={mentor.id}
+                      initial={{ opacity: 0, y: 16 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.08 }}
+                      onClick={() => toggleMentor(mentor.id)}
+                      role="button"
+                      tabIndex={0}
+                      className={`card p-5 text-left relative transition-colors cursor-pointer ${
+                        selected ? 'border-black dark:border-white ring-1 ring-black dark:ring-white' : 'hover:border-black/50 dark:hover:border-white/50'
+                      }`}
+                    >
+                      {selected && (
+                        <div className="absolute top-3 right-3 w-5 h-5 bg-black dark:bg-white rounded-full flex items-center justify-center">
+                          <Check size={12} className="text-white dark:text-black" />
+                        </div>
+                      )}
+                      {!selected && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setViewMentor(mentor) }}
+                          className="absolute top-3 right-3 w-6 h-6 rounded-full bg-white dark:bg-brand-dark-bg border border-brand-border dark:border-brand-dark-border flex items-center justify-center text-brand-muted hover:text-brand-text dark:hover:text-brand-dark-text"
+                          title="View full profile"
+                        >
+                          <Info size={12} />
+                        </button>
+                      )}
+                      <div className="flex items-center gap-3 mb-3">
+                        {mentor.photo ? (
+                          <img src={mentor.photo} alt={mentor.name} className="w-12 h-12 rounded-2xl object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-12 h-12 rounded-2xl bg-black dark:bg-white flex items-center justify-center text-white dark:text-black text-lg font-bold flex-shrink-0">
+                            {mentor.name[0]}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <h3 className="font-bold text-brand-text dark:text-brand-dark-text text-sm truncate">{mentor.name}</h3>
+                          <p className="text-xs text-gray-600 dark:text-gray-400 font-semibold">{mentor.company}</p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-brand-muted dark:text-brand-dark-muted mb-3 line-clamp-2 leading-relaxed">{mentor.bio}</p>
+                      <div className="flex items-center gap-3 text-xs text-brand-muted dark:text-brand-dark-muted mb-3">
+                        <span className="flex items-center gap-1"><Star size={10} className="text-black dark:text-white fill-black dark:fill-white" />{mentor.rating}</span>
+                        <span className="flex items-center gap-1"><Clock size={10} />{mentor.experience}</span>
+                        <span className="flex items-center gap-1"><Calendar size={10} />{mentor.sessions} sessions</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1 mb-3">
+                        {mentor.expertise.slice(0, 3).map((e) => (
+                          <span key={e} className="text-[10px] px-2 py-0.5 bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-gray-200 rounded-full font-medium">{e}</span>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setViewMentor(mentor) }}
+                        className="text-[11px] font-semibold text-brand-text dark:text-brand-dark-text underline underline-offset-2 hover:opacity-70"
+                      >
+                        View full profile
+                      </button>
+                    </motion.div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
+
+        <AnimatePresence>
+          {viewMentor && (
+            <MentorProfileModal
+              mentor={viewMentor}
+              selected={form.preferredMentors.includes(viewMentor.id)}
+              onToggle={() => toggleMentor(viewMentor.id)}
+              onClose={() => setViewMentor(null)}
+            />
+          )}
+        </AnimatePresence>
 
         {/* ── Guidance Request Form ── */}
         <motion.div
@@ -276,14 +569,14 @@ export default function Mentorship() {
           id="request-form"
         >
           {/* Form header */}
-          <div className="bg-gradient-to-r from-primary-500 to-teal-500 p-6">
+          <div className="bg-black dark:bg-white p-6">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-                <Send size={18} className="text-white" />
+              <div className="w-10 h-10 border-2 border-white dark:border-black rounded-xl flex items-center justify-center">
+                <Send size={18} className="text-white dark:text-black" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-white">Request Personalized Guidance</h2>
-                <p className="text-white/80 text-sm">Tell us about yourself and our mentors will connect with you.</p>
+                <h2 className="text-xl font-bold text-white dark:text-black">Request Personalized Guidance</h2>
+                <p className="text-white/80 dark:text-black/70 text-sm">Tell us about yourself and our mentors will connect with you.</p>
               </div>
             </div>
           </div>
@@ -303,7 +596,7 @@ export default function Mentorship() {
                 {/* Section: Personal Details */}
                 <div>
                   <div className="flex items-center gap-2 mb-4">
-                    <div className="w-6 h-6 bg-primary-500 rounded-lg flex items-center justify-center text-white text-xs font-bold">1</div>
+                    <div className="w-6 h-6 bg-[#0A0A0A] dark:bg-white rounded-lg flex items-center justify-center text-white dark:text-black text-xs font-bold">1</div>
                     <h3 className="font-bold text-brand-text dark:text-brand-dark-text">Personal Details</h3>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -345,7 +638,7 @@ export default function Mentorship() {
                 {/* Section: Academic Details */}
                 <div>
                   <div className="flex items-center gap-2 mb-4">
-                    <div className="w-6 h-6 bg-teal-500 rounded-lg flex items-center justify-center text-white text-xs font-bold">2</div>
+                    <div className="w-6 h-6 bg-[#0A0A0A] dark:bg-white rounded-lg flex items-center justify-center text-white dark:text-black text-xs font-bold">2</div>
                     <h3 className="font-bold text-brand-text dark:text-brand-dark-text">Academic Details</h3>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -373,7 +666,7 @@ export default function Mentorship() {
                 {/* Section: Guidance Needed */}
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <div className="w-6 h-6 bg-purple-500 rounded-lg flex items-center justify-center text-white text-xs font-bold">3</div>
+                    <div className="w-6 h-6 bg-[#0A0A0A] dark:bg-white rounded-lg flex items-center justify-center text-white dark:text-black text-xs font-bold">3</div>
                     <h3 className="font-bold text-brand-text dark:text-brand-dark-text">What Type of Guidance Do You Need?</h3>
                   </div>
                   <p className="text-xs text-brand-muted dark:text-brand-dark-muted mb-4 ml-8">Select all that apply</p>
@@ -387,11 +680,11 @@ export default function Mentorship() {
                           onClick={() => toggleGuidanceType(label)}
                           className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-semibold text-left transition-all ${
                             checked
-                              ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400'
-                              : 'border-brand-border dark:border-brand-dark-border text-brand-muted dark:text-brand-dark-muted hover:border-primary-500/50'
+                              ? 'border-[#0A0A0A] dark:border-white bg-[#0A0A0A] dark:bg-white text-white dark:text-black'
+                              : 'border-brand-border dark:border-brand-dark-border text-brand-muted dark:text-brand-dark-muted hover:border-[#0A0A0A]/50 dark:hover:border-white/50'
                           }`}
                         >
-                          <div className={`w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 ${checked ? 'bg-primary-500 text-white' : 'bg-gray-100 dark:bg-white/10 ' + color}`}>
+                          <div className={`w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 ${checked ? 'bg-white/20 dark:bg-black/20 text-white dark:text-black' : 'bg-gray-100 dark:bg-white/10 ' + color}`}>
                             {checked ? <CheckCircle size={12} /> : <Icon size={11} />}
                           </div>
                           {label}
@@ -400,6 +693,22 @@ export default function Mentorship() {
                     })}
                   </div>
                 </div>
+
+                {/* Selected Mentors summary */}
+                {form.preferredMentors.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 -mt-4">
+                    <span className="text-xs text-brand-muted dark:text-brand-dark-muted">Requesting guidance from:</span>
+                    {form.preferredMentors.map((id) => {
+                      const m = activeMentors.find((am) => am.id === id)
+                      if (!m) return null
+                      return (
+                        <span key={id} className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 bg-gray-100 dark:bg-white/10 text-gray-800 dark:text-gray-200 rounded-full">
+                          {m.name}
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
 
                 {/* Additional Query */}
                 <div>
@@ -414,16 +723,16 @@ export default function Mentorship() {
                 </div>
 
                 {/* Consent */}
-                <div className="flex items-start gap-3 p-4 bg-primary-50 dark:bg-primary-900/10 rounded-xl border border-primary-200 dark:border-primary-800/30">
+                <div className="flex items-start gap-3 p-4 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/10">
                   <input
                     id="consent-guidance"
                     type="checkbox"
                     checked={form.consent}
                     onChange={(e) => setForm((p) => ({ ...p, consent: e.target.checked }))}
-                    className="mt-0.5 w-4 h-4 accent-primary-500 flex-shrink-0 cursor-pointer"
+                    className="mt-0.5 w-4 h-4 accent-black dark:accent-white flex-shrink-0 cursor-pointer"
                   />
                   <label htmlFor="consent-guidance" className="text-sm text-brand-muted dark:text-brand-dark-muted cursor-pointer leading-relaxed">
-                    I agree to be contacted by <span className="font-semibold text-primary-500">Skill021</span> for guidance and mentorship. I understand this service is completely free.
+                    I agree to be contacted by <span className="font-semibold text-black dark:text-white">Skill021</span> for guidance and mentorship. I understand this service is completely free.
                   </label>
                 </div>
 
@@ -432,7 +741,7 @@ export default function Mentorship() {
                   type="submit"
                   disabled={loading}
                   whileTap={{ scale: 0.98 }}
-                  className="w-full py-4 bg-gradient-to-r from-primary-500 to-teal-500 text-white rounded-xl font-bold text-base hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-primary-500/25 disabled:opacity-70"
+                  className="w-full py-4 bg-black dark:bg-white text-white dark:text-black rounded-xl font-bold text-base hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-black/20 dark:shadow-white/20 disabled:opacity-70"
                 >
                   {loading ? (
                     <><span className="animate-spin inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full" /> Submitting...</>
@@ -445,6 +754,8 @@ export default function Mentorship() {
           </AnimatePresence>
         </motion.div>
       </div>
+
+      <FAQSection />
     </div>
   )
 }

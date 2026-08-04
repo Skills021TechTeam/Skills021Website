@@ -55,7 +55,7 @@ function QuizRunner({ quiz, onClose }: { quiz: Quiz; onClose: () => void }) {
     }
   }
 
-  const score = answers.reduce((acc, ans, i) => ans === quiz.questions[i]?.correctIndex ? acc + 1 : acc, 0)
+  const score = answers.reduce<number>((acc, ans, i) => ans === quiz.questions[i]?.correctIndex ? acc + 1 : acc, 0)
   const pct = Math.round((score / quiz.questions.length) * 100)
   const mm = Math.floor(timeLeft / 60).toString().padStart(2, '0')
   const ss = (timeLeft % 60).toString().padStart(2, '0')

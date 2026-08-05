@@ -30,6 +30,18 @@ export default function VideoPlayerModal({ course, userId, userName, isAdmin, ca
   const [submittingRating, setSubmittingRating] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  // Some browsers/embedded webviews default a freshly-mounted <video> to
+  // muted (a leftover autoplay-policy heuristic) even without the `muted`
+  // attribute set. Explicitly force it unmuted at full volume so course
+  // videos always play with sound, the way a normal YouTube video would.
+  useEffect(() => {
+    const el = videoRef.current
+    if (!el) return
+    el.muted = false
+    el.defaultMuted = false
+    el.volume = 1
+  }, [canWatch, course.videoUrl])
+
   useEffect(() => {
     if (!canWatch) { setLoading(false); return }
     (async () => {
@@ -53,6 +65,7 @@ export default function VideoPlayerModal({ course, userId, userName, isAdmin, ca
 
   const seekTo = (seconds: number) => {
     if (videoRef.current) {
+      videoRef.current.muted = false
       videoRef.current.currentTime = seconds
       videoRef.current.play().catch(() => {})
     }
@@ -136,7 +149,16 @@ export default function VideoPlayerModal({ course, userId, userName, isAdmin, ca
                 <div className="lg:col-span-2 flex flex-col">
                   <div className="aspect-video max-h-[42vh] bg-black">
                     {course.videoUrl ? (
-                      <video ref={videoRef} src={course.videoUrl} controls className="w-full h-full object-contain" />
+                      <video
+                        ref={videoRef}
+                        src={course.videoUrl}
+                        controls
+                        muted={false}
+                        playsInline
+                        preload="metadata"
+                        controlsList="nodownload"
+                        className="w-full h-full object-contain"
+                      />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-white/60 text-sm">
                         No video uploaded for this course yet.

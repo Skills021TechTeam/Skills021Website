@@ -4,10 +4,152 @@ import {
   LayoutDashboard, BookOpen, FileText, HelpCircle, Map,
   Users, Settings, Plus, Edit2, Trash2, Search,
   X, Shield, TrendingUp, Eye, Download, EyeOff,
-  CheckCircle, Zap, Video, Loader2, RotateCw, Compass
+  CheckCircle, Zap, Video, Loader2, RotateCw, Compass, ListVideo, Clock
 } from 'lucide-react'
 import { useContentStore, Course, Resource, Quiz, Roadmap } from '../store/contentStore'
-import { useMentorStore } from '../store/mentorStore'
+import {
+  getTimestamps,
+  addTimestamp,
+  deleteTimestamp as deleteTimestampApi,
+  formatSeconds,
+  parseTimeToSeconds,
+  VideoTimestamp,
+} from '../lib/videoEngagementService'
+
+// Heuristic check: does this video file actually contain an audio track?
+// Loads the file into an off-DOM <video>, briefly plays it (muted so the
+// browser never blocks the programmatic play call), and inspects the
+// browser-specific "audio decoded" signals. Not 100% reliable on every
+// browser, but catches the common case of silently-recorded clips before
+// an admin publishes a course video with no sound.
+// Heuristic check: does this video file contain an audio track?
+// Returns 'yes' | 'no' | 'unknown'. Deliberately conservative: only reports
+// 'no' when a browser API gives a clear metadata-level answer. When the
+// browser doesn't expose that info (or muting/autoplay quirks make it
+// unreliable), it reports 'unknown' rather than risk a false alarm on a
+// perfectly good file.
+// Reads a video's duration (in seconds) from either a File or a URL, purely
+// from metadata — no playback needed. Used to auto-adjust the chapter/
+// timestamp input format (mm:ss vs hh:mm:ss) to match the actual video.
+function getVideoDurationSeconds(source: File | string): Promise<number | null> {
+  return new Promise((resolve) => {
+    const isFile = typeof source !== 'string'
+    const url = isFile ? URL.createObjectURL(source as File) : source
+    const el = document.createElement('video')
+    el.preload = 'metadata'
+    el.src = url
+    let settled = false
+    const finish = (result: number | null) => {
+      if (settled) return
+      settled = true
+      if (isFile) URL.revokeObjectURL(url)
+      resolve(result)
+    }
+    el.addEventListener('loadedmetadata', () => {
+      finish(Number.isFinite(el.duration) ? el.duration : null)
+    })
+    el.addEventListener('error', () => finish(null))
+    setTimeout(() => finish(null), 6000)
+  })
+}
+
+// Turns raw seconds into an exact, admin-friendly duration string for the
+// course "Duration" field, e.g. 395 -> "6 mins 35 secs", 5400 -> "1 hr 30 mins".
+// Keeps full precision (no rounding up to the nearest minute).
+function formatDurationHuman(totalSeconds: number): string {
+  const seconds = Math.round(totalSeconds)
+  const hours = Math.floor(seconds / 3600)
+  const mins = Math.floor((seconds % 3600) / 60)
+  const secs = seconds % 60
+  const parts: string[] = []
+  if (hours > 0) parts.push(`${hours} hr${hours !== 1 ? 's' : ''}`)
+  if (mins > 0) parts.push(`${mins} min${mins !== 1 ? 's' : ''}`)
+  if (secs > 0 || parts.length === 0) parts.push(`${secs} sec${secs !== 1 ? 's' : ''}`)
+  return parts.join(' ')
+}
+
+function checkVideoHasAudio(file: File): Promise<'yes' | 'no' | 'unknown'> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file)
+    const el = document.createElement('video')
+    el.src = url
+    // Not muted — some browsers (Chrome included) skip audio decoding
+    // entirely for muted elements, which previously caused false "no
+    // audio" results. Volume 0 keeps it silent without disabling decode.
+    el.volume = 0
+    el.preload = 'metadata'
+    el.style.position = 'fixed'
+    el.style.width = '1px'
+    el.style.height = '1px'
+    el.style.opacity = '0'
+    el.style.pointerEvents = 'none'
+    el.style.top = '-9999px'
+    el.style.left = '-9999px'
+    document.body.appendChild(el)
+
+    let settled = false
+    const finish = (result: 'yes' | 'no' | 'unknown') => {
+      if (settled) return
+      settled = true
+      el.pause()
+      el.remove()
+      URL.revokeObjectURL(url)
+      resolve(result)
+    }
+
+    el.addEventListener('loadedmetadata', () => {
+      const anyEl = el as any
+
+      // Chrome/Edge: audioTracks is populated from container metadata as
+      // soon as metadata loads — no playback needed, so muting/autoplay
+      // policy can't interfere with it.
+      if (anyEl.audioTracks && typeof anyEl.audioTracks.length === 'number') {
+        finish(anyEl.audioTracks.length > 0 ? 'yes' : 'no')
+        return
+      }
+      // Firefox: mozHasAudio is also metadata-level, no playback needed.
+      if (typeof anyEl.mozHasAudio === 'boolean') {
+        finish(anyEl.mozHasAudio ? 'yes' : 'no')
+        return
+      }
+
+      // Neither API is available (e.g. Safari) — fall back to a brief,
+      // silent (volume 0, not muted) playback attempt and check decoded
+      // audio bytes. If autoplay is blocked or this is inconclusive,
+      // report 'unknown' rather than guess.
+      el.play().then(() => {
+        setTimeout(() => {
+          const decoded = typeof anyEl.webkitAudioDecodedByteCount === 'number' ? anyEl.webkitAudioDecodedByteCount : null
+          if (decoded === null) finish('unknown')
+          else finish(decoded > 0 ? 'yes' : 'unknown')
+        }, 800)
+      }).catch(() => finish('unknown'))
+    })
+    el.addEventListener('error', () => finish('unknown'))
+    setTimeout(() => finish('unknown'), 5000) // safety timeout — never hang the UI
+  })
+}
+import {
+  fetchAllMentors,
+  createMentor,
+  updateMentor as updateMentorApi,
+  deleteMentor as deleteMentorApi,
+  toggleMentorStatus as toggleMentorStatusApi,
+  uploadMentorPhoto,
+  deleteMentorPhoto,
+  fetchAllSessions,
+  createSession as createSessionApi,
+  updateSession as updateSessionApi,
+  updateSessionStatus as updateSessionStatusApi,
+  deleteSession as deleteSessionApi,
+  fetchAllGuidanceRequests,
+  updateGuidanceRequestStatus as updateGuidanceRequestStatusApi,
+  deleteGuidanceRequest as deleteGuidanceRequestApi,
+  type Mentor,
+  type MentorSession,
+  type GuidanceRequest,
+  type MentorshipServiceType,
+} from '../lib/mentorService'
 import { useVideoStore, YouTubeVideo } from '../store/videoStore'
 import {
   fetchAllResources,
@@ -56,6 +198,16 @@ import {
   updateCareerPath,
   deleteCareerPath,
 } from '../lib/careerService'
+import {
+  fetchAllSiteCourses,
+  createSiteCourse,
+  updateSiteCourse,
+  deleteSiteCourse,
+  toggleSiteCourseStatus,
+  uploadCourseVideo,
+  uploadCourseThumbnail,
+  deleteCourseFile,
+} from '../lib/courseService'
 import {
   getExams,
   createExam,
@@ -150,6 +302,87 @@ function DeleteModal({ title, onConfirm, onCancel }: { title: string; onConfirm:
   )
 }
 
+function GuidanceRequestModal({ request, onClose, onStatusChange }: { request: GuidanceRequest; onClose: () => void; onStatusChange: (status: GuidanceRequest['status']) => void }) {
+  const row = (label: string, value?: string) => (
+    <div>
+      <p className="text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wide mb-0.5">{label}</p>
+      <p className="text-sm text-brand-text dark:text-brand-dark-text">{value || '—'}</p>
+    </div>
+  )
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white dark:bg-brand-dark-card rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-xl">
+        <div className="flex items-center justify-between p-5 border-b border-brand-border dark:border-brand-dark-border sticky top-0 bg-white dark:bg-brand-dark-card">
+          <div>
+            <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">{request.fullName}</h3>
+            <p className="text-xs text-brand-muted">Submitted {new Date(request.createdAt).toLocaleString()}</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-6">
+          <div>
+            <h4 className="text-sm font-bold text-brand-text dark:text-brand-dark-text mb-3">Personal Details</h4>
+            <div className="grid grid-cols-2 gap-4">
+              {row('Mobile', request.mobile)}
+              {row('WhatsApp', request.whatsapp)}
+              {row('Email', request.email)}
+              {row('City', request.city)}
+              {row('State', request.state)}
+            </div>
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-brand-text dark:text-brand-dark-text mb-3">Academic Details</h4>
+            <div className="grid grid-cols-2 gap-4">
+              {row('Class / Year', request.classYear)}
+              {row('School / College', request.schoolCollege)}
+              {row('Board / University', request.boardUniversity)}
+              {row('Stream', request.stream)}
+              {row('Percentage / CGPA', request.percentage)}
+            </div>
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-brand-text dark:text-brand-dark-text mb-3">Guidance Needed</h4>
+            <div className="flex flex-wrap gap-2">
+              {request.guidanceTypes.map(t => (
+                <span key={t} className="badge text-xs bg-gray-100 dark:bg-white/10 text-brand-text dark:text-brand-dark-text">{t}</span>
+              ))}
+              {request.guidanceTypes.length === 0 && <p className="text-sm text-brand-muted">None specified</p>}
+            </div>
+          </div>
+          {request.additionalQuery && (
+            <div>
+              <h4 className="text-sm font-bold text-brand-text dark:text-brand-dark-text mb-2">Additional Query</h4>
+              <p className="text-sm text-brand-muted dark:text-brand-dark-muted leading-relaxed">{request.additionalQuery}</p>
+            </div>
+          )}
+          <div>
+            <h4 className="text-sm font-bold text-brand-text dark:text-brand-dark-text mb-2">Status</h4>
+            <select
+              value={request.status}
+              onChange={(e) => onStatusChange(e.target.value as GuidanceRequest['status'])}
+              className="text-sm px-3 py-2 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text focus:outline-none"
+            >
+              {['New', 'In Progress', 'Contacted', 'Completed'].map(st => <option key={st}>{st}</option>)}
+            </select>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// Grayscale-only status badge, used exclusively within the Mentorship panel
+function MentorStatusBadge({ status }: { status: string }) {
+  const filled = ['Active', 'Completed', 'Confirmed', 'Published']
+  const outline = ['Inactive', 'Cancelled']
+  const cls = filled.includes(status)
+    ? 'bg-black text-white dark:bg-white dark:text-black'
+    : outline.includes(status)
+      ? 'border border-brand-border dark:border-brand-dark-border text-brand-muted dark:text-brand-dark-muted'
+      : 'bg-gray-100 text-gray-800 dark:bg-white/10 dark:text-gray-200'
+  return <span className={`badge text-xs ${cls}`}>{status}</span>
+}
+
 function StatusBadge({ status }: { status: string }) {
   const cfg: Record<string, string> = {
     Published: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
@@ -160,6 +393,9 @@ function StatusBadge({ status }: { status: string }) {
     Completed: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
     Pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
     Confirmed: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
+    New: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    'In Progress': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    Contacted: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
     Inactive: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
     Open: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
     'Closing Soon': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
@@ -260,10 +496,44 @@ export default function AdminDashboard() {
   const [deleteId, setDeleteId] = useState<{ id: string; title: string; type: string } | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [editItem, setEditItem] = useState<any>(null)
+  const [viewGuidanceRequest, setViewGuidanceRequest] = useState<GuidanceRequest | null>(null)
 
   // Stores
   const content = useContentStore()
-  const mentors = useMentorStore()
+
+  // ─── Supabase Mentorship State ─────────────────────────────────────────────
+  const [dbMentors, setDbMentors] = useState<Mentor[]>([])
+  const [dbSessions, setDbSessions] = useState<MentorSession[]>([])
+  const [dbGuidanceRequests, setDbGuidanceRequests] = useState<GuidanceRequest[]>([])
+  const [mentorshipLoading, setMentorshipLoading] = useState(false)
+  const [mentorSaving, setMentorSaving] = useState(false)
+  // Mentor photo upload state
+  const [mentorPhotoFile, setMentorPhotoFile] = useState<File | null>(null)
+  const [mentorPhotoUploadStatus, setMentorPhotoUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle')
+  const [mentorExistingPhotoUrl, setMentorExistingPhotoUrl] = useState('')
+
+  // ─── Supabase Courses State ─────────────────────────────────────────────────
+  const [dbCourses, setDbCourses] = useState<Course[]>([])
+  const [coursesLoading, setCoursesLoading] = useState(false)
+  const [courseSaving, setCourseSaving] = useState(false)
+  // Course video upload state
+  const [courseVideoFile, setCourseVideoFile] = useState<File | null>(null)
+  const [courseVideoUploadStatus, setCourseVideoUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle')
+  const [courseVideoUploadProgress, setCourseVideoUploadProgress] = useState(0)
+  const [courseExistingVideoUrl, setCourseExistingVideoUrl] = useState('')
+  const [courseVideoAudioCheck, setCourseVideoAudioCheck] = useState<'checking' | 'has-audio' | 'no-audio' | null>(null)
+  const [courseVideoDurationSeconds, setCourseVideoDurationSeconds] = useState<number | null>(null)
+  // Course thumbnail upload state
+  const [courseThumbFile, setCourseThumbFile] = useState<File | null>(null)
+  const [courseThumbUploadStatus, setCourseThumbUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle')
+  const [courseExistingThumbUrl, setCourseExistingThumbUrl] = useState('')
+  // Course chapters / YouTube-style timestamps state
+  const [courseTimestamps, setCourseTimestamps] = useState<VideoTimestamp[]>([])
+  const [timestampsLoading, setTimestampsLoading] = useState(false)
+  const [newTimestampTime, setNewTimestampTime] = useState('')
+  const [newTimestampLabel, setNewTimestampLabel] = useState('')
+  const [timestampSaving, setTimestampSaving] = useState(false)
+  const [deletingTimestampId, setDeletingTimestampId] = useState<string | null>(null)
 
   // ─── Supabase Resources State ──────────────────────────────────────────────
   const [dbResources, setDbResources] = useState<Resource[]>([])
@@ -368,6 +638,48 @@ export default function AdminDashboard() {
     }
   }, [activeTab, loadDbResources])
 
+  // ─── Load courses from Supabase ────────────────────────────────────────────
+  const loadDbCourses = useCallback(async () => {
+    setCoursesLoading(true)
+    try {
+      const data = await fetchAllSiteCourses()
+      setDbCourses(data)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load courses'
+      toast.error(msg)
+    } finally {
+      setCoursesLoading(false)
+    }
+  }, [])
+
+  // Load courses when switching to courses/overview tab
+  useEffect(() => {
+    if (activeTab === 'courses' || activeTab === 'overview') {
+      loadDbCourses()
+    }
+  }, [activeTab, loadDbCourses])
+
+  // ─── Load mentorship data from Supabase ────────────────────────────────────
+  const loadMentorship = useCallback(async () => {
+    setMentorshipLoading(true)
+    try {
+      const [m, s, g] = await Promise.all([fetchAllMentors(), fetchAllSessions(), fetchAllGuidanceRequests()])
+      setDbMentors(m)
+      setDbSessions(s)
+      setDbGuidanceRequests(g)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load mentorship data')
+    } finally {
+      setMentorshipLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'mentorship' || activeTab === 'overview') {
+      loadMentorship()
+    }
+  }, [activeTab, loadMentorship])
+
   const loadPathfinderCareers = useCallback(async () => {
     setPathfinderLoading(true)
     try {
@@ -432,6 +744,15 @@ export default function AdminDashboard() {
       setBranches([]); setSemesters([]); setSubjects([])
     }
   }, [selectedCollegeId])
+
+  // Auto-fill the course "Duration" field from the uploaded/selected video's
+  // real length, once it's detected — but never overwrite a value the admin
+  // already typed in themselves.
+  useEffect(() => {
+    if (courseVideoDurationSeconds != null && editItem?._type === 'course' && !editItem.duration) {
+      setEditItem((p: any) => (p && !p.duration ? { ...p, duration: formatDurationHuman(courseVideoDurationSeconds) } : p))
+    }
+  }, [courseVideoDurationSeconds])
 
   useEffect(() => {
     if (selectedCourseId) {
@@ -742,6 +1063,16 @@ export default function AdminDashboard() {
   const users = JSON.parse(localStorage.getItem('skills021_users') || '[]')
 
   const openAdd = (type?: string) => {
+    if (type === 'course') {
+      setCourseVideoFile(null); setCourseVideoUploadStatus('idle'); setCourseVideoUploadProgress(0); setCourseExistingVideoUrl('')
+      setCourseThumbFile(null); setCourseThumbUploadStatus('idle'); setCourseExistingThumbUrl('')
+      setCourseTimestamps([]); setNewTimestampTime(''); setNewTimestampLabel('')
+      setCourseVideoAudioCheck(null)
+      setCourseVideoDurationSeconds(null)
+    }
+    if (type === 'mentor') {
+      setMentorPhotoFile(null); setMentorPhotoUploadStatus('idle'); setMentorExistingPhotoUrl('')
+    }
     if (type === 'resource') {
       // Reset resource form
       setResTitle(''); setResDescription(''); setResAuthor('Skills021 Team')
@@ -764,6 +1095,32 @@ export default function AdminDashboard() {
     setShowModal(true)
   }
   const openEdit = async (item: any) => {
+    if (item._type === 'course') {
+      setCourseVideoFile(null); setCourseVideoUploadStatus('idle'); setCourseVideoUploadProgress(0); setCourseExistingVideoUrl(item.videoUrl || '')
+      setCourseThumbFile(null); setCourseThumbUploadStatus('idle'); setCourseExistingThumbUrl(item.thumbnail || '')
+      setNewTimestampTime(''); setNewTimestampLabel('')
+      setCourseVideoAudioCheck(null)
+      setCourseVideoDurationSeconds(null)
+      if (item.videoUrl) {
+        getVideoDurationSeconds(item.videoUrl).then(setCourseVideoDurationSeconds)
+      }
+      if (item.id) {
+        setTimestampsLoading(true)
+        try {
+          const ts = await getTimestamps(String(item.id))
+          setCourseTimestamps(ts)
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : 'Failed to load chapters')
+        } finally {
+          setTimestampsLoading(false)
+        }
+      } else {
+        setCourseTimestamps([])
+      }
+    }
+    if (item._type === 'mentor') {
+      setMentorPhotoFile(null); setMentorPhotoUploadStatus('idle'); setMentorExistingPhotoUrl(item.photo || '')
+    }
     if (item._type === 'resource') {
       // Pre-fill resource form fields for editing
       setResTitle(item.title || ''); setResDescription(item.description || '')
@@ -818,21 +1175,49 @@ export default function AdminDashboard() {
   }
   const closeModal = () => { setShowModal(false); setEditItem(null); setPathfinderErrors({}) }
 
+  // Adds a chapter/timestamp for the course currently being edited, with
+  // validation against the video's actual detected duration so admins can't
+  // accidentally add a chapter past the end of the video.
+  const handleAddChapter = async () => {
+    if (!editItem?.id || !newTimestampTime || !newTimestampLabel.trim()) return
+    const seconds = parseTimeToSeconds(newTimestampTime)
+    if (!Number.isFinite(seconds) || seconds < 0) {
+      toast.error('Enter a valid time, e.g. 1:30')
+      return
+    }
+    if (courseVideoDurationSeconds && seconds > Math.ceil(courseVideoDurationSeconds)) {
+      toast.error(`That's past the end of the video (${formatSeconds(courseVideoDurationSeconds)} long)`)
+      return
+    }
+    setTimestampSaving(true)
+    try {
+      const created = await addTimestamp(String(editItem.id), seconds, newTimestampLabel.trim(), courseTimestamps.length)
+      setCourseTimestamps(prev => [...prev, created].sort((a, b) => a.timeSeconds - b.timeSeconds))
+      setNewTimestampTime(''); setNewTimestampLabel('')
+      toast.success('Chapter added')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to add chapter')
+    } finally {
+      setTimestampSaving(false)
+    }
+  }
+
   // ─── Overview ───────────────────────────────────────────────────────────────
   const renderOverview = () => {
     const statsCards = [
-      { label: 'Total Courses', val: content.courses.length, icon: BookOpen, color: 'text-primary-500', bg: 'bg-primary-50 dark:bg-primary-900/20' },
+      { label: 'Total Courses', val: dbCourses.length, icon: BookOpen, color: 'text-primary-500', bg: 'bg-primary-50 dark:bg-primary-900/20' },
       { label: 'Resources', val: dbResources.length, icon: FileText, color: 'text-teal-500', bg: 'bg-teal-50 dark:bg-teal-900/20' },
       { label: 'Quizzes', val: content.quizzes.length, icon: HelpCircle, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-900/20' },
       { label: 'Roadmaps', val: content.roadmaps.length, icon: Map, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
-      { label: 'Active Mentors', val: mentors.mentors.filter(m => m.status === 'Active').length, icon: Users, color: 'text-indigo-500', bg: 'bg-indigo-50 dark:bg-indigo-900/20' },
+      { label: 'Active Mentors', val: dbMentors.filter(m => m.status === 'Active').length, icon: Users, color: 'text-indigo-500', bg: 'bg-indigo-50 dark:bg-indigo-900/20' },
       { label: 'Total Users', val: users.length, icon: Users, color: 'text-rose-500', bg: 'bg-rose-50 dark:bg-rose-900/20' },
+      { label: 'New Guidance Requests', val: dbGuidanceRequests.filter(r => r.status === 'New').length, icon: Users, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
     ]
 
     const totalDownloads = dbResources.reduce((a, r) => a + (r.downloads ?? 0), 0)
-    const totalEnrolled = content.courses.reduce((a, c) => a + (c.enrolled ?? 0), 0)
+    const totalEnrolled = dbCourses.reduce((a, c) => a + (c.enrolled ?? 0), 0)
     const totalQuizParticipants = content.quizzes.reduce((a, q) => a + (q.participants ?? 0), 0)
-    const totalSessions = mentors.sessions.length
+    const totalSessions = dbSessions.length
 
     return (
       <div className="space-y-6">
@@ -905,7 +1290,7 @@ export default function AdminDashboard() {
             </h3>
           </div>
           <div className="divide-y divide-brand-border dark:divide-brand-dark-border">
-            {content.courses.slice(0, 5).map(c => (
+            {dbCourses.slice(0, 5).map(c => (
               <div key={c.id} className="px-4 py-3 flex items-center justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-brand-text dark:text-brand-dark-text truncate">{c.title}</p>
@@ -922,16 +1307,22 @@ export default function AdminDashboard() {
 
   // ─── Courses ────────────────────────────────────────────────────────────────
   const renderCourses = () => {
-    const filtered = content.courses.filter(c => c.title.toLowerCase().includes(search.toLowerCase()))
+    const filtered = dbCourses.filter(c => c.title.toLowerCase().includes(search.toLowerCase()))
     return (
       <div>
-        <SectionHeader title="Manage Courses" count={content.courses.length} onAdd={() => openAdd('course')} addLabel="Add Course" />
+        <SectionHeader title="Manage Courses" count={dbCourses.length} onAdd={() => openAdd('course')} addLabel="Add Course" />
         <SearchBar value={search} onChange={setSearch} placeholder="Search courses..." />
+        {coursesLoading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <Loader2 size={32} className="animate-spin text-brand-muted dark:text-brand-dark-muted mb-3" />
+            <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Loading courses...</p>
+          </div>
+        ) : (
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-white/5">
-                <tr>{['Title', 'Group', 'Subcategory', 'Price', 'Enrolled', 'Status', 'Actions'].map(h => (
+                <tr>{['Title', 'Group', 'Subcategory', 'Price', 'Video', 'Enrolled', 'Status', 'Actions'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}</tr>
               </thead>
@@ -942,21 +1333,42 @@ export default function AdminDashboard() {
                     <td className="px-4 py-3 text-xs text-brand-muted dark:text-brand-dark-muted whitespace-nowrap">{c.group}</td>
                     <td className="px-4 py-3"><span className="badge bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 text-xs">{c.subcategory}</span></td>
                     <td className="px-4 py-3 font-medium">{c.price === 'FREE' ? <span className="text-green-500">FREE</span> : `₹${c.price}`}</td>
+                    <td className="px-4 py-3">
+                      {c.videoUrl ? (
+                        <span className="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-600 font-semibold px-2 py-0.5 rounded-md">Uploaded</span>
+                      ) : (
+                        <span className="text-[10px] bg-gray-100 dark:bg-white/10 text-brand-muted font-semibold px-2 py-0.5 rounded-md">None</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted">{(c.enrolled ?? 0).toLocaleString()}</td>
                     <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
-                        <button onClick={() => content.toggleCourseStatus(c.id)} title={c.status === 'Published' ? 'Unpublish' : 'Publish'} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted dark:text-brand-dark-muted transition-colors">{c.status === 'Published' ? <EyeOff size={14} /> : <Eye size={14} />}</button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const updated = await toggleSiteCourseStatus(c.id, c.status)
+                              setDbCourses(prev => prev.map(x => x.id === c.id ? updated : x))
+                              toast.success(`Course ${updated.status === 'Published' ? 'published' : 'unpublished'}`)
+                            } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to toggle status') }
+                          }}
+                          title={c.status === 'Published' ? 'Unpublish' : 'Publish'}
+                          className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted dark:text-brand-dark-muted transition-colors"
+                        >{c.status === 'Published' ? <EyeOff size={14} /> : <Eye size={14} />}</button>
                         <button onClick={() => openEdit({ ...c, _type: 'course' })} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500"><Edit2 size={14} /></button>
                         <button onClick={() => setDeleteId({ id: c.id, title: c.title, type: 'course' })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 size={14} /></button>
                       </div>
                     </td>
                   </tr>
                 ))}
+                {filtered.length === 0 && !coursesLoading && (
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-brand-muted text-sm">No courses found.</td></tr>
+                )}
               </tbody>
             </table>
           </div>
         </div>
+        )}
       </div>
     )
   }
@@ -1107,7 +1519,78 @@ export default function AdminDashboard() {
   // ─── Mentorship ─────────────────────────────────────────────────────────────
   const renderMentorship = () => (
     <div className="space-y-6">
-      <SectionHeader title="Manage Mentors" count={mentors.mentors.length} onAdd={() => openAdd('mentor')} addLabel="Add Mentor" />
+      {mentorshipLoading && (
+        <div className="flex items-center gap-2 text-sm text-brand-muted dark:text-brand-dark-muted">
+          <Loader2 size={16} className="animate-spin" /> Loading mentorship data...
+        </div>
+      )}
+      {/* Guidance Requests — submitted via the public Mentorship form */}
+      <div>
+        <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text mb-4">
+          Guidance Requests ({dbGuidanceRequests.length})
+        </h3>
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-white/5">
+                <tr>{['Student', 'Contact', 'Class / Institution', 'Guidance Needed', 'Submitted', 'Status', 'Actions'].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
+                ))}</tr>
+              </thead>
+              <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
+                {dbGuidanceRequests.map(r => (
+                  <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-brand-text dark:text-brand-dark-text">{r.fullName}</p>
+                      <p className="text-xs text-brand-muted">{r.city}{r.city && r.state ? ', ' : ''}{r.state}</p>
+                    </td>
+                    <td className="px-4 py-3 text-brand-muted text-xs">
+                      <p>{r.mobile}</p>
+                      <p>{r.email}</p>
+                    </td>
+                    <td className="px-4 py-3 text-brand-muted text-xs">
+                      <p>{r.classYear || '—'}</p>
+                      <p>{r.schoolCollege || '—'}</p>
+                    </td>
+                    <td className="px-4 py-3 text-brand-muted text-xs max-w-[220px]">
+                      {r.guidanceTypes.slice(0, 2).join(', ')}
+                      {r.guidanceTypes.length > 2 ? ` +${r.guidanceTypes.length - 2} more` : ''}
+                    </td>
+                    <td className="px-4 py-3 text-brand-muted text-xs whitespace-nowrap">
+                      {new Date(r.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-3"><MentorStatusBadge status={r.status} /></td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => setViewGuidanceRequest(r)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-text dark:text-brand-dark-text" title="View details"><Eye size={14} /></button>
+                        <select
+                          value={r.status}
+                          onChange={async (e) => {
+                            const status = e.target.value as GuidanceRequest['status']
+                            try {
+                              const updated = await updateGuidanceRequestStatusApi(r.id, status)
+                              setDbGuidanceRequests(prev => prev.map(x => x.id === r.id ? updated : x))
+                            } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to update status') }
+                          }}
+                          className="text-xs px-2 py-1 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text focus:outline-none"
+                        >
+                          {['New', 'In Progress', 'Contacted', 'Completed'].map(st => <option key={st}>{st}</option>)}
+                        </select>
+                        <button onClick={() => setDeleteId({ id: r.id, title: r.fullName, type: 'guidanceRequest' })} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted" title="Delete"><Trash2 size={14} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {dbGuidanceRequests.length === 0 && (
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-brand-muted text-sm">No guidance requests yet.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <SectionHeader title="Manage Mentors" count={dbMentors.length} onAdd={() => openAdd('mentor')} addLabel="Add Mentor" />
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -1117,7 +1600,7 @@ export default function AdminDashboard() {
               ))}</tr>
             </thead>
             <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
-              {mentors.mentors.map(m => (
+              {dbMentors.map(m => (
                 <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
                   <td className="px-4 py-3">
                     <div>
@@ -1128,58 +1611,82 @@ export default function AdminDashboard() {
                   <td className="px-4 py-3 text-brand-muted text-xs">{m.company}</td>
                   <td className="px-4 py-3 text-brand-muted text-xs">{m.services.length} services</td>
                   <td className="px-4 py-3 text-brand-muted">{(m.sessions ?? 0).toLocaleString()}</td>
-                  <td className="px-4 py-3 text-amber-500 font-semibold">⭐ {m.rating}</td>
-                  <td className="px-4 py-3"><StatusBadge status={m.status} /></td>
+                  <td className="px-4 py-3 text-brand-text dark:text-brand-dark-text font-semibold">⭐ {m.rating}</td>
+                  <td className="px-4 py-3"><MentorStatusBadge status={m.status} /></td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
-                      <button onClick={() => mentors.toggleMentorStatus(m.id)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted"><EyeOff size={14} /></button>
-                      <button onClick={() => openEdit({ ...m, _type: 'mentor' })} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500"><Edit2 size={14} /></button>
-                      <button onClick={() => setDeleteId({ id: m.id, title: m.name, type: 'mentor' })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 size={14} /></button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const updated = await toggleMentorStatusApi(m.id, m.status)
+                            setDbMentors(prev => prev.map(x => x.id === m.id ? updated : x))
+                            toast.success(`Mentor ${updated.status === 'Active' ? 'activated' : 'deactivated'}`)
+                          } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to toggle status') }
+                        }}
+                        className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted"
+                      ><EyeOff size={14} /></button>
+                      <button onClick={() => openEdit({ ...m, _type: 'mentor' })} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-text dark:text-brand-dark-text"><Edit2 size={14} /></button>
+                      <button onClick={() => setDeleteId({ id: m.id, title: m.name, type: 'mentor' })} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted"><Trash2 size={14} /></button>
                     </div>
                   </td>
                 </tr>
               ))}
+              {dbMentors.length === 0 && (
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-brand-muted text-sm">No mentors yet. Click "Add Mentor" to create one.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Sessions */}
+      {/* Sessions — fully managed by admin: create, edit, update status, delete */}
       <div>
-        <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text mb-4">Sessions ({mentors.sessions.length})</h3>
+        <SectionHeader title="Sessions" count={dbSessions.length} onAdd={() => openAdd('session')} addLabel="Add Session" />
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-white/5">
-                <tr>{['Student', 'Mentor', 'Service', 'Date', 'Fee', 'Status', 'Update'].map(h => (
+                <tr>{['Student', 'Mentor', 'Service', 'Date', 'Fee', 'Status', 'Update', 'Actions'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}</tr>
               </thead>
               <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
-                {mentors.sessions.map(s => {
-                  const mentor = mentors.mentors.find(m => m.id === s.mentorId)
+                {dbSessions.map(s => {
+                  const mentor = dbMentors.find(m => m.id === s.mentorId)
                   return (
                     <tr key={s.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
                       <td className="px-4 py-3 font-medium text-brand-text dark:text-brand-dark-text">{s.studentName}</td>
                       <td className="px-4 py-3 text-brand-muted text-xs">{mentor?.name || 'N/A'}</td>
                       <td className="px-4 py-3 text-brand-muted text-xs">{s.serviceType}</td>
                       <td className="px-4 py-3 text-brand-muted text-xs">{s.date} {s.time}</td>
-                      <td className="px-4 py-3 font-semibold text-green-600">₹{s.fee}</td>
-                      <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
+                      <td className="px-4 py-3 font-semibold text-brand-text dark:text-brand-dark-text">₹{s.fee}</td>
+                      <td className="px-4 py-3"><MentorStatusBadge status={s.status} /></td>
                       <td className="px-4 py-3">
                         <select
                           value={s.status}
-                          onChange={e => mentors.updateSessionStatus(s.id, e.target.value as any)}
+                          onChange={async e => {
+                            const status = e.target.value as MentorSession['status']
+                            try {
+                              const updated = await updateSessionStatusApi(s.id, status)
+                              setDbSessions(prev => prev.map(x => x.id === s.id ? updated : x))
+                            } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to update status') }
+                          }}
                           className="text-xs px-2 py-1 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text focus:outline-none"
                         >
                           {['Pending', 'Confirmed', 'Completed', 'Cancelled'].map(st => <option key={st}>{st}</option>)}
                         </select>
                       </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => openEdit({ ...s, _type: 'session' })} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-text dark:text-brand-dark-text" title="Edit session"><Edit2 size={14} /></button>
+                          <button onClick={() => setDeleteId({ id: s.id, title: s.studentName, type: 'session' })} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted" title="Delete session"><Trash2 size={14} /></button>
+                        </div>
+                      </td>
                     </tr>
                   )
                 })}
-                {mentors.sessions.length === 0 && (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-brand-muted text-sm">No sessions yet.</td></tr>
+                {dbSessions.length === 0 && (
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-brand-muted text-sm">No sessions yet.</td></tr>
                 )}
               </tbody>
             </table>
@@ -1404,11 +1911,13 @@ export default function AdminDashboard() {
         {[
           { label: 'Platform Name', val: 'Skill021' },
           { label: 'YouTube Channel', val: 'youtube.com/@skills021' },
-          { label: 'Total Courses', val: content.courses.length.toString() },
+          { label: 'Total Courses', val: dbCourses.length.toString() },
           { label: 'Total Resources', val: dbResources.length.toString() },
-          { label: 'Active Mentors', val: mentors.mentors.filter(m => m.status === 'Active').length.toString() },
+          { label: 'Active Mentors', val: dbMentors.filter(m => m.status === 'Active').length.toString() },
           { label: 'Total Active Users', val: users.filter((u: any) => !u.disabled).length.toString() },
-          { label: 'Total Mentor Sessions', val: mentors.sessions.length.toString() },
+          { label: 'Total Mentor Sessions', val: dbSessions.length.toString() },
+          { label: 'Guidance Requests', val: dbGuidanceRequests.length.toString() },
+          { label: 'New Requests', val: dbGuidanceRequests.filter(r => r.status === 'New').length.toString() },
         ].map(s => (
           <div key={s.label} className="flex items-center justify-between py-3 border-b border-brand-border dark:border-brand-dark-border">
             <span className="text-sm font-medium text-brand-text dark:text-brand-dark-text">{s.label}</span>
@@ -1924,12 +2433,42 @@ export default function AdminDashboard() {
         console.error('Failed to delete mapping:', err)
         toast.error(err instanceof Error ? err.message : 'Failed to delete mapping')
       }
+    } else if (type === 'course') {
+      try {
+        await deleteSiteCourse(id)
+        setDbCourses(prev => prev.filter(c => c.id !== id))
+        toast.success(`${title} deleted successfully`)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to delete course')
+      }
+    } else if (type === 'mentor') {
+      try {
+        await deleteMentorApi(id)
+        setDbMentors(prev => prev.filter(m => m.id !== id))
+        toast.success(`${title} deleted successfully`)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to delete mentor')
+      }
+    } else if (type === 'guidanceRequest') {
+      try {
+        await deleteGuidanceRequestApi(id)
+        setDbGuidanceRequests(prev => prev.filter(r => r.id !== id))
+        toast.success(`${title} deleted successfully`)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to delete guidance request')
+      }
+    } else if (type === 'session') {
+      try {
+        await deleteSessionApi(id)
+        setDbSessions(prev => prev.filter(s => s.id !== id))
+        toast.success(`${title} deleted successfully`)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to delete session')
+      }
     } else {
       switch (type) {
-        case 'course': content.deleteCourse(id); break
         case 'quiz': content.deleteQuiz(id); break
         case 'roadmap': content.deleteRoadmap(id); break
-        case 'mentor': mentors.deleteMentor(id); break
       }
       toast.success(`${title} deleted successfully`)
     }
@@ -2599,22 +3138,96 @@ export default function AdminDashboard() {
       )
     }
 
-    // Simplified quick-add modal for courses
+    // Course modal — saves to Supabase (site_courses) with real video/thumbnail file upload
     if (type === 'course') {
-      const handleSave = () => {
+      const cleanFilename = (name: string) => name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
+
+      const handleSave = async () => {
         if (!editItem.title) { toast.error('Title required'); return }
-        if (editItem.id) {
-          content.updateCourse(editItem.id, editItem)
-          toast.success('Course updated!')
-        } else {
-          content.addCourse({ ...editItem, modules: [], enrolled: 0, rating: 4.5, reviews: 0, tags: [], gradientFrom: '#6C63FF', gradientTo: '#00BFA6', status: editItem.status || 'Draft' })
-          toast.success('Course added!')
+        setCourseSaving(true)
+        try {
+          let videoUrl = courseExistingVideoUrl
+          let thumbnailUrl = courseExistingThumbUrl
+
+          // Upload video file if a new one was selected
+          if (courseVideoFile) {
+            setCourseVideoUploadStatus('uploading')
+            setCourseVideoUploadProgress(10)
+            const interval = setInterval(() => {
+              setCourseVideoUploadProgress(p => (p >= 90 ? (clearInterval(interval), 90) : p + 10))
+            }, 150)
+            try {
+              const path = `${Date.now()}_${cleanFilename(courseVideoFile.name)}`
+              videoUrl = await uploadCourseVideo(courseVideoFile, path)
+              clearInterval(interval)
+              setCourseVideoUploadProgress(100)
+              setCourseVideoUploadStatus('success')
+              if (editItem.id && courseExistingVideoUrl) {
+                await deleteCourseFile(courseExistingVideoUrl).catch(() => {})
+              }
+            } catch (err) {
+              clearInterval(interval)
+              setCourseVideoUploadStatus('error')
+              throw err
+            }
+          }
+
+          // Upload thumbnail file if a new one was selected
+          if (courseThumbFile) {
+            setCourseThumbUploadStatus('uploading')
+            try {
+              const path = `${Date.now()}_${cleanFilename(courseThumbFile.name)}`
+              thumbnailUrl = await uploadCourseThumbnail(courseThumbFile, path)
+              setCourseThumbUploadStatus('success')
+              if (editItem.id && courseExistingThumbUrl) {
+                await deleteCourseFile(courseExistingThumbUrl).catch(() => {})
+              }
+            } catch (err) {
+              setCourseThumbUploadStatus('error')
+              throw err
+            }
+          }
+
+          const isFree = editItem.price === 'FREE'
+          const payload = {
+            title: editItem.title,
+            description: editItem.description || '',
+            group: editItem.group || 'College & Tech Courses',
+            subcategory: editItem.subcategory || 'DSA',
+            instructor: editItem.instructor || 'Skills021 Team',
+            duration: editItem.duration || '',
+            lectures: editItem.lectures ?? 0,
+            level: editItem.level || 'Beginner',
+            isFree,
+            price: isFree ? 0 : (Number(editItem.price) || 0),
+            tags: editItem.tags || [],
+            thumbnailUrl: thumbnailUrl || undefined,
+            videoUrl: videoUrl || undefined,
+            status: editItem.status || 'Draft',
+          }
+
+          if (editItem.id) {
+            const updated = await updateSiteCourse(editItem.id, payload)
+            setDbCourses(prev => prev.map(c => c.id === editItem.id ? updated : c))
+            toast.success('Course updated!')
+          } else {
+            const created = await createSiteCourse(payload)
+            setDbCourses(prev => [created, ...prev])
+            toast.success('Course added!')
+          }
+          closeModal()
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : 'Failed to save course')
+        } finally {
+          setCourseSaving(false)
         }
-        closeModal()
       }
+
+      const uploadBusy = courseVideoUploadStatus === 'uploading' || courseSaving
+
       return (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
-          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-lg w-full shadow-xl my-4">
+          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-lg w-full shadow-xl my-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">{editItem.id ? 'Edit Course' : 'Add Course'}</h3>
               <button onClick={closeModal}><X size={18} className="text-brand-muted" /></button>
@@ -2647,19 +3260,474 @@ export default function AdminDashboard() {
                   </select>
                 </Field>
               </div>
-              <Field label="Video URL"><input value={editItem.videoUrl || ''} onChange={e => setEditItem((p: any) => ({ ...p, videoUrl: e.target.value }))} className={inputCls} placeholder="https://youtube.com/..." /></Field>
+
+              {/* Video Upload */}
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-brand-text dark:text-brand-dark-text">Course Video</label>
+                <div className="border-2 border-dashed border-brand-border dark:border-brand-dark-border rounded-xl p-5 text-center bg-gray-50 dark:bg-brand-dark-bg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors relative group">
+                  <input
+                    type="file"
+                    accept="video/*"
+                    onChange={e => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        setCourseVideoFile(file)
+                        setCourseVideoUploadStatus('idle')
+                        setCourseVideoUploadProgress(0)
+                        setCourseVideoAudioCheck('checking')
+                        checkVideoHasAudio(file).then(result => {
+                          setCourseVideoAudioCheck(result === 'yes' ? 'has-audio' : result === 'no' ? 'no-audio' : null)
+                        })
+                        setCourseVideoDurationSeconds(null)
+                        getVideoDurationSeconds(file).then(setCourseVideoDurationSeconds)
+                      }
+                    }}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  />
+                  <div className="flex flex-col items-center justify-center space-y-2">
+                    <Video className="text-brand-muted dark:text-brand-dark-muted group-hover:scale-105 transition-transform" size={24} />
+                    <p className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
+                      {courseVideoFile ? 'Change Selected Video' : courseExistingVideoUrl ? 'Replace Video' : 'Choose Video File'}
+                    </p>
+                    <p className="text-[10px] text-brand-muted">MP4, WebM, MOV — keeps original audio track</p>
+                  </div>
+                </div>
+                {courseVideoAudioCheck === 'checking' && (
+                  <p className="text-xs text-brand-muted dark:text-brand-dark-muted flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> Checking video for an audio track...</p>
+                )}
+                {courseVideoAudioCheck === 'no-audio' && (
+                  <p className="text-xs text-amber-600 font-semibold flex items-start gap-1.5">
+                    <span>⚠</span>
+                    <span>Couldn't detect sound in this video in a quick browser check. If you're confident the file has audio (e.g. it plays fine in VLC), it's likely fine — this check can occasionally misfire. Just verify sound plays after uploading.</span>
+                  </p>
+                )}
+                {courseVideoAudioCheck === 'has-audio' && (
+                  <p className="text-xs text-green-600 font-semibold flex items-center gap-1.5"><span>✔</span> Audio track detected — this video has sound.</p>
+                )}
+                {(courseVideoFile || courseExistingVideoUrl) && (
+                  <div className="p-3 bg-gray-50 dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border rounded-xl flex items-center justify-between text-xs text-brand-text dark:text-brand-dark-text">
+                    <div className="flex items-center gap-2 truncate max-w-[70%]">
+                      <span className="text-green-500 font-bold">✔</span>
+                      <div className="truncate text-left">
+                        <p className="font-semibold truncate">{courseVideoFile ? courseVideoFile.name : 'Current Stored Video'}</p>
+                        {courseVideoFile && <p className="text-[10px] text-brand-muted">{(courseVideoFile.size / 1024 / 1024).toFixed(2)} MB</p>}
+                      </div>
+                    </div>
+                    {courseExistingVideoUrl && !courseVideoFile && (
+                      <span className="text-[10px] bg-primary-50 dark:bg-primary-950/20 text-primary-600 font-semibold px-2 py-0.5 rounded-md">Active</span>
+                    )}
+                  </div>
+                )}
+                {courseVideoUploadStatus === 'uploading' && (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-brand-muted uppercase">
+                      <span>Uploading Video...</span><span>{courseVideoUploadProgress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-white/10 rounded-full h-1.5 overflow-hidden">
+                      <motion.div initial={{ width: 0 }} animate={{ width: `${courseVideoUploadProgress}%` }} transition={{ duration: 0.1 }} className="bg-primary-500 h-full rounded-full" />
+                    </div>
+                  </div>
+                )}
+                {courseVideoUploadStatus === 'success' && <p className="text-xs text-green-600 font-semibold flex items-center gap-1.5"><span>✔</span> Video uploaded successfully!</p>}
+                {courseVideoUploadStatus === 'error' && <p className="text-xs text-red-600 font-semibold flex items-center gap-1.5"><span>❌</span> Video upload failed. Please try again.</p>}
+              </div>
+
+              {/* Chapters / YouTube-style Timestamps */}
+              <div className="space-y-2">
+                <label className="flex items-center gap-1.5 text-sm font-semibold text-brand-text dark:text-brand-dark-text">
+                  <ListVideo size={15} /> Chapters (Video Timestamps)
+                  {courseVideoDurationSeconds != null && (
+                    <span className="ml-auto text-[10px] font-mono font-normal text-brand-muted dark:text-brand-dark-muted bg-gray-100 dark:bg-white/5 px-1.5 py-0.5 rounded">
+                      Video length: {formatSeconds(courseVideoDurationSeconds)}
+                    </span>
+                  )}
+                </label>
+                {!editItem.id ? (
+                  <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted bg-gray-50 dark:bg-white/5 rounded-lg px-3 py-2">
+                    Save the course first, then reopen it to add chapters — just like YouTube timestamps students can tap to jump around the video.
+                  </p>
+                ) : (
+                  <div className="border border-brand-border dark:border-brand-dark-border rounded-xl p-3 space-y-3 bg-gray-50 dark:bg-brand-dark-bg">
+                    {timestampsLoading ? (
+                      <div className="flex items-center justify-center py-3"><Loader2 size={16} className="animate-spin text-brand-muted" /></div>
+                    ) : courseTimestamps.length === 0 ? (
+                      <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted">No chapters yet. Add the first one below.</p>
+                    ) : (
+                      <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                        {courseTimestamps.map(t => (
+                          <div key={t.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border text-xs">
+                            <span className="font-mono font-semibold text-primary-500 flex-shrink-0">{formatSeconds(t.timeSeconds)}</span>
+                            <span className="flex-1 truncate text-brand-text dark:text-brand-dark-text">{t.label}</span>
+                            <button
+                              type="button"
+                              disabled={deletingTimestampId === t.id}
+                              onClick={async () => {
+                                setDeletingTimestampId(t.id)
+                                try {
+                                  await deleteTimestampApi(t.id)
+                                  setCourseTimestamps(prev => prev.filter(x => x.id !== t.id))
+                                  toast.success('Chapter removed')
+                                } catch (err) {
+                                  toast.error(err instanceof Error ? err.message : 'Failed to remove chapter')
+                                } finally {
+                                  setDeletingTimestampId(null)
+                                }
+                              }}
+                              className="p-1 text-red-400 hover:text-red-600 flex-shrink-0 disabled:opacity-50"
+                            >
+                              {deletingTimestampId === t.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <div className="relative w-24 flex-shrink-0">
+                        <Clock size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-brand-muted" />
+                        <input
+                          value={newTimestampTime}
+                          onChange={e => setNewTimestampTime(e.target.value)}
+                          placeholder={courseVideoDurationSeconds != null && courseVideoDurationSeconds >= 3600 ? 'hh:mm:ss' : 'mm:ss'}
+                          className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card text-xs text-brand-text dark:text-brand-dark-text"
+                        />
+                      </div>
+                      <input
+                        value={newTimestampLabel}
+                        onChange={e => setNewTimestampLabel(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && !timestampSaving && handleAddChapter()}
+                        placeholder="Chapter label, e.g. Introduction"
+                        className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card text-xs text-brand-text dark:text-brand-dark-text"
+                      />
+                      <button
+                        type="button"
+                        disabled={timestampSaving || !newTimestampTime || !newTimestampLabel.trim()}
+                        onClick={handleAddChapter}
+                        className="flex-shrink-0 p-1.5 rounded-lg bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-50"
+                      >
+                        {timestampSaving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-brand-muted dark:text-brand-dark-muted">
+                      {courseVideoDurationSeconds != null
+                        ? (courseVideoDurationSeconds >= 3600
+                          ? `Enter time as hh:mm:ss — this video is ${formatSeconds(courseVideoDurationSeconds)} long.`
+                          : `Enter time as mm:ss — this video is ${formatSeconds(courseVideoDurationSeconds)} long.`)
+                        : 'Enter time as mm:ss (e.g. 1:30) or hh:mm:ss for longer videos.'}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Thumbnail Upload */}
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-brand-text dark:text-brand-dark-text">Course Thumbnail</label>
+                <div className="border-2 border-dashed border-brand-border dark:border-brand-dark-border rounded-xl p-4 text-center bg-gray-50 dark:bg-brand-dark-bg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors relative group">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={e => {
+                      const file = e.target.files?.[0]
+                      if (file) { setCourseThumbFile(file); setCourseThumbUploadStatus('idle') }
+                    }}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  />
+                  <p className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
+                    {courseThumbFile ? courseThumbFile.name : courseExistingThumbUrl ? 'Replace Thumbnail Image' : 'Choose Thumbnail Image'}
+                  </p>
+                </div>
+                {courseThumbUploadStatus === 'success' && <p className="text-xs text-green-600 font-semibold">✔ Thumbnail uploaded successfully!</p>}
+                {courseThumbUploadStatus === 'error' && <p className="text-xs text-red-600 font-semibold">❌ Thumbnail upload failed.</p>}
+              </div>
+
               <Field label="Description"><textarea value={editItem.description || ''} onChange={e => setEditItem((p: any) => ({ ...p, description: e.target.value }))} rows={3} className={inputCls + ' resize-none'} placeholder="Course description" /></Field>
             </div>
             <div className="flex gap-3 mt-5">
-              <button onClick={closeModal} className="flex-1 py-3 border border-brand-border dark:border-brand-dark-border rounded-xl text-sm font-semibold text-brand-text dark:text-brand-dark-text">Cancel</button>
-              <button onClick={handleSave} className="flex-1 py-3 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600">{editItem.id ? 'Update' : 'Add'} Course</button>
+              <button onClick={closeModal} disabled={uploadBusy} className="flex-1 py-3 border border-brand-border dark:border-brand-dark-border rounded-xl text-sm font-semibold text-brand-text dark:text-brand-dark-text disabled:opacity-60">Cancel</button>
+              <button onClick={handleSave} disabled={uploadBusy} className="flex-1 py-3 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600 disabled:opacity-60 flex items-center justify-center gap-2">
+                {uploadBusy && <Loader2 size={14} className="animate-spin" />}
+                {editItem.id ? 'Update' : 'Add'} Course
+              </button>
             </div>
           </motion.div>
         </div>
       )
     }
 
-    // Generic modal for other types (quiz, roadmap, mentor)
+    // Dedicated modal for mentor Sessions — admin can fully create/edit any session
+    if (type === 'session') {
+      const handleSessionSave = async () => {
+        if (!editItem.studentName || !editItem.mentorId || !editItem.date) {
+          toast.error('Student name, mentor and date are required')
+          return
+        }
+        const payload = {
+          studentName: editItem.studentName,
+          studentEmail: editItem.studentEmail || '',
+          mentorId: editItem.mentorId,
+          serviceType: editItem.serviceType || 'Career Guidance',
+          date: editItem.date,
+          time: editItem.time || '',
+          duration: editItem.duration || '',
+          fee: Number(editItem.fee) || 0,
+          status: editItem.status || 'Pending',
+          notes: editItem.notes || '',
+        }
+        setMentorSaving(true)
+        try {
+          if (editItem.id) {
+            const updated = await updateSessionApi(editItem.id, payload)
+            setDbSessions(prev => prev.map(s => s.id === editItem.id ? updated : s))
+            toast.success('Session updated!')
+          } else {
+            const created = await createSessionApi(payload)
+            setDbSessions(prev => [created, ...prev])
+            toast.success('Session added!')
+          }
+          closeModal()
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : 'Failed to save session')
+        } finally {
+          setMentorSaving(false)
+        }
+      }
+      return (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
+          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-lg w-full shadow-xl my-4">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">{editItem.id ? 'Edit' : 'Add'} Session</h3>
+              <button onClick={closeModal}><X size={18} className="text-brand-muted" /></button>
+            </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Student Name *">
+                  <input value={editItem.studentName || ''} onChange={e => setEditItem((p: any) => ({ ...p, studentName: e.target.value }))} className={inputCls} placeholder="Student name" />
+                </Field>
+                <Field label="Student Email">
+                  <input value={editItem.studentEmail || ''} onChange={e => setEditItem((p: any) => ({ ...p, studentEmail: e.target.value }))} className={inputCls} placeholder="student@email.com" />
+                </Field>
+              </div>
+              <Field label="Mentor *">
+                <select value={editItem.mentorId || ''} onChange={e => setEditItem((p: any) => ({ ...p, mentorId: e.target.value }))} className={inputCls}>
+                  <option value="">Select mentor</option>
+                  {dbMentors.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Service Type">
+                <select value={editItem.serviceType || 'Career Guidance'} onChange={e => setEditItem((p: any) => ({ ...p, serviceType: e.target.value }))} className={inputCls}>
+                  {['One-to-One Mentorship', 'Career Guidance', 'Resume Review', 'LinkedIn Profile Review', 'Mock Interview', 'Placement Preparation', 'Study Roadmap'].map(st => <option key={st}>{st}</option>)}
+                </select>
+              </Field>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Date *">
+                  <input type="date" value={editItem.date || ''} onChange={e => setEditItem((p: any) => ({ ...p, date: e.target.value }))} className={inputCls} />
+                </Field>
+                <Field label="Time">
+                  <input type="time" value={editItem.time || ''} onChange={e => setEditItem((p: any) => ({ ...p, time: e.target.value }))} className={inputCls} />
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Duration">
+                  <input value={editItem.duration || ''} onChange={e => setEditItem((p: any) => ({ ...p, duration: e.target.value }))} className={inputCls} placeholder="e.g. 30 mins" />
+                </Field>
+                <Field label="Fee (₹)">
+                  <input type="number" value={editItem.fee ?? ''} onChange={e => setEditItem((p: any) => ({ ...p, fee: e.target.value }))} className={inputCls} placeholder="0" />
+                </Field>
+              </div>
+              <Field label="Status">
+                <select value={editItem.status || 'Pending'} onChange={e => setEditItem((p: any) => ({ ...p, status: e.target.value }))} className={inputCls}>
+                  {['Pending', 'Confirmed', 'Completed', 'Cancelled'].map(st => <option key={st}>{st}</option>)}
+                </select>
+              </Field>
+              <Field label="Notes">
+                <textarea value={editItem.notes || ''} onChange={e => setEditItem((p: any) => ({ ...p, notes: e.target.value }))} rows={3} className={inputCls + ' resize-none'} placeholder="Session notes..." />
+              </Field>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={closeModal} disabled={mentorSaving} className="flex-1 py-3 border border-brand-border dark:border-brand-dark-border rounded-xl text-sm font-semibold text-brand-text dark:text-brand-dark-text disabled:opacity-60">Cancel</button>
+              <button onClick={handleSessionSave} disabled={mentorSaving} className="flex-1 py-3 bg-black dark:bg-white text-white dark:text-black rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2">
+                {mentorSaving && <Loader2 size={14} className="animate-spin" />}
+                {editItem.id ? 'Update' : 'Add'} Session
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )
+    }
+
+    // Dedicated Mentor modal — full profile, saved to Supabase
+    if (type === 'mentor') {
+      const ALL_SERVICES: MentorshipServiceType[] = ['One-to-One Mentorship', 'Career Guidance', 'Resume Review', 'LinkedIn Profile Review', 'Mock Interview', 'Placement Preparation', 'Study Roadmap']
+      const selectedServices: MentorshipServiceType[] = editItem.services || []
+      const fees: Record<string, number> = editItem.fees || {}
+
+      const toggleService = (svc: MentorshipServiceType) => {
+        setEditItem((p: any) => {
+          const cur: MentorshipServiceType[] = p.services || []
+          const next = cur.includes(svc) ? cur.filter((s: string) => s !== svc) : [...cur, svc]
+          return { ...p, services: next }
+        })
+      }
+
+      const handleMentorSave = async () => {
+        if (!editItem.name) { toast.error('Mentor name is required'); return }
+        setMentorSaving(true)
+        try {
+          let photoUrl = mentorExistingPhotoUrl
+          if (mentorPhotoFile) {
+            setMentorPhotoUploadStatus('uploading')
+            try {
+              const path = `${Date.now()}_${mentorPhotoFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`
+              photoUrl = await uploadMentorPhoto(mentorPhotoFile, path)
+              setMentorPhotoUploadStatus('success')
+              if (editItem.id && mentorExistingPhotoUrl) {
+                await deleteMentorPhoto(mentorExistingPhotoUrl).catch(() => {})
+              }
+            } catch (err) {
+              setMentorPhotoUploadStatus('error')
+              throw err
+            }
+          }
+
+          const expertiseArr = typeof editItem.expertiseText === 'string'
+            ? editItem.expertiseText.split(',').map((s: string) => s.trim()).filter(Boolean)
+            : (editItem.expertise || [])
+
+          const payload = {
+            name: editItem.name,
+            designation: editItem.designation || '',
+            company: editItem.company || '',
+            expertise: expertiseArr,
+            experience: editItem.experience || '',
+            bio: editItem.bio || '',
+            services: selectedServices,
+            fees,
+            linkedIn: editItem.linkedIn || '',
+            photo: photoUrl || undefined,
+            status: editItem.status || 'Active',
+          }
+
+          if (editItem.id) {
+            const updated = await updateMentorApi(editItem.id, payload)
+            setDbMentors(prev => prev.map(m => m.id === editItem.id ? updated : m))
+            toast.success('Mentor updated!')
+          } else {
+            const created = await createMentor(payload)
+            setDbMentors(prev => [created, ...prev])
+            toast.success('Mentor added!')
+          }
+          closeModal()
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : 'Failed to save mentor')
+        } finally {
+          setMentorSaving(false)
+        }
+      }
+
+      const mentorBusy = mentorSaving || mentorPhotoUploadStatus === 'uploading'
+
+      return (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
+          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-lg w-full shadow-xl my-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">{editItem.id ? 'Edit Mentor' : 'Add Mentor'}</h3>
+              <button onClick={closeModal}><X size={18} className="text-brand-muted" /></button>
+            </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Name *"><input value={editItem.name || ''} onChange={e => setEditItem((p: any) => ({ ...p, name: e.target.value }))} className={inputCls} placeholder="Mentor name" /></Field>
+                <Field label="Designation"><input value={editItem.designation || ''} onChange={e => setEditItem((p: any) => ({ ...p, designation: e.target.value }))} className={inputCls} placeholder="Senior Engineer" /></Field>
+                <Field label="Company"><input value={editItem.company || ''} onChange={e => setEditItem((p: any) => ({ ...p, company: e.target.value }))} className={inputCls} placeholder="Google" /></Field>
+                <Field label="Experience"><input value={editItem.experience || ''} onChange={e => setEditItem((p: any) => ({ ...p, experience: e.target.value }))} className={inputCls} placeholder="8 years" /></Field>
+              </div>
+              <Field label="Expertise (comma separated)">
+                <input
+                  value={editItem.expertiseText ?? (editItem.expertise || []).join(', ')}
+                  onChange={e => setEditItem((p: any) => ({ ...p, expertiseText: e.target.value }))}
+                  className={inputCls}
+                  placeholder="DSA, System Design, Interview Prep"
+                />
+              </Field>
+              <Field label="Bio">
+                <textarea value={editItem.bio || ''} onChange={e => setEditItem((p: any) => ({ ...p, bio: e.target.value }))} rows={3} className={inputCls + ' resize-none'} placeholder="Short bio..." />
+              </Field>
+
+              <div>
+                <label className="block text-sm font-semibold text-brand-text dark:text-brand-dark-text mb-2">Services Offered</label>
+                <div className="flex flex-wrap gap-2">
+                  {ALL_SERVICES.map(svc => (
+                    <button
+                      key={svc}
+                      type="button"
+                      onClick={() => toggleService(svc)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${selectedServices.includes(svc) ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black border-transparent' : 'border-brand-border dark:border-brand-dark-border text-brand-muted dark:text-brand-dark-muted'}`}
+                    >
+                      {svc}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {selectedServices.length > 0 && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-brand-text dark:text-brand-dark-text">Fees per Service (₹)</label>
+                  {selectedServices.map(svc => (
+                    <div key={svc} className="flex items-center gap-3">
+                      <span className="text-xs text-brand-muted dark:text-brand-dark-muted flex-1">{svc}</span>
+                      <input
+                        type="number"
+                        value={fees[svc] ?? ''}
+                        onChange={e => setEditItem((p: any) => ({ ...p, fees: { ...(p.fees || {}), [svc]: Number(e.target.value) || 0 } }))}
+                        className={inputCls + ' w-28'}
+                        placeholder="0"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="LinkedIn URL"><input value={editItem.linkedIn || ''} onChange={e => setEditItem((p: any) => ({ ...p, linkedIn: e.target.value }))} className={inputCls} placeholder="https://linkedin.com/in/..." /></Field>
+                <Field label="Status">
+                  <select value={editItem.status || 'Active'} onChange={e => setEditItem((p: any) => ({ ...p, status: e.target.value }))} className={inputCls}>
+                    <option>Active</option><option>Inactive</option>
+                  </select>
+                </Field>
+              </div>
+
+              {/* Photo Upload */}
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-brand-text dark:text-brand-dark-text">Mentor Photo</label>
+                <div className="border-2 border-dashed border-brand-border dark:border-brand-dark-border rounded-xl p-4 text-center bg-gray-50 dark:bg-brand-dark-bg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors relative group">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={e => {
+                      const file = e.target.files?.[0]
+                      if (file) { setMentorPhotoFile(file); setMentorPhotoUploadStatus('idle') }
+                    }}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  />
+                  <p className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
+                    {mentorPhotoFile ? mentorPhotoFile.name : mentorExistingPhotoUrl ? 'Replace Photo' : 'Choose Photo'}
+                  </p>
+                </div>
+                {mentorPhotoUploadStatus === 'success' && <p className="text-xs text-green-600 font-semibold">✔ Photo uploaded successfully!</p>}
+                {mentorPhotoUploadStatus === 'error' && <p className="text-xs text-red-600 font-semibold">❌ Photo upload failed.</p>}
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={closeModal} disabled={mentorBusy} className="flex-1 py-3 border border-brand-border dark:border-brand-dark-border rounded-xl text-sm font-semibold text-brand-text dark:text-brand-dark-text disabled:opacity-60">Cancel</button>
+              <button onClick={handleMentorSave} disabled={mentorBusy} className="flex-1 py-3 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600 disabled:opacity-60 flex items-center justify-center gap-2">
+                {mentorBusy && <Loader2 size={14} className="animate-spin" />}
+                {editItem.id ? 'Update' : 'Add'} Mentor
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )
+    }
+
+    // Generic modal for other types (quiz, roadmap)
     const handleGenericSave = () => {
       const title = editItem.title || editItem.name || editItem.studentName || 'Item'
       if (!title || title === 'Item') { toast.error('Required fields missing'); return }
@@ -2672,10 +3740,6 @@ export default function AdminDashboard() {
         case 'roadmap':
           if (editItem.id) content.updateRoadmap(editItem.id, editItem)
           else content.addRoadmap({ ...editItem, steps: [], status: 'Draft' })
-          break
-        case 'mentor':
-          if (editItem.id) mentors.updateMentor(editItem.id, editItem)
-          else mentors.addMentor({ ...editItem, services: [], fees: {}, expertise: [], status: 'Active', rating: 5, reviews: 0, sessions: 0 })
           break
       }
       toast.success(editItem.id ? 'Updated successfully!' : 'Added successfully!')
@@ -2826,6 +3890,25 @@ export default function AdminDashboard() {
             title={deleteId.title}
             onConfirm={handleDelete}
             onCancel={() => setDeleteId(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Guidance Request Detail Modal */}
+      <AnimatePresence>
+        {viewGuidanceRequest && (
+          <GuidanceRequestModal
+            request={viewGuidanceRequest}
+            onClose={() => setViewGuidanceRequest(null)}
+            onStatusChange={async (status) => {
+              try {
+                const updated = await updateGuidanceRequestStatusApi(viewGuidanceRequest.id, status)
+                setDbGuidanceRequests(prev => prev.map(r => r.id === updated.id ? updated : r))
+              } catch (err) {
+                toast.error(err instanceof Error ? err.message : 'Failed to update status')
+              }
+              setViewGuidanceRequest((prev) => prev ? { ...prev, status } : prev)
+            }}
           />
         )}
       </AnimatePresence>

@@ -91,7 +91,7 @@ const NAV_ITEMS = [
   },
   {
     id: 'pathfinder',
-    label: 'Skills021 PathFinder',
+    label: 'PathFinder',
     path: '/pathfinder',
     icon: Compass,
     description: 'Discover careers, exams and future-ready roadmaps',

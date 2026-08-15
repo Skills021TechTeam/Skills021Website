@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { User, Mail, Lock, Eye, EyeOff, Zap, AlertCircle, School } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -29,6 +29,8 @@ export default function Register() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const { register } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
+  const from = (location.state as { from?: string } | null)?.from
 
   const validate = () => {
     const errs: Record<string, string> = {}
@@ -71,7 +73,7 @@ export default function Register() {
 
     if (success) {
       toast.success('Account created! Welcome to Skills021 🎉', { duration: 3000 })
-      navigate('/dashboard')
+      navigate(from || '/dashboard')
     } else {
       toast.error('An account with this email already exists.')
       setErrors({ email: 'Email already registered' })

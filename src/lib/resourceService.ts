@@ -116,6 +116,21 @@ export async function fetchPublishedResources(): Promise<Resource[]> {
   return (data ?? []).map(mapRowToResource)
 }
 
+// ─── Fetch "Notes" resources linked to a course (via matching subject/title) ─
+// Used by the Courses panel's video player to surface the actual notes
+// documents uploaded in the Resources panel for that course's subject.
+// Matches automatically against the Resources panel's Subject name — no
+// database schema change required.
+export async function fetchNotesForSubject(subjectName: string): Promise<Resource[]> {
+  const trimmed = subjectName.trim()
+  if (!trimmed) return []
+
+  const resources = await fetchPublishedResources()
+  return resources.filter(r =>
+    r.type.toLowerCase() === 'notes' && r.subject.trim().toLowerCase() === trimmed.toLowerCase()
+  )
+}
+
 // ─── Fetch All Resources (Admin) ────────────────────────────────────────────
 export async function fetchAllResources(): Promise<Resource[]> {
   const { data, error } = await supabase
@@ -244,50 +259,46 @@ export async function incrementDownloadCount(resourceId: string, currentDownload
 }
 
 // ─── Trigger File Download ──────────────────────────────────────────────────
-// Detects Supabase Storage URLs and uses the download() API for them;
-// falls back to window.open() for external URLs.
+// Fetches the file as a blob and triggers a real browser download (so it
+// saves with the resource's title instead of just opening/previewing the
+// PDF in a new tab). Works for public Supabase Storage URLs and any other
+// public file URL, since it only needs the file's public link — it does NOT
+// depend on the Supabase Storage `.download()` API, which requires its own
+// row-level-security SELECT policy on `storage.objects` that may not exist
+// for every bucket. If the fetch fails for any reason (CORS, private file,
+// network), it falls back to simply opening the file in a new tab so the
+// user can still save it manually instead of the click doing nothing.
 export async function triggerResourceDownload(fileUrl: string, fileName: string): Promise<void> {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
-
-  // Check if this is a Supabase Storage URL
-  const isSupabaseStorage =
-    fileUrl.includes('/storage/v1/object/') ||
-    (supabaseUrl && fileUrl.startsWith(supabaseUrl))
-
-  if (isSupabaseStorage) {
-    // Extract bucket and path from the URL
-    // URL format: https://<project>.supabase.co/storage/v1/object/public/<bucket>/<path>
-    const storageMatch = fileUrl.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)/)
-
-    if (storageMatch) {
-      const [, bucket, path] = storageMatch
-      console.log(`[Download] Using Supabase Storage API — bucket: ${bucket}, path: ${path}`)
-
-      const { data, error } = await supabase.storage.from(bucket).download(path)
-
-      if (error) {
-        console.error('[Download] Supabase Storage download failed:', error)
-        throw new Error(`Storage download failed: ${error.message}`)
-      }
-
-      // Create a blob URL and trigger browser download
-      const blobUrl = URL.createObjectURL(data)
-      const anchor = document.createElement('a')
-      anchor.href = blobUrl
-      anchor.download = fileName
-      document.body.appendChild(anchor)
-      anchor.click()
-      document.body.removeChild(anchor)
-      URL.revokeObjectURL(blobUrl)
-
-      console.log(`[Download] Successfully downloaded via Storage API: ${fileName}`)
-      return
+  try {
+    const response = await fetch(fileUrl, { mode: 'cors' })
+    if (!response.ok) {
+      throw new Error(`Server responded with ${response.status}`)
     }
-  }
 
-  // Fallback: open in a new tab for non-Storage URLs
-  console.log(`[Download] Opening URL in new tab: ${fileUrl}`)
-  window.open(fileUrl, '_blank', 'noopener,noreferrer')
+    const blob = await response.blob()
+    const blobUrl = URL.createObjectURL(blob)
+
+    // Preserve the file's original extension (e.g. "Chapter 1.pdf") even
+    // though the resource title usually doesn't include one.
+    const urlExt = fileUrl.split('?')[0].split('.').pop()
+    const hasExt = urlExt && fileName.toLowerCase().endsWith(`.${urlExt.toLowerCase()}`)
+    const downloadName = urlExt && !hasExt ? `${fileName}.${urlExt}` : fileName
+
+    const anchor = document.createElement('a')
+    anchor.href = blobUrl
+    anchor.download = downloadName
+    document.body.appendChild(anchor)
+    anchor.click()
+    document.body.removeChild(anchor)
+    URL.revokeObjectURL(blobUrl)
+
+    console.log(`[Download] Successfully downloaded: ${downloadName}`)
+  } catch (err) {
+    console.error('[Download] Blob download failed, falling back to opening the file directly:', err)
+    // Last resort: just navigate to the file so the browser's own
+    // download/save handling can take over.
+    window.open(fileUrl, '_blank', 'noopener,noreferrer')
+  }
 }
 
 // ─── Hierarchy Detail Fetchers ──────────────────────────────────────────────

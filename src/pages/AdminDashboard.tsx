@@ -4,7 +4,8 @@ import {
   LayoutDashboard, BookOpen, FileText, HelpCircle, Map,
   Users, Settings, Plus, Edit2, Trash2, Search,
   X, Shield, TrendingUp, Eye, Download, EyeOff,
-  CheckCircle, Zap, Video, Loader2, RotateCw, Compass, ListVideo, Clock
+  CheckCircle, Zap, Video, Loader2, RotateCw, Compass, ListVideo, Clock, Briefcase, Mail, Phone,
+  ChevronDown, Check, Radio, ExternalLink, CalendarDays
 } from 'lucide-react'
 import { useContentStore, Course, Resource, Quiz, Roadmap } from '../store/contentStore'
 import {
@@ -199,6 +200,13 @@ import {
   deleteCareerPath,
 } from '../lib/careerService'
 import {
+  fetchAllCareerApplications,
+  updateCareerApplicationStatus,
+  deleteCareerApplication,
+  CareerApplication,
+  ApplicationStatus,
+} from '../lib/careerApplicationService'
+import {
   fetchAllSiteCourses,
   createSiteCourse,
   updateSiteCourse,
@@ -231,11 +239,13 @@ import type {
   PathFinderExamType,
 } from '../lib/pathfinderTypes'
 import toast from 'react-hot-toast'
+import { getLiveWebinars, createLiveWebinar, updateLiveWebinar, deleteLiveWebinar, getWebinarRecordings, uploadWebinarVideo, createWebinarRecording, type LiveWebinar, type WebinarRecording, type WebinarProvider } from '../lib/webinarService'
 
 type AdminTab =
   | 'overview' | 'courses' | 'resources' | 'quizzes' | 'roadmaps'
-  | 'mentorship' | 'youtube-videos' | 'users' | 'settings' | 'hierarchy'
+  | 'mentorship' | 'youtube-videos' | 'webinars' | 'users' | 'settings' | 'hierarchy'
   | 'pathfinder-careers' | 'pathfinder-exams' | 'pathfinder-mappings'
+  | 'career-applications'
 
 const sidebarItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard; group?: string }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -244,8 +254,10 @@ const sidebarItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard;
   { id: 'quizzes', label: 'Quizzes', icon: HelpCircle, group: 'Content' },
   { id: 'roadmaps', label: 'Roadmaps', icon: Map, group: 'Content' },
   { id: 'youtube-videos', label: 'YouTube Videos', icon: Video, group: 'Content' },
+  { id: 'webinars', label: 'Webinars', icon: Radio, group: 'Content' },
   { id: 'mentorship', label: 'Mentorship', icon: Users, group: 'Services' },
   { id: 'hierarchy', label: 'Academic Hierarchy', icon: BookOpen, group: 'Content' },
+  { id: 'career-applications', label: 'Join Us Applications', icon: Briefcase, group: 'Services' },
   { id: 'pathfinder-careers', label: 'Career Paths', icon: Compass, group: '🧭 Skills021 PathFinder' },
   { id: 'pathfinder-exams', label: 'Exams', icon: FileText, group: '🧭 Skills021 PathFinder' },
   { id: 'pathfinder-mappings', label: 'Career Mapping', icon: Map, group: '🧭 Skills021 PathFinder' },
@@ -416,6 +428,201 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 const inputCls = "w-full px-4 py-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-sm text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500"
 
+// ─── Notes Subject Picker ───────────────────────────────────────────────────
+// A proper searchable dropdown (replaces the old native <input list=...> /
+// <datalist> combo, which looked like an unstyled browser popup and, in a
+// number of browsers, would not reliably swap the selected value once one
+// option had already been chosen). Clicking a different subject here always
+// replaces the current selection immediately.
+// ─── Resume Preview Modal ───────────────────────────────────────────────────
+// Opens a resume in-place instead of triggering a browser download. PDFs are
+// rendered directly in an <iframe> (the browser's built-in PDF viewer, which
+// never downloads on its own). Word docs (.doc/.docx) can't be rendered
+// natively by any browser, so those are rendered through Google's public
+// document-viewer embed instead — the file itself still never gets
+// downloaded, it's just displayed as an image/preview inside the iframe. An
+// explicit "Download" button is still offered for when the admin actually
+// wants the file saved locally.
+function ResumePreviewModal({ url, name, onClose }: { url: string; name: string; onClose: () => void }) {
+  const ext = url.split('?')[0].split('.').pop()?.toLowerCase() || ''
+  const isPdf = ext === 'pdf'
+  const isOfficeDoc = ext === 'doc' || ext === 'docx'
+  const viewerSrc = isPdf
+    ? url
+    : isOfficeDoc
+      ? `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`
+      : url
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+      className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4"
+    >
+      <motion.div
+        initial={{ scale: 0.96, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.96, opacity: 0 }}
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-3xl h-[85vh] bg-white dark:bg-brand-dark-card rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+      >
+        <div className="flex items-center justify-between px-5 py-3 border-b border-brand-border dark:border-brand-dark-border">
+          <p className="text-sm font-semibold text-brand-text dark:text-brand-dark-text truncate pr-4">{name}'s Resume</p>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <a
+              href={url}
+              download
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted dark:text-brand-dark-muted transition-colors"
+              title="Download"
+            >
+              <Download size={16} />
+            </a>
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted dark:text-brand-dark-muted transition-colors"
+              title="Open in new tab"
+            >
+              <ExternalLink size={16} />
+            </a>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted dark:text-brand-dark-muted transition-colors"
+              title="Close"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 bg-gray-100 dark:bg-black/20">
+          <iframe src={viewerSrc} title={`${name}'s Resume`} className="w-full h-full border-0" />
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+function NotesSubjectPicker({
+  value,
+  onChange,
+  options,
+}: {
+  value: string
+  onChange: (value: string) => void
+  options: string[]
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const onClickOutside = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [])
+
+  const filtered = options.filter(o => o.toLowerCase().includes(query.trim().toLowerCase()))
+
+  const select = (subject: string) => {
+    onChange(subject)
+    setQuery('')
+    setOpen(false)
+  }
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        type="button"
+        onClick={() => { setOpen(o => !o); setQuery('') }}
+        className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border text-sm text-left transition-all ${
+          open
+            ? 'border-primary-500 ring-2 ring-primary-500 bg-white dark:bg-brand-dark-bg'
+            : 'border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg hover:border-primary-300'
+        }`}
+      >
+        <span className={value ? 'text-brand-text dark:text-brand-dark-text font-medium' : 'text-brand-muted dark:text-brand-dark-muted'}>
+          {value || 'Auto-match by course title'}
+        </span>
+        <ChevronDown size={15} className={`flex-shrink-0 text-brand-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.15 }}
+            className="absolute z-20 mt-1.5 w-full bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border rounded-xl shadow-xl overflow-hidden"
+          >
+            <div className="p-2 border-b border-brand-border dark:border-brand-dark-border">
+              <div className="relative">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-brand-muted" />
+                <input
+                  autoFocus
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  placeholder="Search or type a new subject..."
+                  className="w-full pl-8 pr-2 py-1.5 rounded-lg text-xs border border-brand-border dark:border-brand-dark-border bg-gray-50 dark:bg-white/5 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+            </div>
+
+            <div className="max-h-48 overflow-y-auto py-1">
+              <button
+                type="button"
+                onClick={() => select('')}
+                className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors hover:bg-gray-100 dark:hover:bg-white/10 ${!value ? 'text-primary-500 font-semibold' : 'text-brand-muted dark:text-brand-dark-muted'}`}
+              >
+                <Check size={12} className={!value ? 'opacity-100' : 'opacity-0'} />
+                Auto-match by course title
+              </button>
+
+              {filtered.length === 0 && query.trim() && (
+                <button
+                  type="button"
+                  onClick={() => select(query.trim())}
+                  className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 text-brand-text dark:text-brand-dark-text hover:bg-gray-100 dark:hover:bg-white/10"
+                >
+                  <Plus size={12} />
+                  Use "{query.trim()}"
+                </button>
+              )}
+
+              {filtered.map(subject => (
+                <button
+                  key={subject}
+                  type="button"
+                  onClick={() => select(subject)}
+                  className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors hover:bg-gray-100 dark:hover:bg-white/10 ${
+                    value === subject ? 'text-primary-500 font-semibold bg-primary-50 dark:bg-primary-950/20' : 'text-brand-text dark:text-brand-dark-text'
+                  }`}
+                >
+                  <Check size={12} className={value === subject ? 'opacity-100' : 'opacity-0'} />
+                  {subject}
+                </button>
+              ))}
+
+              {filtered.length === 0 && !query.trim() && (
+                <div className="px-3 py-3 text-xs text-brand-muted dark:text-brand-dark-muted text-center">
+                  No published "Notes" resources yet
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 const pathfinderExamTypes: PathFinderExamType[] = ['Government', 'Private', 'National', 'State']
 const pathfinderExamStatuses: PathFinderExamStatus[] = ['Open', 'Closing Soon', 'Upcoming', 'Closed']
 
@@ -535,6 +742,55 @@ export default function AdminDashboard() {
   const [timestampSaving, setTimestampSaving] = useState(false)
   const [deletingTimestampId, setDeletingTimestampId] = useState<string | null>(null)
 
+  // ─── Webinars ───────────────────────────────────────────────────────────────
+  const [liveWebinars, setLiveWebinars] = useState<LiveWebinar[]>([])
+  const [webinarRecordings, setWebinarRecordings] = useState<WebinarRecording[]>([])
+  const [webinarBusy, setWebinarBusy] = useState(false)
+  const [editingWebinarId, setEditingWebinarId] = useState<string | null>(null)
+  const [showWebinarEditModal, setShowWebinarEditModal] = useState(false)
+
+  // Lock the page behind the webinar edit modal. The modal itself remains scrollable.
+  useEffect(() => {
+    if (!showWebinarEditModal) return
+    const previousOverflow = document.body.style.overflow
+    const previousPaddingRight = document.body.style.paddingRight
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth
+    document.body.style.overflow = 'hidden'
+    if (scrollbarWidth > 0) document.body.style.paddingRight = `${scrollbarWidth}px`
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.body.style.paddingRight = previousPaddingRight
+    }
+  }, [showWebinarEditModal])
+  const [liveTitle, setLiveTitle] = useState('')
+  const [liveDescription, setLiveDescription] = useState('')
+  const [liveProvider, setLiveProvider] = useState<WebinarProvider>('Google Meet')
+  const [liveJoinUrl, setLiveJoinUrl] = useState('')
+  const [liveStartsAt, setLiveStartsAt] = useState('')
+  const [liveEndsAt, setLiveEndsAt] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [startHour, setStartHour] = useState('')
+  const [startMinute, setStartMinute] = useState('')
+  const [startPeriod, setStartPeriod] = useState<'AM' | 'PM'>('AM')
+  const [hasEndTime, setHasEndTime] = useState(false)
+  const [endDate, setEndDate] = useState('')
+  const [endHour, setEndHour] = useState('')
+  const [endMinute, setEndMinute] = useState('')
+  const [endPeriod, setEndPeriod] = useState<'AM' | 'PM'>('AM')
+  const [recordingTitle, setRecordingTitle] = useState('')
+  const [recordingDescription, setRecordingDescription] = useState('')
+  const [recordingDate, setRecordingDate] = useState(new Date().toISOString().slice(0, 10))
+  const [recordingFile, setRecordingFile] = useState<File | null>(null)
+  const [recordingDuration, setRecordingDuration] = useState('')
+
+  // Video card (same upload function as the Courses panel) reused inside the webinar edit modal
+  const [webinarEditVideoFile, setWebinarEditVideoFile] = useState<File | null>(null)
+  const [webinarEditVideoUploadStatus, setWebinarEditVideoUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle')
+  const [webinarEditVideoUploadProgress, setWebinarEditVideoUploadProgress] = useState(0)
+  const [webinarEditVideoAudioCheck, setWebinarEditVideoAudioCheck] = useState<'checking' | 'has-audio' | 'no-audio' | null>(null)
+  const [webinarEditVideoDurationSeconds, setWebinarEditVideoDurationSeconds] = useState<number | null>(null)
+
   // ─── Supabase Resources State ──────────────────────────────────────────────
   const [dbResources, setDbResources] = useState<Resource[]>([])
   const [resourcesLoading, setResourcesLoading] = useState(false)
@@ -554,6 +810,20 @@ export default function AdminDashboard() {
   const [selectedSubjectId, setSelectedSubjectId] = useState<number | ''>('')
   const [selectedResourceTypeId, setSelectedResourceTypeId] = useState<number | ''>('')
   const [resourceSaving, setResourceSaving] = useState(false)
+
+  // Hierarchy dropdown state for course form — same College → Course →
+  // Branch → Semester → Subject cascade as the resource form above, kept in
+  // its own state so the two modals never interfere with each other.
+  const [cColleges, setCColleges] = useState<College[]>([])
+  const [cCourses, setCCourses] = useState<DBCourse[]>([])
+  const [cBranches, setCBranches] = useState<Branch[]>([])
+  const [cSemesters, setCSemesters] = useState<Semester[]>([])
+  const [cSubjects, setCSubjects] = useState<Subject[]>([])
+  const [cSelectedCollegeId, setCSelectedCollegeId] = useState<number | ''>('')
+  const [cSelectedCourseId, setCSelectedCourseId] = useState<number | ''>('')
+  const [cSelectedBranchId, setCSelectedBranchId] = useState<number | ''>('')
+  const [cSelectedSemesterId, setCSelectedSemesterId] = useState<number | ''>('')
+  const [cSelectedSubjectId, setCSelectedSubjectId] = useState<number | ''>('')
 
   // Resource form fields
   const [resTitle, setResTitle] = useState('')
@@ -659,6 +929,17 @@ export default function AdminDashboard() {
     }
   }, [activeTab, loadDbCourses])
 
+  const loadWebinars = useCallback(async () => {
+    setWebinarBusy(true)
+    try {
+      const [live, recordings] = await Promise.all([getLiveWebinars(), getWebinarRecordings()])
+      setLiveWebinars(live); setWebinarRecordings(recordings)
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to load webinars') }
+    finally { setWebinarBusy(false) }
+  }, [])
+
+  useEffect(() => { if (activeTab === 'webinars') loadWebinars() }, [activeTab, loadWebinars])
+
   // ─── Load mentorship data from Supabase ────────────────────────────────────
   const loadMentorship = useCallback(async () => {
     setMentorshipLoading(true)
@@ -674,11 +955,34 @@ export default function AdminDashboard() {
     }
   }, [])
 
+  // Load mentorship data when switching to mentorship/overview tab
   useEffect(() => {
     if (activeTab === 'mentorship' || activeTab === 'overview') {
       loadMentorship()
     }
   }, [activeTab, loadMentorship])
+
+  // ─── Load career applications (Join Us form submissions) from Supabase ────
+  const [careerApplications, setCareerApplications] = useState<CareerApplication[]>([])
+  const [careerApplicationsLoading, setCareerApplicationsLoading] = useState(false)
+  const [previewResume, setPreviewResume] = useState<{ url: string; name: string } | null>(null)
+
+  const loadCareerApplications = useCallback(async () => {
+    setCareerApplicationsLoading(true)
+    try {
+      setCareerApplications(await fetchAllCareerApplications())
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load applications')
+    } finally {
+      setCareerApplicationsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'career-applications' || activeTab === 'overview') {
+      loadCareerApplications()
+    }
+  }, [activeTab, loadCareerApplications])
 
   const loadPathfinderCareers = useCallback(async () => {
     setPathfinderLoading(true)
@@ -776,6 +1080,67 @@ export default function AdminDashboard() {
       setSelectedSubjectId('')
     }
   }, [selectedSemesterId])
+
+  // ─── Course form: Academic Hierarchy cascade (mirrors resource form) ───────
+  useEffect(() => {
+    if (showModal && editItem?._type === 'course') {
+      fetchColleges().then(setCColleges).catch(() => toast.error('Failed to load colleges'))
+    }
+  }, [showModal, editItem?._type])
+
+  useEffect(() => {
+    if (cSelectedCollegeId) {
+      fetchCourses(cSelectedCollegeId as number).then(setCCourses).catch(() => toast.error('Failed to load courses'))
+      if (!isPrefillingRef.current) {
+        setCSelectedCourseId(''); setCSelectedBranchId(''); setCSelectedSemesterId(''); setCSelectedSubjectId('')
+        setCBranches([]); setCSemesters([]); setCSubjects([])
+      }
+    } else {
+      setCCourses([])
+      setCSelectedCourseId(''); setCSelectedBranchId(''); setCSelectedSemesterId(''); setCSelectedSubjectId('')
+      setCBranches([]); setCSemesters([]); setCSubjects([])
+    }
+  }, [cSelectedCollegeId])
+
+  useEffect(() => {
+    if (cSelectedCourseId) {
+      fetchBranches(cSelectedCourseId as number).then(setCBranches).catch(() => toast.error('Failed to load branches'))
+      if (!isPrefillingRef.current) {
+        setCSelectedBranchId(''); setCSelectedSemesterId(''); setCSelectedSubjectId('')
+        setCSemesters([]); setCSubjects([])
+      }
+    } else {
+      setCBranches([])
+      setCSelectedBranchId(''); setCSelectedSemesterId(''); setCSelectedSubjectId('')
+      setCSemesters([]); setCSubjects([])
+    }
+  }, [cSelectedCourseId])
+
+  useEffect(() => {
+    if (cSelectedBranchId) {
+      fetchSemesters(cSelectedBranchId as number).then(setCSemesters).catch(() => toast.error('Failed to load semesters'))
+      if (!isPrefillingRef.current) {
+        setCSelectedSemesterId(''); setCSelectedSubjectId('')
+        setCSubjects([])
+      }
+    } else {
+      setCSemesters([])
+      setCSelectedSemesterId(''); setCSelectedSubjectId('')
+      setCSubjects([])
+    }
+  }, [cSelectedBranchId])
+
+  useEffect(() => {
+    if (cSelectedSemesterId) {
+      fetchSubjects(cSelectedSemesterId as number).then(setCSubjects).catch(() => toast.error('Failed to load subjects'))
+      if (!isPrefillingRef.current) {
+        setCSelectedSubjectId('')
+      }
+    } else {
+      setCSubjects([])
+      setCSelectedSubjectId('')
+    }
+  }, [cSelectedSemesterId])
 
   // ─── Hierarchy Loader Callback ─────────────────────────────────────────────
   const loadHierarchyData = useCallback(async (tabName: string) => {
@@ -1069,6 +1434,9 @@ export default function AdminDashboard() {
       setCourseTimestamps([]); setNewTimestampTime(''); setNewTimestampLabel('')
       setCourseVideoAudioCheck(null)
       setCourseVideoDurationSeconds(null)
+      setCSelectedCollegeId(''); setCSelectedCourseId(''); setCSelectedBranchId('')
+      setCSelectedSemesterId(''); setCSelectedSubjectId('')
+      setCCourses([]); setCBranches([]); setCSemesters([]); setCSubjects([])
     }
     if (type === 'mentor') {
       setMentorPhotoFile(null); setMentorPhotoUploadStatus('idle'); setMentorExistingPhotoUrl('')
@@ -1116,6 +1484,39 @@ export default function AdminDashboard() {
         }
       } else {
         setCourseTimestamps([])
+      }
+
+      // Pre-fill Academic Hierarchy dropdowns from the course's stored subjectId
+      setCSelectedCollegeId(''); setCSelectedCourseId(''); setCSelectedBranchId('')
+      setCSelectedSemesterId(''); setCSelectedSubjectId('')
+      setCCourses([]); setCBranches([]); setCSemesters([]); setCSubjects([])
+      if (item.collegeId) {
+        isPrefillingRef.current = true
+        try {
+          setCSelectedCollegeId(item.collegeId)
+          const crs = await fetchCourses(item.collegeId)
+          setCCourses(crs)
+          if (item.academicCourseId) {
+            setCSelectedCourseId(item.academicCourseId)
+            const brs = await fetchBranches(item.academicCourseId)
+            setCBranches(brs)
+            if (item.branchId) {
+              setCSelectedBranchId(item.branchId)
+              const sems = await fetchSemesters(item.branchId)
+              setCSemesters(sems)
+              if (item.semesterId) {
+                setCSelectedSemesterId(item.semesterId)
+                const subs = await fetchSubjects(item.semesterId)
+                setCSubjects(subs)
+                if (item.subjectId) setCSelectedSubjectId(item.subjectId)
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Failed to prefill course hierarchy:', err)
+        } finally {
+          isPrefillingRef.current = false
+        }
       }
     }
     if (item._type === 'mentor') {
@@ -1212,6 +1613,7 @@ export default function AdminDashboard() {
       { label: 'Active Mentors', val: dbMentors.filter(m => m.status === 'Active').length, icon: Users, color: 'text-indigo-500', bg: 'bg-indigo-50 dark:bg-indigo-900/20' },
       { label: 'Total Users', val: users.length, icon: Users, color: 'text-rose-500', bg: 'bg-rose-50 dark:bg-rose-900/20' },
       { label: 'New Guidance Requests', val: dbGuidanceRequests.filter(r => r.status === 'New').length, icon: Users, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+      { label: 'New Join Us Applications', val: careerApplications.filter(a => a.status === 'New').length, icon: Briefcase, color: 'text-orange-500', bg: 'bg-orange-50 dark:bg-orange-900/20' },
     ]
 
     const totalDownloads = dbResources.reduce((a, r) => a + (r.downloads ?? 0), 0)
@@ -1517,6 +1919,101 @@ export default function AdminDashboard() {
   }
 
   // ─── Mentorship ─────────────────────────────────────────────────────────────
+  const CAREER_STATUS_STYLES: Record<ApplicationStatus, string> = {
+    'New': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    'In Review': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    'Shortlisted': 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+    'Rejected': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    'Hired': 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  }
+
+  const renderCareerApplications = () => (
+    <div className="space-y-6">
+      <SectionHeader title="Join Us Applications" count={careerApplications.length} />
+      {careerApplicationsLoading && (
+        <div className="flex items-center gap-2 text-sm text-brand-muted dark:text-brand-dark-muted">
+          <Loader2 size={16} className="animate-spin" /> Loading applications...
+        </div>
+      )}
+      {!careerApplicationsLoading && careerApplications.length === 0 ? (
+        <div className="card p-10 text-center text-sm text-brand-muted dark:text-brand-dark-muted">
+          No one has submitted the "Join Us" form yet. Submissions will show up here automatically.
+        </div>
+      ) : (
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-white/5">
+                <tr>{['Applicant', 'Contact', 'Type / Role', 'Experience', 'Resume', 'Applied', 'Status', 'Actions'].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
+                ))}</tr>
+              </thead>
+              <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
+                {careerApplications.map(a => (
+                  <tr key={a.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-brand-text dark:text-brand-dark-text">{a.fullName}</p>
+                      <p className="text-xs text-brand-muted">{a.collegeOrOrganization || '—'}</p>
+                    </td>
+                    <td className="px-4 py-3 text-brand-muted text-xs">
+                      <p className="flex items-center gap-1"><Mail size={11} /> {a.email || '—'}</p>
+                      <p className="flex items-center gap-1 mt-0.5"><Phone size={11} /> {a.phone || '—'}</p>
+                    </td>
+                    <td className="px-4 py-3 text-brand-muted text-xs">
+                      <p className="font-medium text-brand-text dark:text-brand-dark-text">{a.applicationType}</p>
+                      <p>{a.role || '—'}{a.department ? ` · ${a.department}` : ''}</p>
+                    </td>
+                    <td className="px-4 py-3 text-brand-muted text-xs">{a.experienceLevel || '—'}</td>
+                    <td className="px-4 py-3 text-xs">
+                      {a.resumeUrl ? (
+                        <button
+                          onClick={() => setPreviewResume({ url: a.resumeUrl, name: a.fullName })}
+                          className="flex items-center gap-1 text-primary-500 hover:underline"
+                        >
+                          <ExternalLink size={11} /> View
+                        </button>
+                      ) : <span className="text-brand-muted">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-brand-muted text-xs whitespace-nowrap">
+                      {new Date(a.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${CAREER_STATUS_STYLES[a.status]}`}>{a.status}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1">
+                        <select
+                          value={a.status}
+                          onChange={async (e) => {
+                            const status = e.target.value as ApplicationStatus
+                            try {
+                              const updated = await updateCareerApplicationStatus(a.id, status)
+                              setCareerApplications(prev => prev.map(x => x.id === a.id ? updated : x))
+                            } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to update status') }
+                          }}
+                          className="text-xs px-2 py-1 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text focus:outline-none"
+                        >
+                          {(['New', 'In Review', 'Shortlisted', 'Rejected', 'Hired'] as ApplicationStatus[]).map(st => <option key={st}>{st}</option>)}
+                        </select>
+                        <button
+                          onClick={() => setDeleteId({ id: a.id, title: a.fullName, type: 'careerApplication' })}
+                          className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted"
+                          title="Delete"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
   const renderMentorship = () => (
     <div className="space-y-6">
       {mentorshipLoading && (
@@ -1603,9 +2100,18 @@ export default function AdminDashboard() {
               {dbMentors.map(m => (
                 <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
                   <td className="px-4 py-3">
-                    <div>
-                      <p className="font-medium text-brand-text dark:text-brand-dark-text">{m.name}</p>
-                      <p className="text-xs text-brand-muted">{m.designation}</p>
+                    <div className="flex items-center gap-3">
+                      {m.photo ? (
+                        <img src={m.photo} alt={m.name} className="w-10 h-10 rounded-xl object-cover ring-2 ring-violet-200 dark:ring-violet-900/50" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-white font-bold">
+                          {m.name?.[0] || 'M'}
+                        </div>
+                      )}
+                      <div>
+                        <p className="font-medium text-brand-text dark:text-brand-dark-text">{m.name}</p>
+                        <p className="text-xs text-brand-muted">{m.designation}</p>
+                      </div>
                     </div>
                   </td>
                   <td className="px-4 py-3 text-brand-muted text-xs">{m.company}</td>
@@ -2441,6 +2947,14 @@ export default function AdminDashboard() {
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Failed to delete course')
       }
+    } else if (type === 'careerApplication') {
+      try {
+        await deleteCareerApplication(id)
+        setCareerApplications(prev => prev.filter(a => a.id !== id))
+        toast.success(`${title} deleted successfully`)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to delete application')
+      }
     } else if (type === 'mentor') {
       try {
         await deleteMentorApi(id)
@@ -2959,7 +3473,7 @@ export default function AdminDashboard() {
 
       return (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
-          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-lg w-full shadow-xl my-4 max-h-[90vh] overflow-y-auto">
+          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-brand-dark-card rounded-3xl p-6 max-w-lg w-full shadow-2xl my-4 max-h-[90vh] overflow-y-auto border border-violet-200/70 dark:border-violet-900/50 relative overflow-x-hidden">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">{isEditing ? 'Edit Resource' : 'Add Resource'}</h3>
               <button onClick={closeModal}><X size={18} className="text-brand-muted" /></button>
@@ -3204,16 +3718,26 @@ export default function AdminDashboard() {
             thumbnailUrl: thumbnailUrl || undefined,
             videoUrl: videoUrl || undefined,
             status: editItem.status || 'Draft',
+            notesSubject: editItem.notesSubject || '',
+            subjectId: cSelectedSubjectId ? Number(cSelectedSubjectId) : null,
           }
 
           if (editItem.id) {
             const updated = await updateSiteCourse(editItem.id, payload)
             setDbCourses(prev => prev.map(c => c.id === editItem.id ? updated : c))
-            toast.success('Course updated!')
+            if ((updated as unknown as { _subjectLinkFailed?: boolean })._subjectLinkFailed) {
+              toast.error('Course saved, but the College/Course/Branch/Semester/Subject link did NOT save — it won\u2019t show up under the Courses page academic filter yet. Reload the Supabase schema cache, then edit and save this course again.', { duration: 8000 })
+            } else {
+              toast.success('Course updated!')
+            }
           } else {
             const created = await createSiteCourse(payload)
             setDbCourses(prev => [created, ...prev])
-            toast.success('Course added!')
+            if ((created as unknown as { _subjectLinkFailed?: boolean })._subjectLinkFailed) {
+              toast.error('Course saved, but the College/Course/Branch/Semester/Subject link did NOT save — it won\u2019t show up under the Courses page academic filter yet. Reload the Supabase schema cache, then edit and save this course again.', { duration: 8000 })
+            } else {
+              toast.success('Course added!')
+            }
           }
           closeModal()
         } catch (err) {
@@ -3227,7 +3751,7 @@ export default function AdminDashboard() {
 
       return (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
-          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-lg w-full shadow-xl my-4 max-h-[90vh] overflow-y-auto">
+          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-brand-dark-card rounded-3xl p-6 max-w-lg w-full shadow-2xl my-4 max-h-[90vh] overflow-y-auto border border-violet-200/70 dark:border-violet-900/50 relative overflow-x-hidden">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">{editItem.id ? 'Edit Course' : 'Add Course'}</h3>
               <button onClick={closeModal}><X size={18} className="text-brand-muted" /></button>
@@ -3242,7 +3766,7 @@ export default function AdminDashboard() {
                 </Field>
                 <Field label="Subcategory">
                   <select value={editItem.subcategory || 'DSA'} onChange={e => setEditItem((p: any) => ({ ...p, subcategory: e.target.value }))} className={inputCls}>
-                    {['DSA', 'Web Development', 'App Development', 'Flutter Development', 'AI & Machine Learning', 'Data Science', 'Cyber Security', 'Cloud Computing', 'Interview Preparation', 'Aptitude Preparation', 'JEE Preparation', 'NEET Preparation', 'CUET Preparation', 'Olympiads', 'NTSE', 'Class 1-5', 'Class 6-8', 'Class 9-10', 'Class 11-12'].map(s => <option key={s}>{s}</option>)}
+                    {['DSA', 'IPU Courses', 'AKTU Courses', 'Web Development', 'App Development', 'Flutter Development', 'AI & Machine Learning', 'Data Science', 'Cyber Security', 'Cloud Computing', 'Interview Preparation', 'Aptitude Preparation', 'JEE Preparation', 'NEET Preparation', 'CUET Preparation', 'Olympiads', 'NTSE', 'Class 1-5', 'Class 6-8', 'Class 9-10', 'Class 11-12'].map(s => <option key={s}>{s}</option>)}
                   </select>
                 </Field>
                 <Field label="Level">
@@ -3260,6 +3784,58 @@ export default function AdminDashboard() {
                   </select>
                 </Field>
               </div>
+
+              {/* Academic Hierarchy — same College → Course → Branch → Semester →
+                  Subject cascade used by the Resources panel. Optional: leave
+                  unset to keep filtering this course only by Group/Category. */}
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-200 dark:border-blue-800 space-y-3">
+                <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-wider">Academic Hierarchy (optional)</p>
+                <Field label="College">
+                  <select value={cSelectedCollegeId} onChange={e => setCSelectedCollegeId(e.target.value ? Number(e.target.value) : '')} className={inputCls}>
+                    <option value="">Select College...</option>
+                    {cColleges.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </Field>
+                <Field label="Course">
+                  <select value={cSelectedCourseId} onChange={e => setCSelectedCourseId(e.target.value ? Number(e.target.value) : '')} className={inputCls} disabled={!cSelectedCollegeId}>
+                    <option value="">Select Course...</option>
+                    {cCourses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </Field>
+                <Field label="Branch">
+                  <select value={cSelectedBranchId} onChange={e => setCSelectedBranchId(e.target.value ? Number(e.target.value) : '')} className={inputCls} disabled={!cSelectedCourseId}>
+                    <option value="">Select Branch...</option>
+                    {cBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </Field>
+                <Field label="Semester">
+                  <select value={cSelectedSemesterId} onChange={e => setCSelectedSemesterId(e.target.value ? Number(e.target.value) : '')} className={inputCls} disabled={!cSelectedBranchId}>
+                    <option value="">Select Semester...</option>
+                    {cSemesters.map(s => <option key={s.id} value={s.id}>Semester {s.semester_number}</option>)}
+                  </select>
+                </Field>
+                <Field label="Subject">
+                  <select value={cSelectedSubjectId} onChange={e => setCSelectedSubjectId(e.target.value ? Number(e.target.value) : '')} className={inputCls} disabled={!cSelectedSemesterId}>
+                    <option value="">Select Subject...</option>
+                    {cSubjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </Field>
+                <p className="text-[11px] text-blue-600 dark:text-blue-400">
+                  Sets this course's place in the same hierarchy students use to filter the Courses panel.
+                </p>
+              </div>
+
+              <Field label="Linked Notes Subject (optional)">
+                <NotesSubjectPicker
+                  value={editItem.notesSubject || ''}
+                  onChange={(subject) => setEditItem((p: any) => ({ ...p, notesSubject: subject }))}
+                  options={Array.from(new Set(
+                    dbResources
+                      .filter(r => r.type.toLowerCase() === 'notes' && r.status === 'Published' && r.subject)
+                      .map(r => r.subject)
+                  )).sort((a, b) => a.localeCompare(b))}
+                />
+              </Field>
 
               {/* Video Upload */}
               <div className="space-y-2">
@@ -3627,7 +4203,7 @@ export default function AdminDashboard() {
 
       return (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
-          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-lg w-full shadow-xl my-4 max-h-[90vh] overflow-y-auto">
+          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-brand-dark-card rounded-3xl p-6 max-w-lg w-full shadow-2xl my-4 max-h-[90vh] overflow-y-auto border border-violet-200/70 dark:border-violet-900/50 relative overflow-x-hidden">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">{editItem.id ? 'Edit Mentor' : 'Add Mentor'}</h3>
               <button onClick={closeModal}><X size={18} className="text-brand-muted" /></button>
@@ -3697,7 +4273,7 @@ export default function AdminDashboard() {
               {/* Photo Upload */}
               <div className="space-y-2">
                 <label className="block text-sm font-semibold text-brand-text dark:text-brand-dark-text">Mentor Photo</label>
-                <div className="border-2 border-dashed border-brand-border dark:border-brand-dark-border rounded-xl p-4 text-center bg-gray-50 dark:bg-brand-dark-bg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors relative group">
+                <div className="border-2 border-dashed border-violet-300 dark:border-violet-800 rounded-2xl p-4 bg-gradient-to-br from-violet-50 to-cyan-50 dark:from-violet-950/20 dark:to-cyan-950/20 transition-colors relative group">
                   <input
                     type="file"
                     accept="image/*"
@@ -3707,9 +4283,23 @@ export default function AdminDashboard() {
                     }}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                   />
-                  <p className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
-                    {mentorPhotoFile ? mentorPhotoFile.name : mentorExistingPhotoUrl ? 'Replace Photo' : 'Choose Photo'}
-                  </p>
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-2xl overflow-hidden bg-white dark:bg-brand-dark-bg ring-2 ring-violet-200 dark:ring-violet-800 flex items-center justify-center">
+                      {mentorPhotoFile ? (
+                        <img src={URL.createObjectURL(mentorPhotoFile)} alt="Selected mentor" className="w-full h-full object-cover" />
+                      ) : mentorExistingPhotoUrl ? (
+                        <img src={mentorExistingPhotoUrl} alt="Current mentor" className="w-full h-full object-cover" />
+                      ) : (
+                        <Users size={24} className="text-violet-500" />
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-brand-text dark:text-brand-dark-text">
+                        {mentorPhotoFile ? mentorPhotoFile.name : mentorExistingPhotoUrl ? 'Replace mentor photo' : 'Add mentor photo'}
+                      </p>
+                      <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1">Click anywhere here • JPG, PNG, WEBP</p>
+                    </div>
+                  </div>
                 </div>
                 {mentorPhotoUploadStatus === 'success' && <p className="text-xs text-green-600 font-semibold">✔ Photo uploaded successfully!</p>}
                 {mentorPhotoUploadStatus === 'error' && <p className="text-xs text-red-600 font-semibold">❌ Photo upload failed.</p>}
@@ -3786,6 +4376,184 @@ export default function AdminDashboard() {
     )
   }
 
+  // Build a local datetime from the clearly-labelled date + 12-hour time fields.
+  const buildWebinarDateTime = (date: string, hour: string, minute: string, period: 'AM' | 'PM') => {
+    if (!date || !hour || !minute) return ''
+    let h = Number(hour)
+    if (period === 'AM' && h === 12) h = 0
+    if (period === 'PM' && h !== 12) h += 12
+    return `${date}T${String(h).padStart(2, '0')}:${minute}`
+  }
+
+  const webinarTimeField = (
+    label: string,
+    date: string,
+    setDate: (v: string) => void,
+    hour: string,
+    setHour: (v: string) => void,
+    minute: string,
+    setMinute: (v: string) => void,
+    period: 'AM' | 'PM',
+    setPeriod: (v: 'AM' | 'PM') => void,
+    optional = false
+  ) => (
+    <div className="rounded-xl border border-brand-border dark:border-brand-dark-border p-3">
+      <div className="flex items-center justify-between mb-3">
+        <label className="text-sm font-semibold text-brand-text dark:text-brand-dark-text">{label}</label>
+        {optional && <span className="text-xs font-medium text-brand-muted">Optional</span>}
+      </div>
+      <div className="grid grid-cols-[1.2fr_0.8fr] gap-3">
+        <div>
+          <label className="block text-xs font-medium text-brand-muted mb-1">Date</label>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} className={inputCls} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-brand-muted mb-1">Time</label>
+          <div className="grid grid-cols-[1fr_1fr_0.9fr] gap-2">
+            <div>
+              <label className="block text-[11px] font-medium text-brand-muted mb-1">Hours</label>
+              <select value={hour} onChange={e => setHour(e.target.value)} className={inputCls}>
+                <option value="">--</option>
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(h => <option key={h} value={String(h)}>{h}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-brand-muted mb-1">Minutes</label>
+              <select value={minute} onChange={e => setMinute(e.target.value)} className={inputCls}>
+                <option value="">--</option>
+                {Array.from({ length: 60 }, (_, i) => <option key={i} value={String(i).padStart(2, '0')}>{String(i).padStart(2, '0')}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-brand-muted mb-1">AM / PM</label>
+              <select value={period} onChange={e => setPeriod(e.target.value as 'AM' | 'PM')} className={inputCls}>
+                <option>AM</option><option>PM</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
+  const loadWebinarIntoForm = (webinar: LiveWebinar) => {
+    const start = new Date(webinar.startsAt)
+    const startHour24 = start.getHours()
+    const startPeriod: 'AM' | 'PM' = startHour24 >= 12 ? 'PM' : 'AM'
+    const startHour12 = startHour24 % 12 || 12
+
+    setEditingWebinarId(webinar.id)
+    setShowWebinarEditModal(true)
+    setLiveTitle(webinar.title)
+    setLiveDescription(webinar.description || '')
+    setLiveProvider(webinar.provider)
+    setLiveJoinUrl(webinar.joinUrl)
+    setStartDate(`${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}`)
+    setStartHour(String(startHour12))
+    setStartMinute(String(start.getMinutes()).padStart(2,'0'))
+    setStartPeriod(startPeriod)
+
+    if (webinar.endsAt) {
+      const end = new Date(webinar.endsAt)
+      const endHour24 = end.getHours()
+      setHasEndTime(true)
+      setEndDate(`${end.getFullYear()}-${String(end.getMonth()+1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}`)
+      setEndHour(String(endHour24 % 12 || 12))
+      setEndMinute(String(end.getMinutes()).padStart(2,'0'))
+      setEndPeriod(endHour24 >= 12 ? 'PM' : 'AM')
+    } else {
+      setHasEndTime(false)
+      setEndDate(''); setEndHour(''); setEndMinute(''); setEndPeriod('AM')
+    }
+    setWebinarEditVideoFile(null); setWebinarEditVideoUploadStatus('idle'); setWebinarEditVideoUploadProgress(0)
+    setWebinarEditVideoAudioCheck(null); setWebinarEditVideoDurationSeconds(null)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const resetWebinarForm = () => {
+    setEditingWebinarId(null)
+    setShowWebinarEditModal(false)
+    setLiveTitle(''); setLiveDescription(''); setLiveJoinUrl('')
+    setLiveProvider('Google Meet')
+    setStartDate(''); setStartHour(''); setStartMinute(''); setStartPeriod('AM')
+    setHasEndTime(false); setEndDate(''); setEndHour(''); setEndMinute(''); setEndPeriod('AM')
+    setWebinarEditVideoFile(null); setWebinarEditVideoUploadStatus('idle'); setWebinarEditVideoUploadProgress(0)
+    setWebinarEditVideoAudioCheck(null); setWebinarEditVideoDurationSeconds(null)
+  }
+
+  // ─── Webinars ────────────────────────────────────────────────────────────────
+  const renderWebinars = () => {
+    const liveNow = liveWebinars.filter(w => new Date(w.startsAt) <= new Date() && (!w.endsAt || new Date(w.endsAt) > new Date()))
+    return (
+      <div className="space-y-8">
+        <SectionHeader title="Manage Webinars" count={webinarRecordings.length} />
+        <div className="grid lg:grid-cols-2 gap-6">
+          <div className="card p-6">
+            <div className="flex items-center gap-2 mb-5"><Radio size={18} className="text-red-500"/><h3 className="font-bold text-lg">Schedule live webinar</h3></div>
+            <div className="space-y-4">
+              <Field label="Title *"><input value={liveTitle} onChange={e=>setLiveTitle(e.target.value)} className={inputCls} placeholder="Career Q&A — Placement Strategy"/></Field>
+              <Field label="Description"><textarea value={liveDescription} onChange={e=>setLiveDescription(e.target.value)} className={inputCls+' resize-none'} rows={3}/></Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Platform"><select value={liveProvider} onChange={e=>setLiveProvider(e.target.value as WebinarProvider)} className={inputCls}><option>Google Meet</option><option>Zoom</option></select></Field>
+                <Field label="Join URL *"><input value={liveJoinUrl} onChange={e=>setLiveJoinUrl(e.target.value)} className={inputCls} placeholder="https://meet.google.com/..."/></Field>
+              </div>
+              <div className="space-y-3">
+                {webinarTimeField('Start time *', startDate, setStartDate, startHour, setStartHour, startMinute, setStartMinute, startPeriod, setStartPeriod)}
+                <div className="rounded-xl border border-brand-border dark:border-brand-dark-border px-3 py-3">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" checked={hasEndTime} onChange={e => setHasEndTime(e.target.checked)} className="h-4 w-4 rounded" />
+                    <span className="text-sm font-semibold text-brand-text dark:text-brand-dark-text">Add an end time</span>
+                    <span className="text-xs font-medium text-brand-muted">Optional</span>
+                  </label>
+                  {!hasEndTime && <p className="text-xs text-brand-muted mt-2 ml-7">Leave this off if you want to end the webinar manually.</p>}
+                </div>
+                {hasEndTime && webinarTimeField('End time', endDate, setEndDate, endHour, setEndHour, endMinute, setEndMinute, endPeriod, setEndPeriod, true)}
+              </div>
+              <div className="flex gap-3">
+                <button disabled={webinarBusy} onClick={async()=>{
+                  const startValue = buildWebinarDateTime(startDate, startHour, startMinute, startPeriod)
+                  const endValue = hasEndTime ? buildWebinarDateTime(endDate, endHour, endMinute, endPeriod) : ''
+                  if(!liveTitle||!liveJoinUrl||!startValue){toast.error('Fill all required webinar fields');return}
+                  if(hasEndTime && !endValue){toast.error('Complete the optional end time or turn it off');return}
+                  if(hasEndTime && new Date(endValue).getTime() <= new Date(startValue).getTime()){toast.error('End time must be after the start time');return}
+                  try{
+                    setWebinarBusy(true)
+                    const payload={title:liveTitle,description:liveDescription,provider:liveProvider,joinUrl:liveJoinUrl,startsAt:new Date(startValue).toISOString(),endsAt:endValue ? new Date(endValue).toISOString() : null}
+                    const created=await createLiveWebinar(payload)
+                    setLiveWebinars(prev=>[...prev,created])
+                    toast.success('Live webinar scheduled')
+                    resetWebinarForm()
+                  }catch(e){toast.error(e instanceof Error?e.message:'Failed to save webinar')}finally{setWebinarBusy(false)}
+                }} className="w-full py-3 rounded-xl bg-primary-500 text-white font-semibold">Schedule webinar</button>
+              </div>
+            </div>
+          </div>
+
+          <div className="card p-6">
+            <div className="flex items-center gap-2 mb-5"><Video size={18} className="text-violet-500"/><h3 className="font-bold text-lg">Store webinar recording</h3></div>
+            <div className="space-y-4">
+              <Field label="Recording title *"><input value={recordingTitle} onChange={e=>setRecordingTitle(e.target.value)} className={inputCls}/></Field>
+              <Field label="Description"><textarea value={recordingDescription} onChange={e=>setRecordingDescription(e.target.value)} className={inputCls+' resize-none'} rows={3}/></Field>
+              <div className="grid grid-cols-2 gap-3"><Field label="Session date"><input type="date" value={recordingDate} onChange={e=>setRecordingDate(e.target.value)} className={inputCls}/></Field><Field label="Duration"><input value={recordingDuration} onChange={e=>setRecordingDuration(e.target.value)} className={inputCls} placeholder="1 hr 12 mins"/></Field></div>
+              <Field label="Video file *"><input type="file" accept="video/*" onChange={e=>setRecordingFile(e.target.files?.[0]??null)} className={inputCls}/></Field>
+              <button disabled={webinarBusy||!recordingFile} onClick={async()=>{try{setWebinarBusy(true); const url=await uploadWebinarVideo(recordingFile!,recordingDate); const created=await createWebinarRecording({title:recordingTitle,description:recordingDescription,sessionDate:recordingDate,videoUrl:url,duration:recordingDuration}); setWebinarRecordings(prev=>[created,...prev]);setRecordingTitle('');setRecordingDescription('');setRecordingFile(null);toast.success('Webinar recording published')}catch(e){toast.error(e instanceof Error?e.message:'Failed to upload recording')}finally{setWebinarBusy(false)}}} className="w-full py-3 rounded-xl bg-violet-600 text-white font-semibold disabled:opacity-50">Upload & publish replay</button>
+            </div>
+          </div>
+        </div>
+
+        <div className="card overflow-hidden">
+          <div className="p-5 border-b border-brand-border dark:border-brand-dark-border"><h3 className="font-bold">Scheduled sessions</h3></div>
+          {liveWebinars.length===0 ? <p className="p-6 text-sm text-brand-muted">No live sessions scheduled.</p> : <div className="divide-y divide-brand-border dark:divide-brand-dark-border">{liveWebinars.map(w=>{const ongoing=new Date(w.startsAt)<=new Date()&&(!w.endsAt||new Date(w.endsAt)>new Date());return <div key={w.id} className="p-4 flex items-center justify-between gap-4"><div><div className="flex items-center gap-2"><span className="font-semibold">{w.title}</span>{ongoing&&<StatusBadge status="Ongoing"/>}</div><p className="text-xs text-brand-muted mt-1">{w.provider} · {new Date(w.startsAt).toLocaleString()}</p></div><div className="flex items-center gap-2">{new Date(w.startsAt).getTime() > Date.now() && <button onClick={()=>loadWebinarIntoForm(w)} className="p-2 text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg" title="Edit upcoming webinar"><Edit2 size={15}/></button>}<a href={w.joinUrl} target="_blank" rel="noreferrer" className="p-2 text-primary-500"><ExternalLink size={15}/></a><button onClick={async()=>{try{await deleteLiveWebinar(w.id);setLiveWebinars(prev=>prev.filter(x=>x.id!==w.id));toast.success('Webinar deleted')}catch(e){toast.error(e instanceof Error?e.message:'Delete failed')}}} className="p-2 text-red-500"><Trash2 size={15}/></button></div></div>})}</div>}
+        </div>
+
+        <div className="card overflow-hidden">
+          <div className="p-5 border-b border-brand-border dark:border-brand-dark-border"><h3 className="font-bold">Published replays</h3></div>
+          {webinarRecordings.length===0?<p className="p-6 text-sm text-brand-muted">No recordings yet.</p>:<div className="divide-y divide-brand-border dark:divide-brand-dark-border">{webinarRecordings.map(w=><div key={w.id} className="p-4 flex items-center justify-between gap-4"><div><p className="font-semibold">{w.title}</p><p className="text-xs text-brand-muted mt-1">{w.sessionDate} · {w.duration||'Duration not set'}</p></div><a href={w.videoUrl||'#'} target="_blank" rel="noreferrer" className="text-sm font-semibold text-violet-600">Watch</a></div>)}</div>}
+        </div>
+      </div>
+    )
+  }
+
   // ─── Render ──────────────────────────────────────────────────────────────────
   const renderContent = () => {
     switch (activeTab) {
@@ -3796,10 +4564,12 @@ export default function AdminDashboard() {
       case 'roadmaps': return renderRoadmaps()
       case 'mentorship': return renderMentorship()
       case 'youtube-videos': return renderYoutubeVideos()
+      case 'webinars': return renderWebinars()
       case 'hierarchy': return renderHierarchy()
       case 'pathfinder-careers': return renderPathfinderCareers()
       case 'pathfinder-exams': return renderPathfinderExams()
       case 'pathfinder-mappings': return renderPathfinderMappings()
+      case 'career-applications': return renderCareerApplications()
       case 'users': return renderUsers()
       case 'settings': return renderSettings()
       default: return null
@@ -3845,6 +4615,11 @@ export default function AdminDashboard() {
                         >
                           <item.icon size={16} />
                           {item.label}
+                          {item.id === 'career-applications' && careerApplications.filter(a => a.status === 'New').length > 0 && (
+                            <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === item.id ? 'bg-white/20 text-white' : 'bg-red-500 text-white'}`}>
+                              {careerApplications.filter(a => a.status === 'New').length}
+                            </span>
+                          )}
                         </button>
                       ))}
                     </div>
@@ -3883,6 +4658,139 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      {/* Webinar Edit Modal — uses the same centered modal treatment as other admin edit actions */}
+      <AnimatePresence>
+        {showWebinarEditModal && editingWebinarId && (
+          <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4 overflow-y-auto overscroll-contain" onWheel={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()}>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 8 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 8 }}
+              className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-2xl w-full shadow-xl my-4 max-h-[calc(100vh-2rem)] overflow-y-auto overscroll-contain"
+            >
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-primary-500 mb-1">Webinar</p>
+                  <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">Edit upcoming webinar</h3>
+                </div>
+                <button onClick={resetWebinarForm} disabled={webinarBusy} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10" aria-label="Close edit webinar">
+                  <X size={18} className="text-brand-muted" />
+                </button>
+              </div>
+
+              {/* Form */}
+              <div className="space-y-4">
+                  <Field label="Title *"><input value={liveTitle} onChange={e=>setLiveTitle(e.target.value)} className={inputCls} placeholder="Career Q&A — Placement Strategy" /></Field>
+                  <Field label="Description"><textarea value={liveDescription} onChange={e=>setLiveDescription(e.target.value)} className={inputCls+' resize-none'} rows={4} placeholder="Tell students what they will learn..." /></Field>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Field label="Platform"><select value={liveProvider} onChange={e=>setLiveProvider(e.target.value as WebinarProvider)} className={inputCls}><option>Google Meet</option><option>Zoom</option></select></Field>
+                    <Field label="Join URL *"><input value={liveJoinUrl} onChange={e=>setLiveJoinUrl(e.target.value)} className={inputCls} placeholder="https://meet.google.com/..." /></Field>
+                  </div>
+                  <div className="space-y-3">
+                    {webinarTimeField('Start time *', startDate, setStartDate, startHour, setStartHour, startMinute, setStartMinute, startPeriod, setStartPeriod)}
+                    <div className="rounded-xl border border-brand-border dark:border-brand-dark-border px-3 py-3">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" checked={hasEndTime} onChange={e=>setHasEndTime(e.target.checked)} className="h-4 w-4 rounded" />
+                        <span className="text-sm font-semibold text-brand-text dark:text-brand-dark-text">Add an end time</span>
+                        <span className="text-xs font-medium text-brand-muted">Optional</span>
+                      </label>
+                      {!hasEndTime && <p className="text-xs text-brand-muted mt-2 ml-7">Leave this off if you want to end the webinar manually.</p>}
+                    </div>
+                    {hasEndTime && webinarTimeField('End time', endDate, setEndDate, endHour, setEndHour, endMinute, setEndMinute, endPeriod, setEndPeriod, true)}
+                  </div>
+
+                  {/* Video card — same upload function (file picker, audio check, duration
+                      check, progress bar) as the Courses panel's video card. */}
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-brand-text dark:text-brand-dark-text">Webinar Video (optional)</label>
+                    <div className="border-2 border-dashed border-brand-border dark:border-brand-dark-border rounded-xl p-5 text-center bg-gray-50 dark:bg-brand-dark-bg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors relative group">
+                      <input
+                        type="file"
+                        accept="video/*"
+                        onChange={e => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            setWebinarEditVideoFile(file)
+                            setWebinarEditVideoUploadStatus('idle')
+                            setWebinarEditVideoUploadProgress(0)
+                            setWebinarEditVideoAudioCheck('checking')
+                            checkVideoHasAudio(file).then(result => {
+                              setWebinarEditVideoAudioCheck(result === 'yes' ? 'has-audio' : result === 'no' ? 'no-audio' : null)
+                            })
+                            setWebinarEditVideoDurationSeconds(null)
+                            getVideoDurationSeconds(file).then(setWebinarEditVideoDurationSeconds)
+                          }
+                        }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                      />
+                      <div className="flex flex-col items-center justify-center space-y-2">
+                        <Video className="text-brand-muted dark:text-brand-dark-muted group-hover:scale-105 transition-transform" size={24} />
+                        <p className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
+                          {webinarEditVideoFile ? 'Change Selected Video' : 'Choose Video File'}
+                        </p>
+                        <p className="text-[10px] text-brand-muted">MP4, WebM, MOV — keeps original audio track</p>
+                      </div>
+                    </div>
+                    {webinarEditVideoAudioCheck === 'checking' && (
+                      <p className="text-xs text-brand-muted dark:text-brand-dark-muted flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> Checking video for an audio track...</p>
+                    )}
+                    {webinarEditVideoAudioCheck === 'no-audio' && (
+                      <p className="text-xs text-amber-600 font-semibold flex items-start gap-1.5">
+                        <span>⚠</span>
+                        <span>Couldn't detect sound in this video in a quick browser check. If you're confident the file has audio, it's likely fine — just verify sound plays after uploading.</span>
+                      </p>
+                    )}
+                    {webinarEditVideoAudioCheck === 'has-audio' && (
+                      <p className="text-xs text-green-600 font-semibold flex items-center gap-1.5"><span>✔</span> Audio track detected — this video has sound.</p>
+                    )}
+                    {webinarEditVideoFile && (
+                      <div className="p-3 bg-gray-50 dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border rounded-xl flex items-center justify-between text-xs text-brand-text dark:text-brand-dark-text">
+                        <div className="flex items-center gap-2 truncate max-w-[70%]">
+                          <span className="text-green-500 font-bold">✔</span>
+                          <div className="truncate text-left">
+                            <p className="font-semibold truncate">{webinarEditVideoFile.name}</p>
+                            <p className="text-[10px] text-brand-muted">{(webinarEditVideoFile.size / 1024 / 1024).toFixed(2)} MB{webinarEditVideoDurationSeconds != null ? ` · ${formatSeconds(webinarEditVideoDurationSeconds)}` : ''}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {webinarEditVideoUploadStatus === 'uploading' && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-brand-muted uppercase">
+                          <span>Uploading Video...</span><span>{webinarEditVideoUploadProgress}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 dark:bg-white/10 rounded-full h-1.5 overflow-hidden">
+                          <motion.div initial={{ width: 0 }} animate={{ width: `${webinarEditVideoUploadProgress}%` }} transition={{ duration: 0.1 }} className="bg-primary-500 h-full rounded-full" />
+                        </div>
+                      </div>
+                    )}
+                    {webinarEditVideoUploadStatus === 'success' && <p className="text-xs text-green-600 font-semibold flex items-center gap-1.5"><span>✔</span> Video uploaded successfully!</p>}
+                    {webinarEditVideoUploadStatus === 'error' && <p className="text-xs text-red-600 font-semibold flex items-center gap-1.5"><span>❌</span> Video upload failed. Please try again.</p>}
+                  </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button type="button" onClick={resetWebinarForm} disabled={webinarBusy} className="flex-1 py-3 rounded-xl border border-brand-border dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text text-sm font-semibold hover:bg-gray-50 dark:hover:bg-white/5">Cancel</button>
+                <button type="button" disabled={webinarBusy} onClick={async()=>{
+                  const startValue=buildWebinarDateTime(startDate,startHour,startMinute,startPeriod)
+                  const endValue=hasEndTime?buildWebinarDateTime(endDate,endHour,endMinute,endPeriod):''
+                  if(!liveTitle.trim()||!liveJoinUrl.trim()||!startValue){toast.error('Fill all required webinar fields');return}
+                  if(hasEndTime&&!endValue){toast.error('Complete the optional end time or turn it off');return}
+                  if(hasEndTime&&new Date(endValue).getTime()<=new Date(startValue).getTime()){toast.error('End time must be after the start time');return}
+                  try{
+                    setWebinarBusy(true)
+                    const updated=await updateLiveWebinar(editingWebinarId,{title:liveTitle.trim(),description:liveDescription,provider:liveProvider,joinUrl:liveJoinUrl.trim(),startsAt:new Date(startValue).toISOString(),endsAt:endValue?new Date(endValue).toISOString():null})
+                    setLiveWebinars(prev=>prev.map(w=>w.id===updated.id?updated:w))
+                    toast.success('Webinar updated successfully')
+                    resetWebinarForm()
+                  }catch(e){toast.error(e instanceof Error?e.message:'Failed to update webinar')}finally{setWebinarBusy(false)}
+                }} className="flex-1 py-3 rounded-xl bg-primary-500 text-white text-sm font-semibold hover:bg-primary-600 disabled:opacity-50">Save changes</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Delete Confirmation Modal */}
       <AnimatePresence>
         {deleteId && (
@@ -3890,6 +4798,17 @@ export default function AdminDashboard() {
             title={deleteId.title}
             onConfirm={handleDelete}
             onCancel={() => setDeleteId(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Resume Preview Modal */}
+      <AnimatePresence>
+        {previewResume && (
+          <ResumePreviewModal
+            url={previewResume.url}
+            name={previewResume.name}
+            onClose={() => setPreviewResume(null)}
           />
         )}
       </AnimatePresence>
@@ -3947,7 +4866,7 @@ export default function AdminDashboard() {
       <AnimatePresence>
         {showHierarchyModal && (
           <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-lg w-full shadow-xl my-4 max-h-[90vh] overflow-y-auto">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-brand-dark-card rounded-3xl p-6 max-w-lg w-full shadow-2xl my-4 max-h-[90vh] overflow-y-auto border border-violet-200/70 dark:border-violet-900/50 relative overflow-x-hidden">
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text capitalize">
                   {hierarchyEditItem ? 'Edit' : 'Add'} {hierarchyEditItem ? hierarchyEditItem._tab.slice(0, -1) : hierarchyTab.slice(0, -1)}

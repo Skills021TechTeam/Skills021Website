@@ -113,7 +113,11 @@ export default function UserDashboard() {
                         </span>
                       </div>
                     </div>
-                    <button className="flex items-center gap-1.5 px-3 py-2 bg-primary-500 text-white text-xs font-semibold rounded-xl hover:bg-primary-600 transition-colors flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => { setActiveTab('courses'); toast.success(`Opening ${course.title}`) }}
+                      className="dynamic-button flex items-center gap-1.5 px-3 py-2 bg-primary-500 text-white text-xs font-semibold rounded-xl flex-shrink-0"
+                    >
                       <Play size={12} /> Continue
                     </button>
                   </div>
@@ -173,7 +177,11 @@ export default function UserDashboard() {
                         />
                       </div>
                     </div>
-                    <button className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary-500 text-white text-sm font-semibold rounded-xl hover:bg-primary-600 transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => { setActiveTab('courses'); toast.success(`Opening ${course.title}`) }}
+                      className="dynamic-button w-full flex items-center justify-center gap-2 py-2.5 bg-primary-500 text-white text-sm font-semibold rounded-xl"
+                    >
                       <Play size={14} /> Continue Learning
                     </button>
                   </div>

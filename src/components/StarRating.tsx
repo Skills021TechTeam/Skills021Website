@@ -22,12 +22,12 @@ export default function StarRating({ value, onChange, size = 18, readOnly = fals
           onClick={() => onChange?.(i)}
           onMouseEnter={() => !readOnly && setHover(i)}
           onMouseLeave={() => !readOnly && setHover(0)}
-          className={readOnly ? 'cursor-default' : 'cursor-pointer'}
+          className={readOnly ? 'cursor-default' : 'cursor-pointer transition-transform hover:scale-110'}
           aria-label={`${i} star`}
         >
           <Star
             size={size}
-            className={i <= display ? 'text-amber-400 fill-amber-400' : 'text-gray-300 dark:text-gray-600'}
+            className={`transition-colors ${i <= display ? 'text-amber-400 fill-amber-400' : 'text-gray-300 dark:text-gray-600'}`}
           />
         </button>
       ))}

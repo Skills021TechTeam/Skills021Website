@@ -6,9 +6,17 @@ interface PathFinderHeroProps {
   search: string
   onSearchChange: (value: string) => void
   onExploreClick: () => void
+  careerCount?: number
+  examCount?: number
 }
 
-export default function PathFinderHero({ search, onSearchChange, onExploreClick }: PathFinderHeroProps) {
+export default function PathFinderHero({
+  search,
+  onSearchChange,
+  onExploreClick,
+  careerCount = 0,
+  examCount = 0,
+}: PathFinderHeroProps) {
   return (
     <section className="bg-gray-50 dark:bg-brand-dark-card border-b border-gray-100 dark:border-brand-dark-border pt-28 pb-12 px-4 overflow-hidden">
       <div className="max-w-7xl mx-auto grid lg:grid-cols-[1.05fr_0.95fr] gap-8 items-center">
@@ -30,7 +38,7 @@ export default function PathFinderHero({ search, onSearchChange, onExploreClick 
             >
               Explore Careers <ArrowRight size={16} />
             </button>
-            <span className="text-sm text-brand-muted dark:text-brand-dark-muted">13 career paths and mock exam roadmaps</span>
+            <span className="text-sm text-brand-muted dark:text-brand-dark-muted">{careerCount || 13} career paths and mock exam roadmaps</span>
           </div>
         </motion.div>
 
@@ -60,7 +68,7 @@ export default function PathFinderHero({ search, onSearchChange, onExploreClick 
                 <Target size={20} />
               </div>
               <p className="text-sm font-bold text-brand-text dark:text-brand-dark-text">Goal</p>
-              <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1">Fighter Pilot</p>
+              <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1">{careerCount ? `${careerCount} career paths` : 'Fighter Pilot'}</p>
             </motion.div>
             <motion.div
               animate={{ y: [0, 12, 0] }}
@@ -71,7 +79,7 @@ export default function PathFinderHero({ search, onSearchChange, onExploreClick 
                 <GraduationCap size={20} />
               </div>
               <p className="text-sm font-bold text-brand-text dark:text-brand-dark-text">Next step</p>
-              <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1">NDA eligibility checklist</p>
+              <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1">{examCount ? `${examCount} exams to explore` : 'NDA eligibility checklist'}</p>
             </motion.div>
             <div className="absolute left-1/2 top-[47%] -translate-x-1/2 -translate-y-1/2 w-24 h-24 rounded-3xl bg-gradient-to-br from-primary-500 to-teal-500 flex items-center justify-center text-white shadow-lg shadow-primary-500/30 rotate-6">
               <Map size={38} />
@@ -83,4 +91,3 @@ export default function PathFinderHero({ search, onSearchChange, onExploreClick 
     </section>
   )
 }
-

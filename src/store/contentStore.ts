@@ -9,6 +9,7 @@ export type CourseSubcategory =
   | 'DSA' | 'Web Development' | 'App Development' | 'Flutter Development'
   | 'AI & Machine Learning' | 'Data Science' | 'Cyber Security' | 'Cloud Computing'
   | 'Aptitude Preparation' | 'Interview Preparation'
+  | 'IPU Courses' | 'AKTU Courses'
 
 export interface CourseModule {
   id: string
@@ -38,6 +39,27 @@ export interface Course {
   gradientFrom: string
   gradientTo: string
   createdAt: string
+  // Optional subject name (chosen by admin, or matched automatically against
+  // the course Title) used to pull in matching "Notes" resources from the
+  // Resources panel into this course's video player. Stored as a hidden tag
+  // inside `tags` — not a separate database column.
+  notesSubject?: string
+  // ─── Academic Hierarchy (same College → Course → Branch → Semester →
+  // Subject structure used by the Resources panel) ───────────────────────
+  // Only `subjectId` is stored on the row; the rest of the chain is derived
+  // via joins (subjects → semesters → branches → courses → colleges), same
+  // pattern as the Resource type below. All optional/nullable so existing
+  // courses keep working until an admin assigns them a hierarchy.
+  college?: string
+  academicCourse?: string   // name of the academic "Course" (e.g. B.Tech CSE) — distinct from this site Course
+  branch?: string
+  semester?: string
+  subject?: string
+  collegeId?: number
+  academicCourseId?: number
+  branchId?: number
+  semesterId?: number
+  subjectId?: number
 }
 
 // ─── Resource Types ─────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Mail, Lock, Zap, Eye, EyeOff, AlertCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -13,6 +13,8 @@ export default function Login() {
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({})
   const { login } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
+  const from = (location.state as { from?: string } | null)?.from
 
   const validate = () => {
     const errs: { email?: string; password?: string } = {}
@@ -45,7 +47,7 @@ export default function Login() {
       if (user?.role === 'admin') {
         navigate('/admin')
       } else {
-        navigate('/dashboard')
+        navigate(from || '/dashboard')
       }
     } else {
       toast.error('Invalid email or password. Please try again.')
@@ -110,7 +112,7 @@ export default function Login() {
                 <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text">
                   Password
                 </label>
-                <button type="button" className="text-xs text-primary-500 hover:underline">
+                <button type="button" onClick={() => toast.success('Password reset support will be available soon.')} className="dynamic-button text-xs text-primary-500 hover:underline rounded-md px-1">
                   Forgot password?
                 </button>
               </div>

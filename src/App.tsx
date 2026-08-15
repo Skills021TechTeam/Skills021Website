@@ -15,8 +15,10 @@ import VideosBrowse from './pages/VideosBrowse'
 import Quizzes from './pages/Quizzes'
 import Roadmaps from './pages/Roadmaps'
 import Mentorship from './pages/Mentorship'
+import Apply from './pages/Apply'
 import UserDashboard from './pages/UserDashboard'
 import AdminDashboard from './pages/AdminDashboard'
+import WebinarVisitPopup from './components/WebinarVisitPopup'
 
 // Apply saved dark mode preference on load
 const applyTheme = () => {
@@ -66,6 +68,8 @@ function AnimatedRoutes() {
             <Route path="/roadmaps" element={<Roadmaps />} />
             {/* Mentorship */}
             <Route path="/mentorship" element={<Mentorship />} />
+            {/* Careers */}
+            <Route path="/apply" element={<Apply />} />
             {/* Protected */}
             <Route path="/dashboard" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
             <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
@@ -82,6 +86,7 @@ export default function App() {
     <BrowserRouter>
       <Navbar />
       <AnimatedRoutes />
+      <WebinarVisitPopup />
       <Toaster
         position="top-right"
         toastOptions={{

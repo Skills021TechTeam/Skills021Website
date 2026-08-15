@@ -40,7 +40,9 @@ export default function ExamCard({ exam, isEligible }: ExamCardProps) {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         whileHover={{ y: -3 }}
-        className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border hover:shadow-card-hover transition-all duration-200 overflow-hidden flex flex-col"
+        className={`fx-exam bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border hover:shadow-card-hover transition-all duration-200 overflow-hidden flex flex-col ${
+          !isRegistrationClosed && daysLeft <= 3 ? 'fx-exam-urgent' : ''
+        }`}
       >
         {/* Banner above card content */}
         <div className={`px-5 py-2.5 text-xs font-bold text-center border-b border-gray-100 dark:border-brand-dark-border transition-colors ${

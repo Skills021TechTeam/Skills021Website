@@ -1,18 +1,30 @@
-import { useState, useMemo, useEffect } from 'react'
-import { motion } from 'framer-motion'
+import { useState, useMemo, useEffect, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
-import { BookOpen, Clock, Users, Star, Search, Play, Filter, Loader2, Lock, CheckCircle2, ArrowRight, GraduationCap, Sparkles, Trophy, TrendingUp, Zap } from 'lucide-react'
+import { BookOpen, Clock, Users, Star, Search, Play, SlidersHorizontal, ChevronDown, X, Loader2, Lock, CheckCircle2, Sparkles, GraduationCap, Radio, Video, ExternalLink, CalendarDays, MonitorPlay, Trophy, TrendingUp, Zap, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Course, CourseGroup, CourseSubcategory } from '../store/contentStore'
 import { fetchPublishedSiteCourses } from '../lib/courseService'
+import {
+  fetchColleges,
+  fetchCourses,
+  fetchBranches,
+  fetchSemesters,
+  fetchSubjects,
+  type College,
+  type Course as AcademicCourse,
+  type Branch,
+  type Semester,
+  type Subject
+} from '../lib/resourceService'
 import { useAuthStore } from '../store/authStore'
 import { getEnrollmentsForUser } from '../lib/videoEngagementService'
 import EnrollModal from '../components/EnrollModal'
 import VideoPlayerModal from '../components/VideoPlayerModal'
 import CourseRatingMenu from '../components/CourseRatingMenu'
+import { getLiveWebinars, getWebinarRecordings, type LiveWebinar, type WebinarRecording } from '../lib/webinarService'
 
 const GROUPS: { label: CourseGroup }[] = [
-  { label: 'Foundation Programs' },
   { label: 'Competitive Exams' },
   { label: 'College & Tech Courses' },
 ]
@@ -21,11 +33,17 @@ const SUBCATEGORIES: Record<CourseGroup, CourseSubcategory[]> = {
   'Foundation Programs': ['Class 1-5', 'Class 6-8', 'Class 9-10', 'Class 11-12'],
   'Competitive Exams': ['JEE Preparation', 'NEET Preparation', 'CUET Preparation', 'Olympiads', 'NTSE'],
   'College & Tech Courses': [
-    'DSA', 'Web Development', 'App Development', 'Flutter Development',
+    'DSA', 'IPU Courses', 'AKTU Courses', 'Web Development', 'App Development', 'Flutter Development',
     'AI & Machine Learning', 'Data Science', 'Cyber Security', 'Cloud Computing',
     'Aptitude Preparation', 'Interview Preparation',
   ],
 }
+
+// Flat list of every category across every visible Group tab, each tagged
+// with which group it belongs to — used to render one combined category
+// list in the sidebar instead of switching per active Group tab.
+const ALL_SUBCATEGORIES: { label: CourseSubcategory; group: CourseGroup }[] =
+  GROUPS.flatMap(g => SUBCATEGORIES[g.label].map(label => ({ label, group: g.label })))
 
 const LEVELS = ['All Levels', 'Beginner', 'Intermediate', 'Advanced']
 const PRICES = ['All', 'Free', 'Paid']
@@ -56,7 +74,7 @@ function CourseCard({ course, userId, isAdmin, isEnrolled, onPlay, onEnroll, onR
       {/* Thumbnail — clean dark card */}
       <div
         onClick={() => onPlay(course)}
-        className="relative h-44 bg-gray-900 dark:bg-black overflow-hidden rounded-t-2xl flex items-center justify-center cursor-pointer"
+        className="fx-course-thumb relative h-44 bg-gray-900 dark:bg-black overflow-hidden rounded-t-2xl flex items-center justify-center cursor-pointer"
       >
         {course.thumbnail ? (
           <img src={course.thumbnail} alt={course.title} className="absolute inset-0 w-full h-full object-cover" />
@@ -147,7 +165,58 @@ function CourseCard({ course, userId, isAdmin, isEnrolled, onPlay, onEnroll, onR
   )
 }
 
+interface AccordionSectionProps {
+  title: string
+  defaultOpen?: boolean
+  badge?: number
+  children: React.ReactNode
+}
+
+function AccordionSection({ title, defaultOpen = false, badge, children }: AccordionSectionProps) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  return (
+    <div className="py-4 first:pt-0 last:pb-0 border-b border-gray-100 dark:border-brand-dark-border last:border-b-0">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between text-left"
+        aria-expanded={open}
+      >
+        <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-brand-text dark:text-brand-dark-text">
+          {title}
+          {typeof badge === 'number' && badge > 0 && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400">
+              {badge}
+            </span>
+          )}
+        </span>
+        <ChevronDown
+          size={15}
+          className={`text-brand-muted dark:text-brand-dark-muted transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            className="overflow-hidden"
+          >
+            <div className="pt-3 space-y-1">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 export default function Courses() {
+  const [courseSection, setCourseSection] = useState<'courses' | 'webinars'>('courses')
+  const [liveWebinars, setLiveWebinars] = useState<LiveWebinar[]>([])
+  const [webinarRecordings, setWebinarRecordings] = useState<WebinarRecording[]>([])
+  const [webinarsLoading, setWebinarsLoading] = useState(false)
   const [courses, setCourses] = useState<Course[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -215,6 +284,7 @@ export default function Courses() {
   }
 
   const [searchParams] = useSearchParams()
+  useEffect(() => { if (searchParams.get('tab') === 'webinars') setCourseSection('webinars') }, [searchParams])
   const initGroup = (searchParams.get('group') || 'College & Tech Courses') as CourseGroup
   const initSub = searchParams.get('sub') as CourseSubcategory | null
 
@@ -223,20 +293,302 @@ export default function Courses() {
   const [activeLevel, setActiveLevel] = useState('All Levels')
   const [activePrice, setActivePrice] = useState('All')
   const [search, setSearch] = useState('')
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
+
+  // ─── Academic Hierarchy filter — same College → Course → Branch →
+  // Semester → Subject cascade used on the Resources panel ────────────────
+  const [hColleges, setHColleges] = useState<College[]>([])
+  const [hCourses, setHCourses] = useState<AcademicCourse[]>([])
+  const [hBranches, setHBranches] = useState<Branch[]>([])
+  const [hSemesters, setHSemesters] = useState<Semester[]>([])
+  const [hSubjects, setHSubjects] = useState<Subject[]>([])
+
+  const [hSelectedCollegeId, setHSelectedCollegeId] = useState<number | null>(null)
+  const [hSelectedCourseId, setHSelectedCourseId] = useState<number | null>(null)
+  const [hSelectedBranchId, setHSelectedBranchId] = useState<number | null>(null)
+  const [hSelectedSemesterId, setHSelectedSemesterId] = useState<number | null>(null)
+  const [hSelectedSubjectId, setHSelectedSubjectId] = useState<number | null>(null)
+
+  // Applied hierarchy filter — what's actually used to filter the course
+  // grid. Kept separate from the dropdown selections above (the "draft")
+  // so picking College → ... → Subject doesn't filter the grid until the
+  // person clicks the Search button.
+  const [appliedCollegeId, setAppliedCollegeId] = useState<number | null>(null)
+  const [appliedCourseId, setAppliedCourseId] = useState<number | null>(null)
+  const [appliedBranchId, setAppliedBranchId] = useState<number | null>(null)
+  const [appliedSemesterId, setAppliedSemesterId] = useState<number | null>(null)
+  const [appliedSubjectId, setAppliedSubjectId] = useState<number | null>(null)
+
+  const handleHApplyFilter = () => {
+    setAppliedCollegeId(hSelectedCollegeId)
+    setAppliedCourseId(hSelectedCourseId)
+    setAppliedBranchId(hSelectedBranchId)
+    setAppliedSemesterId(hSelectedSemesterId)
+    setAppliedSubjectId(hSelectedSubjectId)
+    setActiveSub(null)
+    // Close the mobile drawer so the (now-filtered) grid is actually visible —
+    // without this the state updates correctly but the person can't see it
+    // happen behind the open drawer and it looks like the button did nothing.
+    setMobileFiltersOpen(false)
+  }
+
+  const [hActiveDropdown, setHActiveDropdown] = useState<'college' | 'course' | 'branch' | 'semester' | 'subject' | null>(null)
+  const [hLoadingLevels, setHLoadingLevels] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setHLoadingLevels(prev => ({ ...prev, college: true }))
+        const data = await fetchColleges()
+        setHColleges(data)
+      } catch (err) {
+        console.error('Failed to load colleges:', err)
+      } finally {
+        setHLoadingLevels(prev => ({ ...prev, college: false }))
+      }
+    })()
+  }, [])
+
+  const handleHCollegeSelect = async (collegeId: number) => {
+    setActiveSub(null)
+    setHSelectedCollegeId(collegeId)
+    setHSelectedCourseId(null); setHSelectedBranchId(null); setHSelectedSemesterId(null); setHSelectedSubjectId(null)
+    setHCourses([]); setHBranches([]); setHSemesters([]); setHSubjects([])
+    try {
+      setHLoadingLevels(prev => ({ ...prev, course: true }))
+      const data = await fetchCourses(collegeId)
+      setHCourses(data)
+      setHActiveDropdown('course')
+    } catch (err) {
+      console.error('Failed to load courses:', err)
+    } finally {
+      setHLoadingLevels(prev => ({ ...prev, course: false }))
+    }
+  }
+
+  const handleHCourseSelect = async (courseId: number) => {
+    setHSelectedCourseId(courseId)
+    setHSelectedBranchId(null); setHSelectedSemesterId(null); setHSelectedSubjectId(null)
+    setHBranches([]); setHSemesters([]); setHSubjects([])
+    try {
+      setHLoadingLevels(prev => ({ ...prev, branch: true }))
+      const data = await fetchBranches(courseId)
+      setHBranches(data)
+      setHActiveDropdown('branch')
+    } catch (err) {
+      console.error('Failed to load branches:', err)
+    } finally {
+      setHLoadingLevels(prev => ({ ...prev, branch: false }))
+    }
+  }
+
+  const handleHBranchSelect = async (branchId: number) => {
+    setHSelectedBranchId(branchId)
+    setHSelectedSemesterId(null); setHSelectedSubjectId(null)
+    setHSemesters([]); setHSubjects([])
+    try {
+      setHLoadingLevels(prev => ({ ...prev, semester: true }))
+      const data = await fetchSemesters(branchId)
+      setHSemesters(data)
+      setHActiveDropdown('semester')
+    } catch (err) {
+      console.error('Failed to load semesters:', err)
+    } finally {
+      setHLoadingLevels(prev => ({ ...prev, semester: false }))
+    }
+  }
+
+  const handleHSemesterSelect = async (semesterId: number) => {
+    setHSelectedSemesterId(semesterId)
+    setHSelectedSubjectId(null)
+    setHSubjects([])
+    try {
+      setHLoadingLevels(prev => ({ ...prev, subject: true }))
+      const data = await fetchSubjects(semesterId)
+      setHSubjects(data)
+      setHActiveDropdown('subject')
+    } catch (err) {
+      console.error('Failed to load subjects:', err)
+    } finally {
+      setHLoadingLevels(prev => ({ ...prev, subject: false }))
+    }
+  }
+
+  const handleHSubjectSelect = (subjectId: number) => {
+    setHSelectedSubjectId(subjectId)
+    setHActiveDropdown(null)
+  }
+
+  const handleHResetHierarchy = () => {
+    setHSelectedCollegeId(null); setHSelectedCourseId(null); setHSelectedBranchId(null)
+    setHSelectedSemesterId(null); setHSelectedSubjectId(null)
+    setHCourses([]); setHBranches([]); setHSemesters([]); setHSubjects([])
+    setHActiveDropdown(null)
+    setAppliedCollegeId(null); setAppliedCourseId(null); setAppliedBranchId(null)
+    setAppliedSemesterId(null); setAppliedSubjectId(null)
+  }
+
+  const renderHHierarchyDropdown = (
+    label: string,
+    placeholder: string,
+    options: { id: number; name: string }[],
+    selectedValue: number | null,
+    onSelect: (id: number) => void,
+    levelName: 'college' | 'course' | 'branch' | 'semester' | 'subject',
+    disabled: boolean
+  ) => {
+    const isOpen = hActiveDropdown === levelName
+    const isLoading = hLoadingLevels[levelName]
+    const selectedObj = options.find(o => o.id === selectedValue)
+    const displayName = selectedObj ? selectedObj.name : placeholder
+
+    return (
+      <div className="mb-3">
+        <label className="block text-[10px] font-bold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider mb-1 px-1">
+          {label}
+        </label>
+        <button
+          disabled={disabled}
+          onClick={() => setHActiveDropdown(isOpen ? null : levelName)}
+          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm transition-all text-left ${
+            disabled
+              ? 'opacity-40 bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-brand-dark-border cursor-not-allowed text-brand-muted dark:text-brand-dark-muted'
+              : isOpen
+              ? 'bg-[#0A0A0A] text-white border-[#0A0A0A] dark:bg-white dark:text-black dark:border-white font-semibold shadow-sm'
+              : 'bg-white dark:bg-brand-dark-card border-gray-100 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:border-gray-300 dark:hover:border-white/20'
+          }`}
+        >
+          <span className="truncate pr-2 font-medium">{displayName}</span>
+          {isLoading ? (
+            <Loader2 size={13} className="animate-spin text-brand-muted" />
+          ) : (
+            <ChevronDown
+              size={13}
+              className={`transition-transform duration-200 flex-shrink-0 ${
+                isOpen ? 'rotate-180' : ''
+              } ${disabled ? 'text-brand-muted' : ''}`}
+            />
+          )}
+        </button>
+
+        <AnimatePresence>
+          {isOpen && !disabled && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden bg-gray-50 dark:bg-brand-dark-bg border border-gray-100 dark:border-brand-dark-border rounded-xl mt-1 max-h-48 overflow-y-auto"
+            >
+              {options.length === 0 ? (
+                <div className="px-3 py-3 text-xs text-brand-muted dark:text-brand-dark-muted text-center">
+                  No options available
+                </div>
+              ) : (
+                <div className="py-1">
+                  {options.map(opt => (
+                    <button
+                      key={opt.id}
+                      onClick={() => onSelect(opt.id)}
+                      className={`w-full text-left px-3 py-2 text-xs transition-colors hover:bg-gray-100 dark:hover:bg-white/10 ${
+                        selectedValue === opt.id
+                          ? 'font-bold text-primary-500 bg-primary-50 dark:bg-primary-950/20'
+                          : 'text-brand-text dark:text-brand-dark-text'
+                      }`}
+                    >
+                      {opt.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    )
+  }
+
+  const activeFilterCount = [
+    activeSub ? 1 : 0,
+    activeLevel !== 'All Levels' ? 1 : 0,
+    activePrice !== 'All' ? 1 : 0,
+    (appliedCollegeId || appliedCourseId || appliedBranchId || appliedSemesterId || appliedSubjectId) ? 1 : 0,
+  ].reduce((a, b) => a + b, 0)
+
+  useEffect(() => {
+    if (courseSection !== 'webinars') return
+    let active = true
+    setWebinarsLoading(true)
+    Promise.all([getLiveWebinars(), getWebinarRecordings()])
+      .then(([live, recordings]) => { if (active) { setLiveWebinars(live); setWebinarRecordings(recordings) } })
+      .catch(() => { if (active) toast.error('Could not load webinars right now') })
+      .finally(() => { if (active) setWebinarsLoading(false) })
+    return () => { active = false }
+  }, [courseSection])
+
+  const now = Date.now()
+  const activeWebinar = liveWebinars.find(w => new Date(w.startsAt).getTime() <= now && (!w.endsAt || new Date(w.endsAt).getTime() > now))
+  const upcomingWebinar = liveWebinars.find(w => new Date(w.startsAt).getTime() > now)
 
   const published = courses.filter(c => c.status === 'Published')
 
+  // Academic Filter (College → Course → Branch → Semester → Subject) and
+  // the Category list are kept separate, not combined: if an academic
+  // hierarchy level has been applied (via the Search button), filtering
+  // runs on that alone (plus Level/Price/Search) and ignores the Group
+  // tab + Category selection entirely, since a course's hierarchy
+  // assignment is independent of which Group/Category it was tagged
+  // under. Picking dropdowns alone does NOT filter yet — only clicking
+  // Search (handleHApplyFilter) copies the draft picks into the applied
+  // ones used here.
+  const hierarchyActive = !!(appliedCollegeId || appliedCourseId || appliedBranchId || appliedSemesterId || appliedSubjectId)
+
+  // Human-readable label for whichever hierarchy levels are applied, so the
+  // results header actually reflects the Search that was run instead of
+  // silently continuing to show the old Group/Category name — that mismatch
+  // is what made the Search button look like it wasn't doing anything.
+  const appliedHierarchyLabel = useMemo(() => {
+    if (!hierarchyActive) return null
+    const parts = [
+      appliedCollegeId ? hColleges.find(c => c.id === appliedCollegeId)?.name : null,
+      appliedCourseId ? hCourses.find(c => c.id === appliedCourseId)?.name : null,
+      appliedBranchId ? hBranches.find(b => b.id === appliedBranchId)?.name : null,
+      appliedSemesterId ? (() => { const s = hSemesters.find(s => s.id === appliedSemesterId); return s ? `Semester ${s.semester_number}` : null })() : null,
+      appliedSubjectId ? hSubjects.find(s => s.id === appliedSubjectId)?.name : null,
+    ].filter(Boolean)
+    return parts.length ? parts.join(' › ') : 'Academic Filter results'
+  }, [hierarchyActive, appliedCollegeId, appliedCourseId, appliedBranchId, appliedSemesterId, appliedSubjectId, hColleges, hCourses, hBranches, hSemesters, hSubjects])
+
   const filtered = useMemo(() => {
     return published.filter(c => {
-      if (c.group !== activeGroup) return false
-      if (activeSub && c.subcategory !== activeSub) return false
+      if (!hierarchyActive) {
+        if (c.group !== activeGroup) return false
+        if (activeSub && c.subcategory !== activeSub) return false
+      }
       if (activeLevel !== 'All Levels' && c.level !== activeLevel) return false
       if (activePrice === 'Free' && c.price !== 'FREE') return false
       if (activePrice === 'Paid' && c.price === 'FREE') return false
+      if (appliedSubjectId && c.subjectId !== appliedSubjectId) return false
+      if (appliedSemesterId && c.semesterId !== appliedSemesterId) return false
+      if (appliedBranchId && c.branchId !== appliedBranchId) return false
+      if (appliedCourseId && c.academicCourseId !== appliedCourseId) return false
+      if (appliedCollegeId && c.collegeId !== appliedCollegeId) return false
       if (search && !c.title.toLowerCase().includes(search.toLowerCase()) && !c.description.toLowerCase().includes(search.toLowerCase())) return false
       return true
     })
-  }, [published, activeGroup, activeSub, activeLevel, activePrice, search])
+  }, [published, activeGroup, activeSub, activeLevel, activePrice, search, appliedCollegeId, appliedCourseId, appliedBranchId, appliedSemesterId, appliedSubjectId])
+
+  // Scroll the (now-updated) results into view and confirm the count whenever
+  // an Academic Filter search is actually run — otherwise, on desktop the
+  // grid updates quietly inside the same viewport and easily goes unnoticed,
+  // and on first page load there's nothing to announce yet.
+  const isFirstHierarchyApply = useRef(true)
+  useEffect(() => {
+    if (isFirstHierarchyApply.current) { isFirstHierarchyApply.current = false; return }
+    if (!hierarchyActive) return
+    document.getElementById('courses-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    toast.success(`${filtered.length} course${filtered.length !== 1 ? 's' : ''} found`)
+  }, [appliedCollegeId, appliedCourseId, appliedBranchId, appliedSemesterId, appliedSubjectId])
 
   const groupStats = GROUPS.map(g => ({
     ...g,
@@ -245,17 +597,18 @@ export default function Courses() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-brand-dark-bg pt-16">
-      <section className="bg-gray-50 dark:bg-brand-dark-card border-b border-gray-100 dark:border-brand-dark-border pt-28 pb-12 px-4 overflow-hidden">
+      {/* Hero — top-left text + right dynamic animated card, copied from the main zip */}
+      <section className="bg-gray-50 dark:bg-brand-dark-card border-b border-gray-100 dark:border-brand-dark-border pt-8 pb-12 px-4 overflow-hidden sm:pt-10">
         <div className="max-w-7xl mx-auto grid lg:grid-cols-[1.05fr_0.95fr] gap-8 items-center">
           <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}>
             <span className="inline-flex items-center gap-2 px-3 py-1 text-xs font-semibold text-brand-muted dark:text-brand-dark-muted border border-gray-200 dark:border-brand-dark-border rounded-full mb-5 uppercase tracking-widest">
               <Sparkles size={12} className="text-primary-500" /> Skill Catalog
             </span>
             <h1 className="text-4xl md:text-6xl font-black text-brand-text dark:text-brand-dark-text tracking-tight mb-5">
-              Learn with <span className="gradient-text">Purpose</span>
+              Learn Without <span className="gradient-text">Limits</span>
             </h1>
             <p className="text-brand-muted dark:text-brand-dark-muted text-lg max-w-2xl mb-8 leading-relaxed">
-              Discover structured learning paths designed for school, competitive exams, and future-ready tech careers.
+              From Class 1 to placement — explore {published.length}+ expert-curated courses across all domains.
             </p>
 
             <div className="relative max-w-xl">
@@ -333,14 +686,71 @@ export default function Courses() {
         </div>
       </section>
 
-      {/* Group Tabs */}
+      {/* Course / Webinar switcher */}
+      <div className="max-w-7xl mx-auto px-4 pt-6">
+        <div className="inline-flex rounded-2xl border border-gray-100 dark:border-brand-dark-border bg-white dark:bg-brand-dark-card p-1 shadow-sm">
+          <button onClick={() => setCourseSection('courses')} className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 ${courseSection === 'courses' ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black' : 'text-brand-muted dark:text-brand-dark-muted'}`}><BookOpen size={15}/> Courses</button>
+          <button onClick={() => setCourseSection('webinars')} className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 ${courseSection === 'webinars' ? 'bg-gradient-to-r from-violet-600 to-cyan-500 text-white shadow-md' : 'text-brand-muted dark:text-brand-dark-muted'}`}><Radio size={15}/> Webinars</button>
+        </div>
+      </div>
+
+      {courseSection === 'webinars' ? (
+        <section className="max-w-7xl mx-auto px-4 py-8">
+          <div className="rounded-[28px] overflow-hidden border border-violet-100 dark:border-white/10 bg-gradient-to-br from-violet-50 via-white to-cyan-50 dark:from-violet-950/20 dark:via-brand-dark-card dark:to-cyan-950/20 p-6 sm:p-8 mb-8">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-white/80 dark:bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-violet-600 dark:text-violet-300 mb-3"><Radio size={12}/> Live & Replay Hub</div>
+                <h2 className="text-3xl sm:text-4xl font-black text-brand-text dark:text-white">Webinars that keep you ahead.</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-brand-muted dark:text-brand-dark-muted">Join live sessions on Google Meet or Zoom. When a session ends, its recording can be saved here for you to watch later.</p>
+              </div>
+              <div className="rounded-2xl bg-white/80 dark:bg-black/20 border border-white/70 dark:border-white/10 px-5 py-4 min-w-[210px]">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">Sessions</p>
+                <p className="text-3xl font-black text-brand-text dark:text-white">{webinarRecordings.length}</p>
+                <p className="text-xs text-brand-muted">saved replays</p>
+              </div>
+            </div>
+          </div>
+
+          {webinarsLoading ? <div className="py-16 text-center text-sm text-brand-muted"><Loader2 className="animate-spin mx-auto mb-3"/>Loading webinars...</div> : (
+            <>
+              {activeWebinar ? (
+                <div className="rounded-3xl border border-red-200 dark:border-red-900/40 bg-white dark:bg-brand-dark-card p-5 sm:p-7 shadow-lg mb-10">
+                  <div className="flex flex-col lg:flex-row lg:items-center gap-6">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-3"><span className="relative flex h-3 w-3"><span className="absolute inset-0 rounded-full bg-red-500 animate-ping"/><span className="relative h-3 w-3 rounded-full bg-red-500"/></span><span className="text-xs font-black uppercase tracking-widest text-red-500">Live now · {activeWebinar.provider}</span></div>
+                      <h3 className="text-2xl font-black text-brand-text dark:text-white">{activeWebinar.title}</h3>
+                      <p className="mt-2 text-sm text-brand-muted dark:text-brand-dark-muted max-w-2xl">{activeWebinar.description}</p>
+                    </div>
+                    <a href={activeWebinar.joinUrl} target="_blank" rel="noreferrer" className="shrink-0 inline-flex items-center justify-center gap-2 rounded-xl bg-red-500 px-5 py-3 text-sm font-bold text-white hover:bg-red-600"><Video size={16}/> Join Live <ExternalLink size={14}/></a>
+                  </div>
+                </div>
+              ) : upcomingWebinar ? (
+                <div className="rounded-3xl border border-violet-100 dark:border-white/10 bg-white dark:bg-brand-dark-card p-5 sm:p-7 shadow-sm mb-10">
+                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+                    <div><div className="text-xs font-black uppercase tracking-widest text-violet-500 mb-2">Next webinar · {upcomingWebinar.provider}</div><h3 className="text-xl font-black text-brand-text dark:text-white">{upcomingWebinar.title}</h3><p className="text-sm text-brand-muted mt-1">{new Date(upcomingWebinar.startsAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p></div>
+                    <div className="inline-flex items-center gap-2 rounded-xl bg-violet-50 dark:bg-violet-500/10 px-4 py-3 text-sm font-bold text-violet-600 dark:text-violet-300"><CalendarDays size={16}/> Coming soon</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-3xl border border-dashed border-gray-200 dark:border-white/10 p-10 text-center mb-10"><MonitorPlay className="mx-auto text-violet-400 mb-3" size={30}/><h3 className="font-black text-brand-text dark:text-white">No live webinar right now</h3><p className="text-sm text-brand-muted mt-1">Check the replays below or come back when the next session is scheduled.</p></div>
+              )}
+
+              <div>
+                <div className="flex items-end justify-between mb-5"><div><p className="text-xs font-bold uppercase tracking-widest text-violet-500">Webinar Library</p><h3 className="text-2xl font-black text-brand-text dark:text-white">Past sessions</h3></div><span className="text-xs text-brand-muted">{webinarRecordings.length} replay{webinarRecordings.length !== 1 ? 's' : ''}</span></div>
+                {webinarRecordings.length === 0 ? <div className="rounded-3xl border border-gray-100 dark:border-white/10 p-10 text-center text-sm text-brand-muted">No webinar recordings have been published yet.</div> : <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">{webinarRecordings.map(w => <article key={w.id} className="group overflow-hidden rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-brand-dark-card shadow-sm hover:shadow-xl transition-shadow"><div className="h-40 bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-500 relative flex items-center justify-center">{w.thumbnailUrl ? <img src={w.thumbnailUrl} alt="" className="absolute inset-0 w-full h-full object-cover"/> : <Play size={38} className="text-white/90"/>}<span className="absolute left-3 top-3 rounded-full bg-black/35 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur">REPLAY</span></div><div className="p-5"><p className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">{new Date(w.sessionDate).toLocaleDateString()}</p><h4 className="mt-1 font-black text-brand-text dark:text-white line-clamp-2">{w.title}</h4><p className="mt-2 text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-2">{w.description}</p>{w.videoUrl && <a href={w.videoUrl} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-violet-600 dark:text-violet-300">Watch replay <ExternalLink size={13}/></a>}</div></article>)}</div>}
+              </div>
+            </>
+          )}
+        </section>
+      ) : (
+      <>
       <div className="sticky top-16 z-30 bg-white dark:bg-brand-dark-bg border-b border-gray-100 dark:border-brand-dark-border shadow-sm">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex gap-1 overflow-x-auto no-scrollbar py-2">
             {groupStats.map(g => (
               <button
                 key={g.label}
-                onClick={() => { setActiveGroup(g.label); setActiveSub(null) }}
+                onClick={() => { handleHResetHierarchy(); setActiveGroup(g.label); setActiveSub(null) }}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all ${
                   activeGroup === g.label
                     ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black'
@@ -357,25 +767,98 @@ export default function Courses() {
         </div>
       </div>
 
-      <div id="courses-list" className="max-w-7xl mx-auto px-4 py-8 flex gap-6">
-        {/* Sidebar */}
-        <aside className="hidden md:block w-56 flex-shrink-0">
+      <div className="max-w-7xl mx-auto px-4 py-8 flex gap-6">
+        {/* Sidebar — desktop */}
+        <aside className="hidden md:block w-64 flex-shrink-0">
           <div className="sticky top-32">
+            {/* Academic Hierarchy — same College → Course → Branch → Semester
+                → Subject filter as the Resources panel */}
+            <div className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border p-4 mb-4">
+              <div className="flex items-center justify-between mb-4 border-b border-gray-100 dark:border-brand-dark-border pb-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-brand-text dark:text-brand-dark-text">Academic Filter</h3>
+                {(hSelectedCollegeId || hSelectedCourseId || hSelectedBranchId || hSelectedSemesterId || hSelectedSubjectId) && (
+                  <button
+                    onClick={handleHResetHierarchy}
+                    className="text-[10px] font-bold text-red-500 hover:text-red-600 transition-colors uppercase tracking-wider"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+
+              {renderHHierarchyDropdown(
+                'College',
+                'Select College...',
+                hColleges,
+                hSelectedCollegeId,
+                handleHCollegeSelect,
+                'college',
+                false
+              )}
+
+              {renderHHierarchyDropdown(
+                'Course',
+                hSelectedCollegeId ? 'Select Course...' : 'Select College first',
+                hCourses,
+                hSelectedCourseId,
+                handleHCourseSelect,
+                'course',
+                !hSelectedCollegeId
+              )}
+
+              {renderHHierarchyDropdown(
+                'Branch',
+                hSelectedCourseId ? 'Select Branch...' : 'Select Course first',
+                hBranches,
+                hSelectedBranchId,
+                handleHBranchSelect,
+                'branch',
+                !hSelectedCourseId
+              )}
+
+              {renderHHierarchyDropdown(
+                'Semester',
+                hSelectedBranchId ? 'Select Semester...' : 'Select Branch first',
+                hSemesters.map(s => ({ id: s.id, name: `Semester ${s.semester_number}` })),
+                hSelectedSemesterId,
+                handleHSemesterSelect,
+                'semester',
+                !hSelectedBranchId
+              )}
+
+              {renderHHierarchyDropdown(
+                'Subject',
+                hSelectedSemesterId ? 'Select Subject...' : 'Select Semester first',
+                hSubjects,
+                hSelectedSubjectId,
+                handleHSubjectSelect,
+                'subject',
+                !hSelectedSemesterId
+              )}
+
+              <button
+                onClick={handleHApplyFilter}
+                disabled={!(hSelectedCollegeId || hSelectedCourseId || hSelectedBranchId || hSelectedSemesterId || hSelectedSubjectId)}
+                className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-primary-500 hover:bg-primary-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <Search size={14} /> Search
+              </button>
+            </div>
+
             <div className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border p-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-brand-muted dark:text-brand-dark-muted mb-3">Subcategory</h3>
-              <div className="space-y-1">
+              <div className="space-y-0.5 mb-3 pb-3 border-b border-gray-100 dark:border-brand-dark-border">
                 <button
                   onClick={() => setActiveSub(null)}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${!activeSub ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}
                 >
-                  All ({published.filter(c => c.group === activeGroup).length})
+                  All Categories ({published.filter(c => c.group === activeGroup).length})
                 </button>
-                {SUBCATEGORIES[activeGroup].map(sub => {
-                  const cnt = published.filter(c => c.group === activeGroup && c.subcategory === sub).length
+                {ALL_SUBCATEGORIES.map(({ label: sub, group }) => {
+                  const cnt = published.filter(c => c.subcategory === sub).length
                   return (
                     <button
                       key={sub}
-                      onClick={() => setActiveSub(sub)}
+                      onClick={() => { handleHResetHierarchy(); setActiveSub(sub); setActiveGroup(group) }}
                       className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between transition-colors ${activeSub === sub ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}
                     >
                       <span className="truncate">{sub}</span>
@@ -385,30 +868,48 @@ export default function Courses() {
                 })}
               </div>
 
-              <div className="mt-4 pt-4 border-t border-gray-100 dark:border-brand-dark-border">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-brand-muted dark:text-brand-dark-muted mb-3">Level</h3>
+              <AccordionSection title="Level" badge={activeLevel !== 'All Levels' ? 1 : 0}>
                 {LEVELS.map(l => (
                   <button key={l} onClick={() => setActiveLevel(l)} className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-0.5 transition-colors ${activeLevel === l ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}>{l}</button>
                 ))}
-              </div>
+              </AccordionSection>
 
-              <div className="mt-4 pt-4 border-t border-gray-100 dark:border-brand-dark-border">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-brand-muted dark:text-brand-dark-muted mb-3">Price</h3>
+              <AccordionSection title="Price" badge={activePrice !== 'All' ? 1 : 0}>
                 {PRICES.map(p => (
                   <button key={p} onClick={() => setActivePrice(p)} className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-0.5 transition-colors ${activePrice === p ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}>{p}</button>
                 ))}
-              </div>
+              </AccordionSection>
+
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={() => { setActiveSub(null); setActiveLevel('All Levels'); setActivePrice('All'); handleHResetHierarchy() }}
+                  className="w-full mt-4 pt-4 border-t border-gray-100 dark:border-brand-dark-border text-xs font-semibold text-primary-500 hover:text-primary-600 transition-colors text-center"
+                >
+                  Clear all filters
+                </button>
+              )}
             </div>
           </div>
         </aside>
 
         {/* Main */}
-        <main className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-xl font-bold text-brand-text dark:text-brand-dark-text">{activeSub || activeGroup}</h2>
+        <main id="courses-list" className="flex-1 min-w-0 scroll-mt-24">
+          <div className="flex items-center justify-between mb-6 gap-3">
+            <div className="min-w-0">
+              <h2 className="text-xl font-bold text-brand-text dark:text-brand-dark-text truncate">{appliedHierarchyLabel || activeSub || activeGroup}</h2>
               <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">{filtered.length} course{filtered.length !== 1 ? 's' : ''} found</p>
             </div>
+            {/* Mobile filter trigger */}
+            <button
+              onClick={() => setMobileFiltersOpen(true)}
+              className="md:hidden flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+            >
+              <SlidersHorizontal size={15} />
+              Filters
+              {activeFilterCount > 0 && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary-500 text-white">{activeFilterCount}</span>
+              )}
+            </button>
           </div>
 
           {loading ? (
@@ -420,7 +921,19 @@ export default function Courses() {
             <div className="text-center py-20">
               <BookOpen size={48} className="mx-auto text-gray-200 dark:text-brand-dark-muted mb-4" />
               <h3 className="text-lg font-semibold text-brand-text dark:text-brand-dark-text mb-2">No courses found</h3>
-              <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Try adjusting your filters or search terms.</p>
+              <p className="text-brand-muted dark:text-brand-dark-muted text-sm">
+                {hierarchyActive
+                  ? 'No courses have been linked to this College/Course/Branch/Semester/Subject yet. Try a broader level (e.g. just the Course) or reset the Academic Filter.'
+                  : 'Try adjusting your filters or search terms.'}
+              </p>
+              {hierarchyActive && (
+                <button
+                  onClick={handleHResetHierarchy}
+                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                >
+                  Reset Academic Filter
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
@@ -440,6 +953,119 @@ export default function Courses() {
           )}
         </main>
       </div>
+
+
+      {/* Mobile Filter Drawer */}
+      <AnimatePresence>
+        {mobileFiltersOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMobileFiltersOpen(false)}
+              className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            />
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'tween', duration: 0.25, ease: 'easeInOut' }}
+              className="fixed top-0 right-0 h-full w-[85%] max-w-sm bg-white dark:bg-brand-dark-card z-50 md:hidden flex flex-col shadow-2xl"
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-brand-dark-border flex-shrink-0">
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal size={16} className="text-brand-muted dark:text-brand-dark-muted" />
+                  <h3 className="text-base font-bold text-brand-text dark:text-brand-dark-text">Refine results</h3>
+                </div>
+                <button
+                  onClick={() => setMobileFiltersOpen(false)}
+                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                  aria-label="Close filters"
+                >
+                  <X size={18} className="text-brand-text dark:text-brand-dark-text" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-5 py-2">
+                <AccordionSection
+                  title="Academic Filter"
+                  defaultOpen
+                  badge={(hSelectedCollegeId || hSelectedCourseId || hSelectedBranchId || hSelectedSemesterId || hSelectedSubjectId) ? 1 : 0}
+                >
+                  {renderHHierarchyDropdown('College', 'Select College...', hColleges, hSelectedCollegeId, handleHCollegeSelect, 'college', false)}
+                  {renderHHierarchyDropdown('Course', hSelectedCollegeId ? 'Select Course...' : 'Select College first', hCourses, hSelectedCourseId, handleHCourseSelect, 'course', !hSelectedCollegeId)}
+                  {renderHHierarchyDropdown('Branch', hSelectedCourseId ? 'Select Branch...' : 'Select Course first', hBranches, hSelectedBranchId, handleHBranchSelect, 'branch', !hSelectedCourseId)}
+                  {renderHHierarchyDropdown('Semester', hSelectedBranchId ? 'Select Semester...' : 'Select Branch first', hSemesters.map(s => ({ id: s.id, name: `Semester ${s.semester_number}` })), hSelectedSemesterId, handleHSemesterSelect, 'semester', !hSelectedBranchId)}
+                  {renderHHierarchyDropdown('Subject', hSelectedSemesterId ? 'Select Subject...' : 'Select Semester first', hSubjects, hSelectedSubjectId, handleHSubjectSelect, 'subject', !hSelectedSemesterId)}
+
+                  <button
+                    onClick={handleHApplyFilter}
+                    disabled={!(hSelectedCollegeId || hSelectedCourseId || hSelectedBranchId || hSelectedSemesterId || hSelectedSubjectId)}
+                    className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-primary-500 hover:bg-primary-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Search size={14} /> Search
+                  </button>
+                </AccordionSection>
+
+                <div className="space-y-0.5 mb-3 pb-3 border-b border-gray-100 dark:border-brand-dark-border">
+                  <button
+                    onClick={() => setActiveSub(null)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${!activeSub ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                  >
+                    All Categories ({published.filter(c => c.group === activeGroup).length})
+                  </button>
+                  {ALL_SUBCATEGORIES.map(({ label: sub, group }) => {
+                    const cnt = published.filter(c => c.subcategory === sub).length
+                    return (
+                      <button
+                        key={sub}
+                        onClick={() => { handleHResetHierarchy(); setActiveSub(sub); setActiveGroup(group) }}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between transition-colors ${activeSub === sub ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                      >
+                        <span className="truncate">{sub}</span>
+                        {cnt > 0 && <span className={`text-[10px] font-bold ml-1 px-1.5 py-0.5 rounded-full ${activeSub === sub ? 'bg-white/20 dark:bg-black/20' : 'bg-gray-100 dark:bg-white/10'}`}>{cnt}</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <AccordionSection title="Level" badge={activeLevel !== 'All Levels' ? 1 : 0}>
+                  {LEVELS.map(l => (
+                    <button key={l} onClick={() => setActiveLevel(l)} className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-0.5 transition-colors ${activeLevel === l ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}>{l}</button>
+                  ))}
+                </AccordionSection>
+
+                <AccordionSection title="Price" badge={activePrice !== 'All' ? 1 : 0}>
+                  {PRICES.map(p => (
+                    <button key={p} onClick={() => setActivePrice(p)} className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-0.5 transition-colors ${activePrice === p ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}>{p}</button>
+                  ))}
+                </AccordionSection>
+              </div>
+
+              <div className="flex-shrink-0 p-4 border-t border-gray-100 dark:border-brand-dark-border flex gap-3">
+                {activeFilterCount > 0 && (
+                  <button
+                    onClick={() => { setActiveSub(null); setActiveLevel('All Levels'); setActivePrice('All'); handleHResetHierarchy() }}
+                    className="flex-1 px-4 py-3 rounded-xl text-sm font-semibold border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                  >
+                    Clear all
+                  </button>
+                )}
+                <button
+                  onClick={() => setMobileFiltersOpen(false)}
+                  className="flex-1 px-4 py-3 rounded-xl text-sm font-semibold text-white bg-primary-500 hover:bg-primary-600 transition-colors"
+                >
+                  Show {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      </>
+      )}
 
       {enrollCourse && (
         <EnrollModal

@@ -51,6 +51,17 @@ export interface VideoTimestamp {
   sortOrder: number
 }
 
+// Personal notes a student takes while watching a course video. Private to
+// the user who wrote them — only that user can see/edit/delete their own.
+export interface VideoNote {
+  id: string
+  courseId: string
+  userId: string
+  noteText: string
+  timeSeconds: number | null
+  createdAt: string
+}
+
 // The 'instructor' rating in the app maps to item_type 'teacher' in the DB,
 // since that's the value your existing item_ratings table's check constraint allows.
 function toItemRatingType(t: RatingType): 'course' | 'teacher' {
@@ -359,6 +370,60 @@ function mapTimestamp(row: any): VideoTimestamp {
     timeSeconds: row.time_seconds,
     label: row.label,
     sortOrder: row.sort_order ?? 0,
+  }
+}
+
+// ─── Notes (private, per-student, per-course) ─────────────────────────────────
+export async function getNotes(courseId: string, userId: string): Promise<VideoNote[]> {
+  const { data, error } = await supabase
+    .from('item_notes')
+    .select('*')
+    .eq('item_type', 'course')
+    .eq('item_id', courseId)
+    .eq('user_id', userId)
+    .order('time_seconds', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: false })
+
+  if (error) throw new Error(`Failed to load notes: ${error.message}`)
+  return (data ?? []).map(mapNote)
+}
+
+export async function addNote(courseId: string, userId: string, noteText: string, timeSeconds: number | null): Promise<VideoNote> {
+  const { data, error } = await supabase
+    .from('item_notes')
+    .insert({ item_type: 'course', item_id: courseId, user_id: userId, note_text: noteText, time_seconds: timeSeconds })
+    .select('*')
+    .single()
+
+  if (error) throw new Error(`Failed to save note: ${error.message}`)
+  return mapNote(data)
+}
+
+export async function updateNote(id: string, noteText: string): Promise<VideoNote> {
+  const { data, error } = await supabase
+    .from('item_notes')
+    .update({ note_text: noteText })
+    .eq('id', id)
+    .select('*')
+    .single()
+
+  if (error) throw new Error(`Failed to update note: ${error.message}`)
+  return mapNote(data)
+}
+
+export async function deleteNote(id: string): Promise<void> {
+  const { error } = await supabase.from('item_notes').delete().eq('id', id)
+  if (error) throw new Error(`Failed to delete note: ${error.message}`)
+}
+
+function mapNote(row: any): VideoNote {
+  return {
+    id: row.id,
+    courseId: String(row.item_id),
+    userId: row.user_id,
+    noteText: row.note_text,
+    timeSeconds: row.time_seconds ?? null,
+    createdAt: row.created_at,
   }
 }
 

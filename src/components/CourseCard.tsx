@@ -33,10 +33,17 @@ export default function CourseCard({ course, index = 0 }: CourseCardProps) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ duration: 0.4, delay: index * 0.1 }}
-      className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border overflow-hidden flex flex-col group hover:shadow-card-hover hover:-translate-y-1 transition-all duration-200"
+      className="dynamic-card bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border overflow-hidden flex flex-col group transition-all duration-300"
     >
       {/* Thumbnail — clean dark */}
-      <div className="h-44 flex items-center justify-center relative overflow-hidden bg-gray-900 dark:bg-black">
+      <button
+        type="button"
+        onClick={() => course.youtubeUrl
+          ? window.open(course.youtubeUrl, '_blank', 'noopener,noreferrer')
+          : toast(`Preview for "${course.title}" will be available soon.`)}
+        className="dynamic-media h-44 w-full flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-violet-700 via-indigo-700 to-cyan-600 cursor-pointer"
+        aria-label={`Preview ${course.title}`}
+      >
         <BookOpen size={52} className="text-white/10" />
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
         {course.price === 'FREE' && (
@@ -55,7 +62,7 @@ export default function CourseCard({ course, index = 0 }: CourseCardProps) {
             <Play size={18} className="text-white ml-0.5" />
           </div>
         </div>
-      </div>
+      </button>
 
       {/* Content */}
       <div className="p-5 flex flex-col flex-1">
@@ -121,7 +128,7 @@ export default function CourseCard({ course, index = 0 }: CourseCardProps) {
             <motion.button
               whileTap={{ scale: 0.97 }}
               onClick={handleEnroll}
-              className="px-4 py-2 bg-[#0A0A0A] dark:bg-white text-white dark:text-black text-sm font-semibold rounded-xl hover:bg-gray-800 dark:hover:bg-gray-100 transition-all duration-200"
+              className="dynamic-button px-4 py-2 bg-[#0A0A0A] dark:bg-white text-white dark:text-black text-sm font-semibold rounded-xl hover:bg-gray-800 dark:hover:bg-gray-100"
             >
               Enroll Now
             </motion.button>

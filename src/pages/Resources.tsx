@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
 import {
   FileText, Download, Bookmark, Share2, Lock, Search,
-  Clock, BookOpen, ChevronDown, Eye, Loader2, Archive,
+  Clock, BookOpen, ChevronDown, Loader2, Archive, Compass,
   Sparkles, ArrowRight
 } from 'lucide-react'
 import type { Resource } from '../store/contentStore'
@@ -85,13 +85,8 @@ function ResourceCard({ resource, onDownload }: { resource: Resource; onDownload
   const { icon: FileIcon, color: iconColor, bg: iconBg } = getFileStyle(resource.downloadUrl)
 
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, scale: 0.97 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.97 }}
-      whileHover={{ y: -3 }}
-      className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border p-5 relative overflow-hidden group hover:shadow-card-hover transition-all duration-200"
+    <div
+      className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border p-5 relative group"
     >
       {resource.isPremium && (
         <div className="absolute top-0 right-0 bg-[#0A0A0A] text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl">
@@ -101,7 +96,7 @@ function ResourceCard({ resource, onDownload }: { resource: Resource; onDownload
 
       {/* Header */}
       <div className="flex items-start gap-3 mb-3">
-        <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 border ${iconBg}`}>
+        <div className={`fx-resource-icon flex w-12 h-12 rounded-xl items-center justify-center flex-shrink-0 border ${iconBg}`}>
           <FileIcon size={22} className={iconColor} />
         </div>
         <div className="min-w-0 flex-1">
@@ -128,13 +123,17 @@ function ResourceCard({ resource, onDownload }: { resource: Resource; onDownload
       {/* Actions */}
       <div className="flex items-center gap-2">
         {resource.isPremium ? (
-          <button className="flex-1 flex items-center justify-center gap-2 py-2 bg-[#0A0A0A] text-white rounded-xl text-xs font-semibold hover:bg-gray-800 transition-colors">
+          <button
+            type="button"
+            onClick={() => toast.success(`Premium access for "${resource.title}" is ready to unlock.`)}
+            className="dynamic-button flex-1 flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-violet-600 to-blue-600 text-white rounded-xl text-xs font-semibold hover:from-violet-700 hover:to-blue-700"
+          >
             <Lock size={13} /> Unlock for ₹{resource.price}
           </button>
         ) : (
           <button
             onClick={() => onDownload(resource)}
-            className="flex-1 flex items-center justify-center gap-2 py-2 bg-[#0A0A0A] dark:bg-white text-white dark:text-black rounded-xl text-xs font-semibold hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
+            className="dynamic-button flex-1 flex items-center justify-center gap-2 py-2 bg-[#0A0A0A] dark:bg-white text-white dark:text-black rounded-xl text-xs font-semibold hover:bg-gray-800 dark:hover:bg-gray-100"
           >
             <Download size={13} /> Download Free
           </button>
@@ -152,7 +151,7 @@ function ResourceCard({ resource, onDownload }: { resource: Resource; onDownload
           <Share2 size={14} />
         </button>
       </div>
-    </motion.div>
+    </div>
   )
 }
 
@@ -504,7 +503,8 @@ export default function Resources() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-brand-dark-bg pt-16">
-      <section className="bg-gray-50 dark:bg-brand-dark-card border-b border-gray-100 dark:border-brand-dark-border pt-28 pb-12 px-4 overflow-hidden">
+      {/* Hero — top-left text + right dynamic animated card, copied from the main zip */}
+      <section className="bg-gray-50 dark:bg-brand-dark-card border-b border-gray-100 dark:border-brand-dark-border pt-8 pb-12 px-4 overflow-hidden sm:pt-10">
         <div className="max-w-7xl mx-auto grid lg:grid-cols-[1.05fr_0.95fr] gap-8 items-center">
           <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}>
             <span className="inline-flex items-center gap-2 px-3 py-1 text-xs font-semibold text-brand-muted dark:text-brand-dark-muted border border-gray-200 dark:border-brand-dark-border rounded-full mb-5 uppercase tracking-widest">
@@ -706,7 +706,7 @@ export default function Resources() {
         </aside>
 
         {/* Main */}
-        <main id="resources-list" className="flex-1 min-w-0">
+        <main className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-xl font-bold text-brand-text dark:text-brand-dark-text">

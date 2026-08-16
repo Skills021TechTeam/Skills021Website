@@ -305,7 +305,11 @@ export default function Quizzes() {
                   <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${CATEGORIES.find(c => c.label === quiz.category)?.bg || ''} ${CATEGORIES.find(c => c.label === quiz.category)?.color || ''}`}>
                     {quiz.category}
                   </span>
-                  <button className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-xl text-xs font-semibold hover:bg-primary-600 transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => setActiveQuiz(quiz)}
+                    className="dynamic-button flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-xl text-xs font-semibold"
+                  >
                     Start Quiz <ChevronRight size={13} />
                   </button>
                 </div>

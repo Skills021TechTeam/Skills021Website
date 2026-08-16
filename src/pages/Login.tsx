@@ -120,7 +120,7 @@ export default function Login() {
                 <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text">
                   Password
                 </label>
-                <button type="button" className="text-xs text-primary-500 hover:underline">
+                <button type="button" onClick={() => toast.success('Password reset support will be available soon.')} className="dynamic-button text-xs text-primary-500 hover:underline rounded-md px-1">
                   Forgot password?
                 </button>
               </div>

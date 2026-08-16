@@ -66,6 +66,17 @@ export interface VideoTimestamp {
   sortOrder: number
 }
 
+// Personal notes a student takes while watching a course video. Private to
+// the user who wrote them — only that user can see/edit/delete their own.
+export interface VideoNote {
+  id: string
+  courseId: string
+  userId: string
+  noteText: string
+  timeSeconds: number | null
+  createdAt: string
+}
+
 // The 'instructor' rating in the app maps to item_type 'teacher' in the DB,
 // since that's the value your existing item_ratings table's check constraint allows.
 function toItemRatingType(t: RatingType): 'course' | 'teacher' {

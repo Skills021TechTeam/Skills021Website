@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Send, Trash2, Loader2, ListVideo, MessageSquare, Star, Lock } from 'lucide-react'
+import { X, Send, Trash2, Loader2, ListVideo, MessageSquare, Star, Lock, FileText, Download, ExternalLink, ChevronDown } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { Course } from '../store/contentStore'
+import { Course, Resource } from '../store/contentStore'
 import StarRating from './StarRating'
+import ConfirmDownloadDialog from './ConfirmDownloadDialog'
+import { fetchNotesForSubject, triggerResourceDownload, incrementDownloadCount } from '../lib/resourceService'
 import {
   getTimestamps, getComments, addComment, deleteComment,
   getRatingSummary, submitRating,
@@ -29,6 +31,16 @@ export default function VideoPlayerModal({ course, userId, userName, isAdmin, ca
   const [draftInstructorRating, setDraftInstructorRating] = useState(0)
   const [submittingRating, setSubmittingRating] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [descExpanded, setDescExpanded] = useState(false)
+
+  // ── Tab selector ──
+  const [sidebarTab, setSidebarTab] = useState<'chapters' | 'courseNotes'>('chapters')
+
+  // ── Course notes (actual PDFs/resources uploaded via the Resources panel) ──
+  const [courseNoteResources, setCourseNoteResources] = useState<Resource[]>([])
+  const [courseNotesLoading, setCourseNotesLoading] = useState(true)
+  const [dialogResource, setDialogResource] = useState<Resource | null>(null)
+  const [isDownloadingNote, setIsDownloadingNote] = useState(false)
 
   // Some browsers/embedded webviews default a freshly-mounted <video> to
   // muted (a leftover autoplay-policy heuristic) even without the `muted`
@@ -62,6 +74,21 @@ export default function VideoPlayerModal({ course, userId, userName, isAdmin, ca
       }
     })()
   }, [course.id, canWatch, userId])
+
+  useEffect(() => {
+    if (!canWatch) { setCourseNotesLoading(false); return }
+    (async () => {
+      try {
+        const subjectToMatch = (course.notesSubject && course.notesSubject.trim()) || course.title || ''
+        const res = await fetchNotesForSubject(subjectToMatch)
+        setCourseNoteResources(res)
+      } catch (err) {
+        console.error('Failed to load course notes:', err)
+      } finally {
+        setCourseNotesLoading(false)
+      }
+    })()
+  }, [course.id, course.title, course.notesSubject, canWatch])
 
   const seekTo = (seconds: number) => {
     if (videoRef.current) {
@@ -110,6 +137,37 @@ export default function VideoPlayerModal({ course, userId, userName, isAdmin, ca
       toast.error(err instanceof Error ? err.message : 'Failed to submit rating')
     } finally {
       setSubmittingRating(false)
+    }
+  }
+
+  // ── Course notes (Resources panel) download handling ──
+  const handleOpenNoteDialog = (resource: Resource) => {
+    if (resource.isPremium) {
+      toast.error('This is a premium resource. Please purchase it from the Resources page.')
+      return
+    }
+    setDialogResource(resource)
+  }
+
+  const handleConfirmNoteDownload = async () => {
+    if (!dialogResource || isDownloadingNote) return
+    if (!dialogResource.downloadUrl) {
+      toast.error('Download file is not available.')
+      setDialogResource(null)
+      return
+    }
+    setIsDownloadingNote(true)
+    try {
+      await triggerResourceDownload(dialogResource.downloadUrl, dialogResource.title)
+      const { id, downloads } = dialogResource
+      setCourseNoteResources(prev => prev.map(r => (r.id === id ? { ...r, downloads: r.downloads + 1 } : r)))
+      toast.success(`Downloading: ${dialogResource.title}`)
+      incrementDownloadCount(id, downloads).catch(() => {})
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to download note')
+    } finally {
+      setIsDownloadingNote(false)
+      setDialogResource(null)
     }
   }
 
@@ -168,38 +226,65 @@ export default function VideoPlayerModal({ course, userId, userName, isAdmin, ca
 
                   <div className="p-5">
                     <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text mb-1">{course.title}</h3>
-                    <p className="text-sm text-brand-muted dark:text-brand-dark-muted mb-5">By {course.instructor}</p>
+                    <p className="text-sm text-brand-muted dark:text-brand-dark-muted mb-4">By {course.instructor}</p>
 
-                    {/* Instructor Rating */}
-                    <div className="p-4 rounded-xl bg-gray-50 dark:bg-white/5 mb-6">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Star size={16} className="text-amber-400" />
-                        <span className="text-sm font-semibold text-brand-text dark:text-brand-dark-text">Rate the Instructor</span>
-                        {instructorRating && (
-                          <span className="text-xs text-brand-muted dark:text-brand-dark-muted ml-auto">
-                            {instructorRating.average || '—'} avg · {instructorRating.count} rating{instructorRating.count !== 1 ? 's' : ''}
-                          </span>
+                    {/* About this course */}
+                    {course.description && (
+                      <div className="mb-5 pb-5 border-b border-gray-100 dark:border-brand-dark-border">
+                        <h4 className="text-[11px] font-bold uppercase tracking-wider text-brand-muted dark:text-brand-dark-muted mb-2">
+                          About this course
+                        </h4>
+                        <p
+                          className={`text-sm text-brand-text/80 dark:text-brand-dark-text/80 leading-relaxed whitespace-pre-line ${
+                            descExpanded ? '' : 'line-clamp-3'
+                          }`}
+                        >
+                          {course.description}
+                        </p>
+                        {course.description.length > 140 && (
+                          <button
+                            onClick={() => setDescExpanded(v => !v)}
+                            className="mt-1.5 flex items-center gap-1 text-xs font-semibold text-primary-500 hover:text-primary-600 transition-colors"
+                          >
+                            {descExpanded ? 'Show less' : 'Show more'}
+                            <ChevronDown size={13} className={`transition-transform ${descExpanded ? 'rotate-180' : ''}`} />
+                          </button>
                         )}
                       </div>
-                      <div className="flex items-center gap-3">
+                    )}
+
+                    {/* Instructor Rating */}
+                    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 mb-6">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="text-xs font-semibold text-brand-text dark:text-brand-dark-text whitespace-nowrap">
+                          {instructorRating?.userRating ? 'Your rating' : 'Rate instructor'}
+                        </span>
                         <StarRating
                           value={instructorRating?.userRating ?? draftInstructorRating}
                           onChange={instructorRating?.userRating ? undefined : setDraftInstructorRating}
-                          size={22}
+                          size={17}
                           readOnly={!!instructorRating?.userRating}
                         />
-                        {instructorRating?.userRating ? (
-                          <span className="text-xs text-brand-muted dark:text-brand-dark-muted">Thanks for your rating!</span>
-                        ) : (
+                        {!instructorRating?.userRating && (
                           <button
                             onClick={handleSubmitInstructorRating}
-                            disabled={submittingRating}
-                            className="px-3 py-1.5 text-xs font-semibold bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-60 transition-colors flex items-center gap-1.5"
+                            disabled={submittingRating || draftInstructorRating < 1}
+                            aria-label="Submit rating"
+                            className="flex-shrink-0 p-1.5 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                           >
-                            {submittingRating ? <Loader2 size={13} className="animate-spin" /> : null}
-                            Submit Rating
+                            {submittingRating ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                           </button>
                         )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 pl-4 border-l border-gray-200 dark:border-white/10 flex-shrink-0">
+                        <Star size={14} className="text-amber-400 fill-amber-400" />
+                        <span className="text-sm font-bold text-brand-text dark:text-brand-dark-text tabular-nums">
+                          {instructorRating?.average || '—'}
+                        </span>
+                        <span className="text-xs text-brand-muted dark:text-brand-dark-muted">
+                          ({instructorRating?.count ?? 0})
+                        </span>
                       </div>
                     </div>
 
@@ -255,36 +340,100 @@ export default function VideoPlayerModal({ course, userId, userName, isAdmin, ca
                   </div>
                 </div>
 
-                {/* Timestamps sidebar */}
+                {/* Chapters / My Notes sidebar */}
                 <div className="lg:col-span-1 border-t lg:border-t-0 lg:border-l border-gray-100 dark:border-brand-dark-border p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <ListVideo size={16} className="text-brand-muted dark:text-brand-dark-muted" />
-                    <span className="text-sm font-semibold text-brand-text dark:text-brand-dark-text">Chapters</span>
+                  {/* Tab switcher */}
+                  <div className="flex items-center gap-1 mb-4 p-1 bg-gray-100 dark:bg-white/5 rounded-xl">
+                    <button
+                      onClick={() => setSidebarTab('chapters')}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                        sidebarTab === 'chapters'
+                          ? 'bg-white dark:bg-brand-dark-card text-brand-text dark:text-brand-dark-text shadow-sm'
+                          : 'text-brand-muted dark:text-brand-dark-muted'
+                      }`}
+                    >
+                      <ListVideo size={13} /> Chapters
+                    </button>
+                    <button
+                      onClick={() => setSidebarTab('courseNotes')}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                        sidebarTab === 'courseNotes'
+                          ? 'bg-white dark:bg-brand-dark-card text-brand-text dark:text-brand-dark-text shadow-sm'
+                          : 'text-brand-muted dark:text-brand-dark-muted'
+                      }`}
+                    >
+                      <FileText size={13} /> Notes{courseNoteResources.length > 0 ? ` (${courseNoteResources.length})` : ''}
+                    </button>
                   </div>
-                  {loading ? (
-                    <div className="text-center py-6"><Loader2 size={20} className="animate-spin mx-auto text-brand-muted" /></div>
-                  ) : timestamps.length === 0 ? (
-                    <p className="text-xs text-brand-muted dark:text-brand-dark-muted">No chapters added for this video yet.</p>
-                  ) : (
-                    <div className="space-y-1">
-                      {timestamps.map(t => (
-                        <button
-                          key={t.id}
-                          onClick={() => seekTo(t.timeSeconds)}
-                          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 text-left transition-colors"
-                        >
-                          <span className="text-xs font-mono font-semibold text-primary-500 flex-shrink-0">{formatSeconds(t.timeSeconds)}</span>
-                          <span className="text-xs text-brand-text dark:text-brand-dark-text truncate">{t.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+
+                  {sidebarTab === 'chapters' ? (
+                    loading ? (
+                      <div className="text-center py-6"><Loader2 size={20} className="animate-spin mx-auto text-brand-muted" /></div>
+                    ) : timestamps.length === 0 ? (
+                      <p className="text-xs text-brand-muted dark:text-brand-dark-muted">No chapters added for this video yet.</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {timestamps.map(t => (
+                          <button
+                            key={t.id}
+                            onClick={() => seekTo(t.timeSeconds)}
+                            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 text-left transition-colors"
+                          >
+                            <span className="text-xs font-mono font-semibold text-primary-500 flex-shrink-0">{formatSeconds(t.timeSeconds)}</span>
+                            <span className="text-xs text-brand-text dark:text-brand-dark-text truncate">{t.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  ) : sidebarTab === 'courseNotes' ? (
+                    courseNotesLoading ? (
+                      <div className="text-center py-6"><Loader2 size={20} className="animate-spin mx-auto text-brand-muted" /></div>
+                    ) : courseNoteResources.length === 0 ? (
+                      <p className="text-xs text-brand-muted dark:text-brand-dark-muted">No published notes found yet for "{(course.notesSubject && course.notesSubject.trim()) || course.title}" in the Resources panel.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-[26rem] overflow-y-auto pr-1">
+                        {courseNoteResources.map(r => (
+                          <div key={r.id} className="p-3 rounded-xl bg-gray-50 dark:bg-white/5">
+                            <div className="flex items-start gap-2.5">
+                              <div className="w-8 h-8 rounded-lg bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center flex-shrink-0">
+                                <FileText size={14} className="text-primary-500" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-semibold text-brand-text dark:text-brand-dark-text leading-snug line-clamp-2">{r.title}</p>
+                                <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted mt-0.5">{r.subject}{r.author ? ` · ${r.author}` : ''}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between mt-2.5">
+                              {r.isPremium ? (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">PREMIUM</span>
+                              ) : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400">FREE</span>}
+                              <button
+                                onClick={() => handleOpenNoteDialog(r)}
+                                className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
+                              >
+                                {r.isPremium ? <ExternalLink size={11} /> : <Download size={11} />}
+                                {r.isPremium ? 'View' : 'Download'}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  ) : null}
                 </div>
               </div>
             </div>
           )}
         </motion.div>
       </motion.div>
+
+      <ConfirmDownloadDialog
+        isOpen={!!dialogResource}
+        resourceTitle={dialogResource?.title ?? ''}
+        isLoading={isDownloadingNote}
+        onCancel={() => { if (!isDownloadingNote) setDialogResource(null) }}
+        onConfirm={handleConfirmNoteDownload}
+      />
     </AnimatePresence>
   )
 }

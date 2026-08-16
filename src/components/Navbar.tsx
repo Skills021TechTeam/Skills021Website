@@ -58,6 +58,8 @@ const NAV_ITEMS = [
           icon: Code2,
           items: [
             { name: 'DSA', path: '/courses?group=College+%26+Tech+Courses&sub=DSA' },
+            { name: 'IPU Courses', path: '/courses?group=College+%26+Tech+Courses&sub=IPU+Courses' },
+            { name: 'AKTU Courses', path: '/courses?group=College+%26+Tech+Courses&sub=AKTU+Courses' },
             { name: 'Web Development', path: '/courses?group=College+%26+Tech+Courses&sub=Web+Development' },
             { name: 'App Development', path: '/courses?group=College+%26+Tech+Courses&sub=App+Development' },
             { name: 'AI & Machine Learning', path: '/courses?group=College+%26+Tech+Courses&sub=AI+%26+Machine+Learning' },
@@ -91,7 +93,7 @@ const NAV_ITEMS = [
   },
   {
     id: 'pathfinder',
-    label: 'Skills021 PathFinder',
+    label: 'Pathfinder',
     path: '/pathfinder',
     icon: Compass,
     description: 'Discover careers, exams and future-ready roadmaps',
@@ -444,6 +446,17 @@ export default function Navbar() {
               {darkMode ? <Sun size={16} /> : <Moon size={16} />}
             </button>
 
+            {/* Careers / Join Us */}
+            <Link
+              to="/apply"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-semibold text-[#0A0A0A] dark:text-white border border-gray-300 dark:border-white/20 hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
+              title="Apply for a job or internship"
+            >
+              <Briefcase size={14} />
+              Join Us
+            </Link>
+            <div className="w-px h-5 bg-gray-200 dark:bg-white/10" />
+
             {/* Auth Buttons */}
             {isAdminAuthenticated || (isAuthenticated && user?.role === 'admin') ? (
               <>
@@ -593,6 +606,17 @@ export default function Navbar() {
                   </div>
                 )
               })}
+
+              {/* Mobile: Careers / Join Us */}
+              <div className="pt-3 border-t border-gray-100 dark:border-brand-dark-border mt-1">
+                <Link
+                  to="/apply"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold text-[#0A0A0A] dark:text-white border border-gray-300 dark:border-white/20 hover:bg-gray-100 dark:hover:bg-white/10"
+                >
+                  <Briefcase size={15} /> Join Us
+                </Link>
+              </div>
 
               {/* Mobile Auth Buttons */}
               <div className="pt-3 border-t border-gray-100 dark:border-brand-dark-border mt-1">

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { SearchX, RotateCw, Compass } from 'lucide-react'
+import { SearchX, RotateCw, Compass, BriefcaseBusiness, FileText, MapPinned } from 'lucide-react'
 import * as LucideIcons from 'lucide-react'
 import CareerCard from '../features/pathfinder/components/CareerCard'
 import CareerDetails from '../features/pathfinder/components/CareerDetails'
@@ -252,7 +252,7 @@ export default function PathFinder() {
   if (error) {
     return (
       <div className="min-h-screen bg-white dark:bg-brand-dark-bg">
-        <PathFinderHero search={search} onSearchChange={setSearch} onExploreClick={handleExploreCareers} />
+        <PathFinderHero search={search} onSearchChange={setSearch} onExploreClick={handleExploreCareers} careerCount={careerPaths.length} examCount={allExams.length} />
         <div className="max-w-2xl mx-auto px-4 py-16 text-center">
           <div className="card p-8 border border-red-100 dark:border-red-950/20 bg-red-50/50 dark:bg-red-950/10 rounded-2xl">
             <h3 className="text-lg font-bold text-red-600 dark:text-red-400 mb-2">Failed to load Pathfinder data</h3>
@@ -274,7 +274,7 @@ export default function PathFinder() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-brand-dark-bg">
-      <PathFinderHero search={search} onSearchChange={setSearch} onExploreClick={handleExploreCareers} />
+      <PathFinderHero search={search} onSearchChange={setSearch} onExploreClick={handleExploreCareers} careerCount={careerPaths.length} examCount={allExams.length} />
 
       <section ref={careersRef} className="max-w-7xl mx-auto px-4 py-10">
         <div className="flex items-end justify-between gap-4 mb-6">
@@ -292,13 +292,15 @@ export default function PathFinder() {
             <p className="text-sm text-brand-muted dark:text-brand-dark-muted">Try searching for AI, defense, data, civil services, or engineering.</p>
           </div>
         ) : (
-          <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-            <AnimatePresence mode="popLayout">
-              {filteredCareers.map((career) => (
-                <CareerCard key={career.id} career={career} onSelect={handleSelectCareer} />
-              ))}
-            </AnimatePresence>
-          </motion.div>
+          <div className="flex gap-6 items-start">
+            <motion.div layout className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              <AnimatePresence mode="popLayout">
+                {filteredCareers.map((career) => (
+                  <CareerCard key={career.id} career={career} onSelect={handleSelectCareer} />
+                ))}
+              </AnimatePresence>
+            </motion.div>
+          </div>
         )}
       </section>
 

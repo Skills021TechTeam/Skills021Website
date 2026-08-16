@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Users, Star, Clock, Briefcase, CheckCircle, Calendar,
+  Users, Star, Clock, Briefcase, CheckCircle, Calendar, HeartHandshake,
   FileText, Link2, Video, Target, Lightbulb, BookOpen,
   ArrowRight, Phone, MessageCircle, Mail, MapPin, GraduationCap,
   Send, ChevronRight, Shield, Zap, Check, Search, X, ExternalLink,
@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { fetchActiveMentors, createGuidanceRequest, type Mentor } from '../lib/mentorService'
 import toast from 'react-hot-toast'
+import PanelSpotlightCard from '../components/PanelSpotlightCard'
 
 // Guidance type definition
 type GuidanceType = 'Career Guidance' | 'College Selection' | 'Branch Selection' | 'Placement Preparation' | 'Internship Guidance' | 'Higher Studies Guidance' | 'Resume Review' | 'LinkedIn Profile Review' | 'Mock Interview' | 'Skill Roadmap' | 'Startup Guidance' | 'Study Planning'
@@ -343,52 +344,71 @@ export default function Mentorship() {
   return (
     <div className="min-h-screen bg-white dark:bg-brand-dark-bg pt-16">
 
-      {/* ── Hero — clean, matches Courses/Resources ── */}
-      <div className="bg-gray-50 dark:bg-brand-dark-card border-b border-gray-100 dark:border-brand-dark-border py-12 px-4">
-        <div className="max-w-5xl mx-auto text-center">
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-            <span className="inline-block px-3 py-1 text-xs font-semibold text-brand-muted dark:text-brand-dark-muted border border-gray-200 dark:border-brand-dark-border rounded-full mb-4 uppercase tracking-widest">
-              Mentorship
-            </span>
-            <h1 className="text-3xl md:text-5xl font-black text-brand-text dark:text-brand-dark-text mb-4 tracking-tight">
-              Get Personalized Guidance from Industry Experts
+      {/* ── Premium Mentorship Hero ── */}
+      <section className="mentorship-hero-premium">
+        <div className="mentorship-hero-shell">
+          <motion.div
+            className="mentorship-hero-copy"
+            initial={{ opacity: 0, x: -18 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.55 }}
+          >
+            <div className="mentorship-kicker">Mentorship that moves you forward</div>
+            <h1 className="mentorship-title">
+              Get the right guidance for your <span>next big step.</span>
             </h1>
-            <p className="text-brand-muted dark:text-brand-dark-muted max-w-xl mx-auto mb-6">
-              Submit a free guidance request and our expert mentors will contact you via call, WhatsApp, or email to help you achieve your goals.
+            <p className="mentorship-lead">
+              Connect with industry professionals for practical, focused guidance — from choosing a career to preparing for placements, interviews, internships, and higher studies.
             </p>
 
-            {/* Trust badges */}
-            <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-brand-muted dark:text-brand-dark-muted mb-6">
-              <span className="flex items-center gap-2"><Shield size={14} />100% Free</span>
-              <span className="flex items-center gap-2"><Clock size={14} />Response in 24hrs</span>
-              {activeMentors.length > 0 && (
-                <span className="flex items-center gap-2"><Users size={14} />{activeMentors.length}+ Expert Mentors</span>
-              )}
+            <div className="mentorship-benefits">
+              {[
+                { icon: Briefcase, title: 'Career clarity', text: 'Turn confusion into a practical next step.' },
+                { icon: FileText, title: 'Profile feedback', text: 'Improve your resume and professional profile.' },
+                { icon: Video, title: 'Interview practice', text: 'Prepare with focused, real-world guidance.' },
+              ].map(({ icon: Icon, title, text }) => (
+                <div className="mentorship-benefit" key={title}>
+                  <div className="mentorship-benefit-icon"><Icon size={17} /></div>
+                  <strong>{title}</strong>
+                  <span>{text}</span>
+                </div>
+              ))}
             </div>
 
-            {/* Stats */}
-            {activeMentors.length > 0 && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-2xl mx-auto">
-                {[
-                  { val: `${activeMentors.length}+`, label: 'Expert Mentors' },
-                  { val: `${activeMentors.reduce((a, m) => a + m.sessions, 0).toLocaleString()}+`, label: 'Sessions Done' },
-                  { val: (activeMentors.reduce((a, m) => a + m.rating, 0) / activeMentors.length).toFixed(1), label: 'Avg Rating' },
-                  { val: '100%', label: 'Free Forever' },
-                ].map((s) => (
-                  <div key={s.label} className="bg-white dark:bg-brand-dark-bg rounded-xl p-3 text-center border border-gray-100 dark:border-brand-dark-border">
-                    <div className="text-xl font-bold text-brand-text dark:text-brand-dark-text">{s.val}</div>
-                    <div className="text-xs text-brand-muted dark:text-brand-dark-muted mt-0.5">{s.label}</div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div className="mentorship-proof">
+              <span><Shield size={14} /> 100% free</span>
+              <span><Clock size={14} /> Response within 24 hours</span>
+              <span><Users size={14} /> {activeMentors.length || 0}+ mentors available</span>
+            </div>
           </motion.div>
+
+          <motion.aside
+            className="mentorship-hero-visual"
+            initial={{ opacity: 0, x: 20, scale: 0.98 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            transition={{ duration: 0.65, delay: 0.08 }}
+          >
+            <PanelSpotlightCard
+              variant="mentor"
+              icon={Users}
+              eyebrow="Mentorship Overview"
+              title="Find guidance that fits you"
+              description="Tell us what you need, discover available mentors, and send one focused request. No complicated process — just useful guidance."
+              stat={{ value: `${activeMentors.length}+`, label: 'expert mentors' }}
+              items={[
+                { icon: Users, label: 'Active mentors', value: `${activeMentors.length}` },
+                { icon: HeartHandshake, label: 'Free guidance requests', value: 'Open' },
+                { icon: CheckCircle, label: 'Response target', value: '24h' },
+                { icon: Target, label: 'Guidance areas', value: '12+' },
+              ]}
+            />
+          </motion.aside>
         </div>
-      </div>
+      </section>
 
       {/* ── How It Works ── */}
-      <div className="bg-white dark:bg-brand-dark-bg border-b border-gray-100 dark:border-brand-dark-border py-8 px-4">
-        <div className="max-w-4xl mx-auto">
+      <div className="bg-white dark:bg-brand-dark-bg border-b border-gray-100 dark:border-brand-dark-border py-6 px-4 sm:py-7">
+        <div className="w-full max-w-6xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-widest text-brand-muted dark:text-brand-dark-muted mb-6">How It Works</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
@@ -415,7 +435,8 @@ export default function Mentorship() {
 
         {/* ── Our Mentors — click to select one or more for your request ── */}
         {activeMentors.length > 0 && (
-          <div className="mb-8">
+          <div className="mb-8 flex flex-col lg:flex-row gap-6 items-start">
+            <div className="flex-1 min-w-0">
             <h2 className="text-xl font-bold text-brand-text dark:text-brand-dark-text mb-1">Meet Our Mentors</h2>
             <p className="text-sm text-brand-muted dark:text-brand-dark-muted mb-5">Industry experts from top companies. Select one or more mentors you'd like guidance from — it's optional.</p>
 
@@ -444,7 +465,7 @@ export default function Mentorship() {
                   <button
                     type="button"
                     onClick={() => setExpertiseFilter(null)}
-                    className={`text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                    className={`dynamic-chip text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-colors ${
                       !expertiseFilter
                         ? 'bg-black dark:bg-white text-white dark:text-black border-black dark:border-white'
                         : 'border-brand-border dark:border-brand-dark-border text-brand-muted dark:text-brand-dark-muted hover:border-black/50 dark:hover:border-white/50'
@@ -457,7 +478,7 @@ export default function Mentorship() {
                       type="button"
                       key={exp}
                       onClick={() => setExpertiseFilter(expertiseFilter === exp ? null : exp)}
-                      className={`text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                      className={`dynamic-chip text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-colors ${
                         expertiseFilter === exp
                           ? 'bg-black dark:bg-white text-white dark:text-black border-black dark:border-white'
                           : 'border-brand-border dark:border-brand-dark-border text-brand-muted dark:text-brand-dark-muted hover:border-black/50 dark:hover:border-white/50'
@@ -489,12 +510,18 @@ export default function Mentorship() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: idx * 0.08 }}
                       onClick={() => toggleMentor(mentor.id)}
+                      onMouseMove={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect()
+                        e.currentTarget.style.setProperty('--mx', `${e.clientX - rect.left}px`)
+                        e.currentTarget.style.setProperty('--my', `${e.clientY - rect.top}px`)
+                      }}
                       role="button"
                       tabIndex={0}
-                      className={`card p-5 text-left relative transition-colors cursor-pointer ${
-                        selected ? 'border-black dark:border-white ring-1 ring-black dark:ring-white' : 'hover:border-black/50 dark:hover:border-white/50'
+                      className={`mentor-card fx-mentor p-5 text-left relative transition-all duration-300 cursor-pointer border ${
+                        selected ? 'border-violet-500 ring-2 ring-violet-400/40' : 'border-brand-border dark:border-brand-dark-border hover:border-violet-400/60'
                       }`}
                     >
+                      <div className="fx-mentor-content">
                       {selected && (
                         <div className="absolute top-3 right-3 w-5 h-5 bg-black dark:bg-white rounded-full flex items-center justify-center">
                           <Check size={12} className="text-white dark:text-black" />
@@ -512,10 +539,14 @@ export default function Mentorship() {
                       )}
                       <div className="flex items-center gap-3 mb-3">
                         {mentor.photo ? (
-                          <img src={mentor.photo} alt={mentor.name} className="w-12 h-12 rounded-2xl object-cover flex-shrink-0" />
+                          <div className="mentor-avatar-ring rounded-2xl flex-shrink-0">
+                            <img src={mentor.photo} alt={mentor.name} className="w-12 h-12 rounded-[14px] object-cover" />
+                          </div>
                         ) : (
-                          <div className="w-12 h-12 rounded-2xl bg-black dark:bg-white flex items-center justify-center text-white dark:text-black text-lg font-bold flex-shrink-0">
-                            {mentor.name[0]}
+                          <div className="mentor-avatar-ring rounded-2xl flex-shrink-0">
+                            <div className="w-12 h-12 rounded-[14px] bg-white dark:bg-brand-dark-bg flex items-center justify-center text-violet-700 dark:text-violet-300 text-lg font-bold">
+                              {mentor.name[0]}
+                            </div>
                           </div>
                         )}
                         <div className="min-w-0">
@@ -541,11 +572,13 @@ export default function Mentorship() {
                       >
                         View full profile
                       </button>
+                      </div>
                     </motion.div>
                   )
                 })}
               </div>
             )}
+            </div>
           </div>
         )}
 
@@ -565,11 +598,11 @@ export default function Mentorship() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="card overflow-hidden"
+          className="mentorship-form-card card overflow-hidden"
           id="request-form"
         >
           {/* Form header */}
-          <div className="bg-black dark:bg-white p-6">
+          <div className="mentorship-form-header p-6 sm:p-7">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 border-2 border-white dark:border-black rounded-xl flex items-center justify-center">
                 <Send size={18} className="text-white dark:text-black" />
@@ -591,12 +624,12 @@ export default function Mentorship() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="p-6 space-y-8"
+                className="mentorship-form-body p-6 sm:p-7 space-y-8"
               >
                 {/* Section: Personal Details */}
                 <div>
                   <div className="flex items-center gap-2 mb-4">
-                    <div className="w-6 h-6 bg-[#0A0A0A] dark:bg-white rounded-lg flex items-center justify-center text-white dark:text-black text-xs font-bold">1</div>
+                    <div className="form-step-badge w-7 h-7 rounded-xl flex items-center justify-center text-white text-xs font-bold shadow-md">1</div>
                     <h3 className="font-bold text-brand-text dark:text-brand-dark-text">Personal Details</h3>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -638,7 +671,7 @@ export default function Mentorship() {
                 {/* Section: Academic Details */}
                 <div>
                   <div className="flex items-center gap-2 mb-4">
-                    <div className="w-6 h-6 bg-[#0A0A0A] dark:bg-white rounded-lg flex items-center justify-center text-white dark:text-black text-xs font-bold">2</div>
+                    <div className="form-step-badge w-7 h-7 rounded-xl flex items-center justify-center text-white text-xs font-bold shadow-md">2</div>
                     <h3 className="font-bold text-brand-text dark:text-brand-dark-text">Academic Details</h3>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -666,7 +699,7 @@ export default function Mentorship() {
                 {/* Section: Guidance Needed */}
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <div className="w-6 h-6 bg-[#0A0A0A] dark:bg-white rounded-lg flex items-center justify-center text-white dark:text-black text-xs font-bold">3</div>
+                    <div className="form-step-badge w-7 h-7 rounded-xl flex items-center justify-center text-white text-xs font-bold shadow-md">3</div>
                     <h3 className="font-bold text-brand-text dark:text-brand-dark-text">What Type of Guidance Do You Need?</h3>
                   </div>
                   <p className="text-xs text-brand-muted dark:text-brand-dark-muted mb-4 ml-8">Select all that apply</p>
@@ -678,7 +711,7 @@ export default function Mentorship() {
                           type="button"
                           key={label}
                           onClick={() => toggleGuidanceType(label)}
-                          className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-semibold text-left transition-all ${
+                          className={`dynamic-button flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-semibold text-left transition-all ${
                             checked
                               ? 'border-[#0A0A0A] dark:border-white bg-[#0A0A0A] dark:bg-white text-white dark:text-black'
                               : 'border-brand-border dark:border-brand-dark-border text-brand-muted dark:text-brand-dark-muted hover:border-[#0A0A0A]/50 dark:hover:border-white/50'
@@ -723,7 +756,7 @@ export default function Mentorship() {
                 </div>
 
                 {/* Consent */}
-                <div className="flex items-start gap-3 p-4 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/10">
+                <div className="mentorship-consent flex items-start gap-3 p-4 rounded-2xl border">
                   <input
                     id="consent-guidance"
                     type="checkbox"
@@ -741,7 +774,7 @@ export default function Mentorship() {
                   type="submit"
                   disabled={loading}
                   whileTap={{ scale: 0.98 }}
-                  className="w-full py-4 bg-black dark:bg-white text-white dark:text-black rounded-xl font-bold text-base hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-black/20 dark:shadow-white/20 disabled:opacity-70"
+                  className="mentorship-submit w-full py-4 text-white rounded-2xl font-bold text-base transition-all flex items-center justify-center gap-2 shadow-xl disabled:opacity-70"
                 >
                   {loading ? (
                     <><span className="animate-spin inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full" /> Submitting...</>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { User, Mail, Lock, Eye, EyeOff, Zap, AlertCircle, School } from 'lucide-react'
+import { User, Mail, Lock, Eye, EyeOff, Zap, AlertCircle, School, Phone } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 
@@ -19,6 +19,7 @@ export default function Register() {
   const [form, setForm] = useState({
     name: '',
     email: '',
+    phone: '',
     password: '',
     confirmPassword: '',
     college: '',
@@ -27,7 +28,7 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const { register } = useAuthStore()
+  const { registerWithSupabase } = useAuthStore()
   const navigate = useNavigate()
 
   const validate = () => {
@@ -36,6 +37,8 @@ export default function Register() {
     else if (form.name.trim().length < 3) errs.name = 'Name must be at least 3 characters'
     if (!form.email) errs.email = 'Email is required'
     else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = 'Enter a valid email address'
+    if (!form.phone.trim()) errs.phone = 'Phone number is required'
+    else if (!/^[+]?[\d\s()-]{7,15}$/.test(form.phone.trim())) errs.phone = 'Enter a valid phone number'
     if (!form.password) errs.password = 'Password is required'
     else if (form.password.length < 6) errs.password = 'Password must be at least 6 characters'
     if (!form.confirmPassword) errs.confirmPassword = 'Please confirm your password'
@@ -58,23 +61,24 @@ export default function Register() {
       return
     }
     setLoading(true)
-    await new Promise((r) => setTimeout(r, 800))
 
-    const success = register({
+    const result = await registerWithSupabase({
       name: form.name.trim(),
-      email: form.email,
+      email: form.email.trim(),
+      phone: form.phone.trim(),
       password: form.password,
       college: form.college,
     })
 
     setLoading(false)
 
-    if (success) {
-      toast.success('Account created! Welcome to Skills021 🎉', { duration: 3000 })
+    if (result.success) {
+      toast.success('Account created and saved in Supabase! Welcome to Skills021 🎉', { duration: 3500 })
       navigate('/dashboard')
     } else {
-      toast.error('An account with this email already exists.')
-      setErrors({ email: 'Email already registered' })
+      const errorMsg = result.error || 'Registration failed or account with this email already exists.'
+      toast.error(errorMsg)
+      setErrors({ email: errorMsg })
     }
   }
 
@@ -96,7 +100,7 @@ export default function Register() {
               <span className="text-2xl font-bold text-primary-500">Skills021</span>
             </Link>
             <h1 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">Create your account</h1>
-            <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-1">Join 12,000+ students today</p>
+            <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-1">Join 12,000+ students on Supabase</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
@@ -132,6 +136,23 @@ export default function Register() {
                 />
               </div>
               {errors.email && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={12}/>{errors.email}</p>}
+            </div>
+
+            {/* Phone */}
+            <div>
+              <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">Phone Number</label>
+              <div className="relative">
+                <Phone size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brand-muted" />
+                <input
+                  id="reg-phone"
+                  type="tel"
+                  value={form.phone}
+                  onChange={(e) => handleChange('phone', e.target.value)}
+                  placeholder="+91 98765 43210"
+                  className={`w-full pl-10 pr-4 py-3 rounded-xl border text-sm bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${errors.phone ? 'border-red-400' : 'border-brand-border dark:border-brand-dark-border'}`}
+                />
+              </div>
+              {errors.phone && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={12}/>{errors.phone}</p>}
             </div>
 
             {/* College */}

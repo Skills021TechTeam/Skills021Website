@@ -5,7 +5,7 @@ import {
   Menu, X, Sun, Moon, ChevronDown,
   BookOpen, FileText, Users,
   Code2, Target, HelpCircle,
-  FileQuestion, ArrowRight, Home, LogIn, LogOut, UserCircle2, LayoutDashboard, Compass
+  FileQuestion, ArrowRight, Home, LogIn, LogOut, UserCircle2, LayoutDashboard, Compass, Trophy, Shield
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 
@@ -292,7 +292,7 @@ export default function Navbar() {
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null)
   const [mobileExpanded, setMobileExpanded] = useState<string | null>(null)
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('skills021_theme') === 'dark')
-  const { user, isAuthenticated, logout } = useAuthStore()
+  const { user, isAuthenticated, logout, isAdminAuthenticated, adminLogout, logoutUser } = useAuthStore()
   const location = useLocation()
   const navRef = useRef<HTMLDivElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -347,11 +347,10 @@ export default function Navbar() {
   return (
     <nav
       ref={navRef}
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        isScrolled
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled
           ? 'bg-white/95 dark:bg-brand-dark-bg/95 backdrop-blur-md shadow-sm border-b border-gray-200 dark:border-brand-dark-border'
           : 'bg-white dark:bg-brand-dark-bg border-b border-gray-200 dark:border-brand-dark-border'
-      }`}
+        }`}
     >
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
@@ -375,11 +374,10 @@ export default function Navbar() {
                 {/* The nav item itself — ALWAYS navigates on click */}
                 <Link
                   to={item.path}
-                  className={`flex items-center gap-1 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 ${
-                    isActive(item.path)
+                  className={`flex items-center gap-1 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 ${isActive(item.path)
                       ? 'text-[#0A0A0A] dark:text-white bg-gray-100 dark:bg-white/10'
                       : 'text-gray-500 dark:text-gray-400 hover:text-[#0A0A0A] dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/8'
-                  }`}
+                    }`}
                 >
                   {item.label}
                   {hasDropdown(item) && (
@@ -425,11 +423,10 @@ export default function Navbar() {
               <Link
                 key={item.id}
                 to={item.path}
-                className={`px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 ${
-                  isActive(item.path)
+                className={`px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 ${isActive(item.path)
                     ? 'text-[#0A0A0A] dark:text-white bg-gray-100 dark:bg-white/10'
                     : 'text-gray-500 dark:text-gray-400 hover:text-[#0A0A0A] dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/8'
-                }`}
+                  }`}
               >
                 {item.label}
               </Link>
@@ -448,10 +445,28 @@ export default function Navbar() {
             </button>
 
             {/* Auth Buttons */}
-            {isAuthenticated && user ? (
+            {isAdminAuthenticated || (isAuthenticated && user?.role === 'admin') ? (
               <>
                 <Link
-                  to={user.role === 'admin' ? '/admin' : '/dashboard'}
+                  to="/admin"
+                  className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-primary-500/10 text-primary-600 dark:text-primary-400 border border-primary-500/20 hover:bg-primary-500/20 transition-all"
+                >
+                  <Shield size={14} className="text-primary-500" />
+                  Admin Panel
+                </Link>
+                <div className="w-px h-5 bg-gray-200 dark:bg-white/10" />
+                <button
+                  onClick={() => { adminLogout(); logoutUser(); logout(); }}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium text-gray-500 dark:text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all"
+                >
+                  <LogOut size={14} />
+                  Logout Admin
+                </button>
+              </>
+            ) : isAuthenticated && user ? (
+              <>
+                <Link
+                  to="/dashboard"
                   className="flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium text-gray-500 dark:text-gray-400 hover:text-[#0A0A0A] dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/8 transition-all"
                 >
                   <LayoutDashboard size={14} />
@@ -459,7 +474,7 @@ export default function Navbar() {
                 </Link>
                 <div className="w-px h-5 bg-gray-200 dark:bg-white/10" />
                 <button
-                  onClick={logout}
+                  onClick={() => logoutUser()}
                   className="flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium text-gray-500 dark:text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all"
                 >
                   <LogOut size={14} />
@@ -527,11 +542,10 @@ export default function Navbar() {
                       {/* Main link — always navigates */}
                       <Link
                         to={item.path}
-                        className={`flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded-l-xl text-sm font-semibold transition-colors ${
-                          isActive(item.path)
+                        className={`flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded-l-xl text-sm font-semibold transition-colors ${isActive(item.path)
                             ? 'bg-gray-100 dark:bg-white/10 text-[#0A0A0A] dark:text-white'
                             : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'
-                        }`}
+                          }`}
                       >
                         <item.icon size={15} className={isActive(item.path) ? 'text-primary-500' : 'text-gray-400'} />
                         {item.label}
@@ -540,9 +554,8 @@ export default function Navbar() {
                       {hasExpand && (
                         <button
                           onClick={() => setMobileExpanded(mobileExpanded === item.id ? null : item.id)}
-                          className={`px-3 py-2.5 rounded-r-xl transition-colors border-l border-gray-100 dark:border-brand-dark-border ${
-                            isActive(item.path) ? 'bg-gray-100 dark:bg-white/10' : 'hover:bg-gray-50 dark:hover:bg-white/5'
-                          }`}
+                          className={`px-3 py-2.5 rounded-r-xl transition-colors border-l border-gray-100 dark:border-brand-dark-border ${isActive(item.path) ? 'bg-gray-100 dark:bg-white/10' : 'hover:bg-gray-50 dark:hover:bg-white/5'
+                            }`}
                         >
                           <ChevronDown size={14} className={`text-gray-400 transition-transform ${mobileExpanded === item.id ? 'rotate-180' : ''}`} />
                         </button>

@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Toaster } from 'react-hot-toast'
@@ -8,6 +9,7 @@ import AdminRoute from './components/AdminRoute'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import AdminLogin from './pages/AdminLogin'
 import Courses from './pages/Courses'
 import Resources from './pages/Resources'
 import PathFinder from './pages/PathFinder'
@@ -15,8 +17,13 @@ import VideosBrowse from './pages/VideosBrowse'
 import Quizzes from './pages/Quizzes'
 import Roadmaps from './pages/Roadmaps'
 import Mentorship from './pages/Mentorship'
+import Hackathons from './pages/Hackathons'
+import HackathonDetails from './pages/HackathonDetails'
 import UserDashboard from './pages/UserDashboard'
 import AdminDashboard from './pages/AdminDashboard'
+import { supabase, getUserProfile } from './lib/supabase'
+import { getEnrollmentsForUser } from './lib/videoEngagementService'
+import { useAuthStore, User } from './store/authStore'
 
 // Apply saved dark mode preference on load
 const applyTheme = () => {
@@ -53,21 +60,25 @@ function AnimatedRoutes() {
           className="min-h-screen"
         >
           <Routes location={location} key={location.pathname}>
+            {/* Public Home & Auth Pages */}
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
-            {/* Courses */}
-            <Route path="/courses" element={<Courses />} />
-            {/* Resources */}
-            <Route path="/resources" element={<Resources />} />
-            <Route path="/resources/videos" element={<VideosBrowse />} />
-            <Route path="/pathfinder" element={<PathFinder />} />
-            <Route path="/quizzes" element={<Quizzes />} />
-            <Route path="/roadmaps" element={<Roadmaps />} />
-            {/* Mentorship */}
-            <Route path="/mentorship" element={<Mentorship />} />
-            {/* Protected */}
+            <Route path="/admin/login" element={<AdminLogin />} />
+
+            {/* Protected Learning & Platform Features */}
+            <Route path="/courses" element={<ProtectedRoute><Courses /></ProtectedRoute>} />
+            <Route path="/resources" element={<ProtectedRoute><Resources /></ProtectedRoute>} />
+            <Route path="/resources/videos" element={<ProtectedRoute><VideosBrowse /></ProtectedRoute>} />
+            <Route path="/pathfinder" element={<ProtectedRoute><PathFinder /></ProtectedRoute>} />
+            <Route path="/quizzes" element={<ProtectedRoute><Quizzes /></ProtectedRoute>} />
+            <Route path="/roadmaps" element={<ProtectedRoute><Roadmaps /></ProtectedRoute>} />
+            <Route path="/mentorship" element={<ProtectedRoute><Mentorship /></ProtectedRoute>} />
+            <Route path="/hackathons" element={<ProtectedRoute><Hackathons /></ProtectedRoute>} />
+            <Route path="/hackathons/:id" element={<ProtectedRoute><HackathonDetails /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
+
+            {/* Admin Portal */}
             <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
           </Routes>
         </motion.div>
@@ -78,6 +89,68 @@ function AnimatedRoutes() {
 }
 
 export default function App() {
+  const setUser = useAuthStore(s => s.setUser)
+
+  // Listen to Supabase Auth State changes & sync full profile + real enrollments
+  useEffect(() => {
+    const syncUserFromSupabase = async (u: any) => {
+      try {
+        const [profile, enrollments] = await Promise.all([
+          getUserProfile(u.id).catch(() => null),
+          getEnrollmentsForUser(u.id).catch(() => []),
+        ])
+
+        const mappedUser: User = {
+          id: u.id,
+          name: profile?.name || u.user_metadata?.name || u.email?.split('@')[0] || 'User',
+          email: u.email || '',
+          role: profile?.role || u.user_metadata?.role || 'user',
+          college: profile?.college || u.user_metadata?.college || 'Student Institution',
+          phone: profile?.phone || u.user_metadata?.phone || '',
+          joinedDate: profile?.created_at
+            ? new Date(profile.created_at).toISOString().split('T')[0]
+            : new Date(u.created_at).toISOString().split('T')[0],
+          enrolledCourses: enrollments.map(e => e.courseId),
+        }
+        setUser(mappedUser)
+      } catch {
+        const mappedUser: User = {
+          id: u.id,
+          name: u.user_metadata?.name || u.email?.split('@')[0] || 'User',
+          email: u.email || '',
+          role: u.user_metadata?.role || 'user',
+          college: u.user_metadata?.college || 'Student Institution',
+          phone: u.user_metadata?.phone || '',
+          joinedDate: new Date(u.created_at).toISOString().split('T')[0],
+          enrolledCourses: [],
+        }
+        setUser(mappedUser)
+      }
+    }
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        syncUserFromSupabase(session.user)
+      }
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        syncUserFromSupabase(session.user)
+      } else {
+        // If user logged out of Supabase
+        const currentIsAdmin = useAuthStore.getState().isAdminAuthenticated
+        if (!currentIsAdmin) {
+          setUser(null)
+        }
+      }
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [setUser])
+
   return (
     <BrowserRouter>
       <Navbar />

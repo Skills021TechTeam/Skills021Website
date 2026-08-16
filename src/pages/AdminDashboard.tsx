@@ -32,10 +32,13 @@ import {
 // Reads a video's duration (in seconds) from either a File or a URL, purely
 // from metadata — no playback needed. Used to auto-adjust the chapter/
 // timestamp input format (mm:ss vs hh:mm:ss) to match the actual video.
-function getVideoDurationSeconds(source: File | string): Promise<number | null> {
+async function getVideoDurationSeconds(source: File | string): Promise<number | null> {
+  const isFile = typeof source !== 'string'
+  let url = isFile ? URL.createObjectURL(source as File) : source
+  if (!isFile && url.startsWith('b2://')) {
+    try { url = await getBackblazeVideoUrl(url) } catch { return null }
+  }
   return new Promise((resolve) => {
-    const isFile = typeof source !== 'string'
-    const url = isFile ? URL.createObjectURL(source as File) : source
     const el = document.createElement('video')
     el.preload = 'metadata'
     el.src = url
@@ -239,7 +242,8 @@ import type {
   PathFinderExamType,
 } from '../lib/pathfinderTypes'
 import toast from 'react-hot-toast'
-import { getLiveWebinars, createLiveWebinar, updateLiveWebinar, deleteLiveWebinar, getWebinarRecordings, uploadWebinarVideo, createWebinarRecording, type LiveWebinar, type WebinarRecording, type WebinarProvider } from '../lib/webinarService'
+import { getLiveWebinars, createLiveWebinar, updateLiveWebinar, deleteLiveWebinar, getWebinarRecordings, uploadWebinarVideo, createWebinarRecording, deleteWebinarRecording, type LiveWebinar, type WebinarRecording, type WebinarProvider, type WebinarAccess } from '../lib/webinarService'
+import { getBackblazeVideoUrl } from '../lib/backblazeService'
 
 type AdminTab =
   | 'overview' | 'courses' | 'resources' | 'quizzes' | 'roadmaps'
@@ -767,22 +771,47 @@ export default function AdminDashboard() {
   const [liveDescription, setLiveDescription] = useState('')
   const [liveProvider, setLiveProvider] = useState<WebinarProvider>('Google Meet')
   const [liveJoinUrl, setLiveJoinUrl] = useState('')
+  const [liveAccess, setLiveAccess] = useState<WebinarAccess>('free')
+  const [livePrice, setLivePrice] = useState('0')
   const [liveStartsAt, setLiveStartsAt] = useState('')
   const [liveEndsAt, setLiveEndsAt] = useState('')
   const [startDate, setStartDate] = useState('')
   const [startHour, setStartHour] = useState('')
-  const [startMinute, setStartMinute] = useState('')
+  const [startMinute, setStartMinute] = useState('00')
   const [startPeriod, setStartPeriod] = useState<'AM' | 'PM'>('AM')
   const [hasEndTime, setHasEndTime] = useState(false)
   const [endDate, setEndDate] = useState('')
   const [endHour, setEndHour] = useState('')
-  const [endMinute, setEndMinute] = useState('')
+  const [endMinute, setEndMinute] = useState('00')
   const [endPeriod, setEndPeriod] = useState<'AM' | 'PM'>('AM')
   const [recordingTitle, setRecordingTitle] = useState('')
   const [recordingDescription, setRecordingDescription] = useState('')
   const [recordingDate, setRecordingDate] = useState(new Date().toISOString().slice(0, 10))
   const [recordingFile, setRecordingFile] = useState<File | null>(null)
   const [recordingDuration, setRecordingDuration] = useState('')
+  const [recordingAccess, setRecordingAccess] = useState<WebinarAccess>('free')
+  const [recordingPrice, setRecordingPrice] = useState('0')
+  const [recordingUploadProgress, setRecordingUploadProgress] = useState(0)
+  const [recordingDurationLoading, setRecordingDurationLoading] = useState(false)
+
+  // Automatically detect the selected replay's real duration from browser
+  // video metadata. The admin does not need to type the duration manually.
+  useEffect(() => {
+    let active = true
+    if (!recordingFile) {
+      setRecordingDuration('')
+      setRecordingDurationLoading(false)
+      return
+    }
+    setRecordingDurationLoading(true)
+    ;(async () => {
+      const seconds = await getVideoDurationSeconds(recordingFile)
+      if (!active) return
+      setRecordingDuration(seconds != null ? formatDurationHuman(seconds) : '')
+      setRecordingDurationLoading(false)
+    })()
+    return () => { active = false }
+  }, [recordingFile])
 
   // Video card (same upload function as the Courses panel) reused inside the webinar edit modal
   const [webinarEditVideoFile, setWebinarEditVideoFile] = useState<File | null>(null)
@@ -4378,11 +4407,17 @@ export default function AdminDashboard() {
 
   // Build a local datetime from the clearly-labelled date + 12-hour time fields.
   const buildWebinarDateTime = (date: string, hour: string, minute: string, period: 'AM' | 'PM') => {
-    if (!date || !hour || !minute) return ''
+    // Minute defaults to 00 so selecting an hour is a valid time selection.
+    // This also prevents the form from incorrectly reporting a missing start
+    // time when the admin has selected the hour but left minutes at 00.
+    if (!date || !hour) return ''
     let h = Number(hour)
+    const m = minute === '' ? 0 : Number(minute)
+    if (!Number.isInteger(h) || h < 1 || h > 12) return ''
+    if (!Number.isInteger(m) || m < 0 || m > 59) return ''
     if (period === 'AM' && h === 12) h = 0
     if (period === 'PM' && h !== 12) h += 12
-    return `${date}T${String(h).padStart(2, '0')}:${minute}`
+    return `${date}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
   }
 
   const webinarTimeField = (
@@ -4448,6 +4483,8 @@ export default function AdminDashboard() {
     setLiveDescription(webinar.description || '')
     setLiveProvider(webinar.provider)
     setLiveJoinUrl(webinar.joinUrl)
+    setLiveAccess(webinar.access)
+    setLivePrice(String(webinar.price ?? 0))
     setStartDate(`${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}`)
     setStartHour(String(startHour12))
     setStartMinute(String(start.getMinutes()).padStart(2,'0'))
@@ -4475,8 +4512,9 @@ export default function AdminDashboard() {
     setShowWebinarEditModal(false)
     setLiveTitle(''); setLiveDescription(''); setLiveJoinUrl('')
     setLiveProvider('Google Meet')
-    setStartDate(''); setStartHour(''); setStartMinute(''); setStartPeriod('AM')
-    setHasEndTime(false); setEndDate(''); setEndHour(''); setEndMinute(''); setEndPeriod('AM')
+    setLiveAccess('free'); setLivePrice('0')
+    setStartDate(''); setStartHour(''); setStartMinute('00'); setStartPeriod('AM')
+    setHasEndTime(false); setEndDate(''); setEndHour(''); setEndMinute('00'); setEndPeriod('AM')
     setWebinarEditVideoFile(null); setWebinarEditVideoUploadStatus('idle'); setWebinarEditVideoUploadProgress(0)
     setWebinarEditVideoAudioCheck(null); setWebinarEditVideoDurationSeconds(null)
   }
@@ -4497,11 +4535,24 @@ export default function AdminDashboard() {
                 <Field label="Platform"><select value={liveProvider} onChange={e=>setLiveProvider(e.target.value as WebinarProvider)} className={inputCls}><option>Google Meet</option><option>Zoom</option></select></Field>
                 <Field label="Join URL *"><input value={liveJoinUrl} onChange={e=>setLiveJoinUrl(e.target.value)} className={inputCls} placeholder="https://meet.google.com/..."/></Field>
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field label="Access">
+                  <select value={liveAccess} onChange={e=>setLiveAccess(e.target.value as WebinarAccess)} className={inputCls}>
+                    <option value="free">Free for everyone</option>
+                    <option value="paid">Paid for everyone</option>
+                    <option value="enrolled_free">Free for enrolled students, paid for others</option>
+                  </select>
+                </Field>
+                <Field label="Price (₹)">
+                  <input type="number" min="0" step="1" value={livePrice} disabled={liveAccess === 'free'} onChange={e=>setLivePrice(e.target.value)} className={inputCls} placeholder="499" />
+                </Field>
+              </div>
+              {liveAccess === 'enrolled_free' && <p className="text-xs text-violet-600 dark:text-violet-300 -mt-2">Students with any active course enrollment get this webinar free. Everyone else sees the paid price.</p>}
               <div className="space-y-3">
                 {webinarTimeField('Start time *', startDate, setStartDate, startHour, setStartHour, startMinute, setStartMinute, startPeriod, setStartPeriod)}
                 <div className="rounded-xl border border-brand-border dark:border-brand-dark-border px-3 py-3">
                   <label className="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" checked={hasEndTime} onChange={e => setHasEndTime(e.target.checked)} className="h-4 w-4 rounded" />
+                    <input type="checkbox" checked={hasEndTime} onChange={e => { const checked = e.target.checked; setHasEndTime(checked); if (checked) { setEndDate(endDate || startDate); setEndHour(endHour || startHour || '12'); setEndMinute(endMinute || '00'); setEndPeriod(endHour ? endPeriod : startPeriod) } }} className="h-4 w-4 rounded" />
                     <span className="text-sm font-semibold text-brand-text dark:text-brand-dark-text">Add an end time</span>
                     <span className="text-xs font-medium text-brand-muted">Optional</span>
                   </label>
@@ -4518,7 +4569,7 @@ export default function AdminDashboard() {
                   if(hasEndTime && new Date(endValue).getTime() <= new Date(startValue).getTime()){toast.error('End time must be after the start time');return}
                   try{
                     setWebinarBusy(true)
-                    const payload={title:liveTitle,description:liveDescription,provider:liveProvider,joinUrl:liveJoinUrl,startsAt:new Date(startValue).toISOString(),endsAt:endValue ? new Date(endValue).toISOString() : null}
+                    const payload={title:liveTitle,description:liveDescription,provider:liveProvider,joinUrl:liveJoinUrl,startsAt:new Date(startValue).toISOString(),endsAt:endValue ? new Date(endValue).toISOString() : null,access:liveAccess,price:liveAccess==='free'?0:Math.max(0,Number(livePrice)||0)}
                     const created=await createLiveWebinar(payload)
                     setLiveWebinars(prev=>[...prev,created])
                     toast.success('Live webinar scheduled')
@@ -4534,21 +4585,35 @@ export default function AdminDashboard() {
             <div className="space-y-4">
               <Field label="Recording title *"><input value={recordingTitle} onChange={e=>setRecordingTitle(e.target.value)} className={inputCls}/></Field>
               <Field label="Description"><textarea value={recordingDescription} onChange={e=>setRecordingDescription(e.target.value)} className={inputCls+' resize-none'} rows={3}/></Field>
-              <div className="grid grid-cols-2 gap-3"><Field label="Session date"><input type="date" value={recordingDate} onChange={e=>setRecordingDate(e.target.value)} className={inputCls}/></Field><Field label="Duration"><input value={recordingDuration} onChange={e=>setRecordingDuration(e.target.value)} className={inputCls} placeholder="1 hr 12 mins"/></Field></div>
+              <div className="grid grid-cols-2 gap-3"><Field label="Session date"><input type="date" value={recordingDate} onChange={e=>setRecordingDate(e.target.value)} className={inputCls}/></Field><Field label="Video duration (automatic)"><input value={recordingDurationLoading ? 'Detecting duration...' : recordingDuration} readOnly className={inputCls + ' bg-gray-50 dark:bg-white/5 cursor-not-allowed'} placeholder="Select a video first"/></Field></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field label="Replay access">
+                  <select value={recordingAccess} onChange={e=>setRecordingAccess(e.target.value as WebinarAccess)} className={inputCls}>
+                    <option value="free">Free for everyone</option>
+                    <option value="paid">Paid for everyone</option>
+                    <option value="enrolled_free">Free for enrolled students, paid for others</option>
+                  </select>
+                </Field>
+                <Field label="Price (₹)">
+                  <input type="number" min="0" step="1" value={recordingPrice} disabled={recordingAccess !== 'paid' && recordingAccess !== 'enrolled_free'} onChange={e=>setRecordingPrice(e.target.value)} className={inputCls} placeholder="299" />
+                </Field>
+              </div>
+              {recordingAccess === 'enrolled_free' && <p className="text-xs text-violet-600 dark:text-violet-300 -mt-2">Any active course-enrolled student gets the replay free; everyone else sees the paid price.</p>}
               <Field label="Video file *"><input type="file" accept="video/*" onChange={e=>setRecordingFile(e.target.files?.[0]??null)} className={inputCls}/></Field>
-              <button disabled={webinarBusy||!recordingFile} onClick={async()=>{try{setWebinarBusy(true); const url=await uploadWebinarVideo(recordingFile!,recordingDate); const created=await createWebinarRecording({title:recordingTitle,description:recordingDescription,sessionDate:recordingDate,videoUrl:url,duration:recordingDuration}); setWebinarRecordings(prev=>[created,...prev]);setRecordingTitle('');setRecordingDescription('');setRecordingFile(null);toast.success('Webinar recording published')}catch(e){toast.error(e instanceof Error?e.message:'Failed to upload recording')}finally{setWebinarBusy(false)}}} className="w-full py-3 rounded-xl bg-violet-600 text-white font-semibold disabled:opacity-50">Upload & publish replay</button>
+              {recordingFile && <div className="rounded-xl border border-brand-border dark:border-brand-dark-border p-3 bg-gray-50 dark:bg-white/5"><div className="flex items-center justify-between text-xs mb-1.5"><span className="font-semibold text-brand-text dark:text-brand-dark-text truncate mr-3">{recordingFile.name}</span><span className="text-brand-muted">{(recordingFile.size/1024/1024).toFixed(2)} MB</span></div><div className="h-1.5 rounded-full bg-gray-200 dark:bg-white/10 overflow-hidden"><motion.div className="h-full bg-violet-600 rounded-full" animate={{width:`${recordingUploadProgress}%`}} /></div>{webinarBusy && <p className="mt-1.5 text-[10px] font-semibold text-brand-muted">Uploading {recordingUploadProgress}%...</p>}</div>}
+              <button disabled={webinarBusy||!recordingFile||!recordingTitle.trim()} onClick={async()=>{try{setWebinarBusy(true);setRecordingUploadProgress(0);let duration=recordingDuration; if(!duration){const seconds=await getVideoDurationSeconds(recordingFile!); if(seconds!=null) duration=formatDurationHuman(seconds)} if(!duration){throw new Error('Could not read the video duration. Please choose a valid video file and try again.')} const url=await uploadWebinarVideo(recordingFile!,recordingDate,p=>setRecordingUploadProgress(p)); const created=await createWebinarRecording({title:recordingTitle.trim(),description:recordingDescription.trim(),sessionDate:recordingDate,videoUrl:url,duration,access:recordingAccess,price:recordingAccess==='free'?0:Math.max(0,Number(recordingPrice)||0)}); setWebinarRecordings(prev=>[created,...prev]);setRecordingTitle('');setRecordingDescription('');setRecordingFile(null);setRecordingDuration('');setRecordingAccess('free');setRecordingPrice('0');setRecordingUploadProgress(0);toast.success('Webinar recording published')}catch(e){toast.error(e instanceof Error?e.message:'Failed to upload recording')}finally{setWebinarBusy(false)}}} className="w-full py-3 rounded-xl bg-violet-600 text-white font-semibold disabled:opacity-50">{webinarBusy ? 'Uploading replay...' : 'Upload & publish replay'}</button>
             </div>
           </div>
         </div>
 
         <div className="card overflow-hidden">
           <div className="p-5 border-b border-brand-border dark:border-brand-dark-border"><h3 className="font-bold">Scheduled sessions</h3></div>
-          {liveWebinars.length===0 ? <p className="p-6 text-sm text-brand-muted">No live sessions scheduled.</p> : <div className="divide-y divide-brand-border dark:divide-brand-dark-border">{liveWebinars.map(w=>{const ongoing=new Date(w.startsAt)<=new Date()&&(!w.endsAt||new Date(w.endsAt)>new Date());return <div key={w.id} className="p-4 flex items-center justify-between gap-4"><div><div className="flex items-center gap-2"><span className="font-semibold">{w.title}</span>{ongoing&&<StatusBadge status="Ongoing"/>}</div><p className="text-xs text-brand-muted mt-1">{w.provider} · {new Date(w.startsAt).toLocaleString()}</p></div><div className="flex items-center gap-2">{new Date(w.startsAt).getTime() > Date.now() && <button onClick={()=>loadWebinarIntoForm(w)} className="p-2 text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg" title="Edit upcoming webinar"><Edit2 size={15}/></button>}<a href={w.joinUrl} target="_blank" rel="noreferrer" className="p-2 text-primary-500"><ExternalLink size={15}/></a><button onClick={async()=>{try{await deleteLiveWebinar(w.id);setLiveWebinars(prev=>prev.filter(x=>x.id!==w.id));toast.success('Webinar deleted')}catch(e){toast.error(e instanceof Error?e.message:'Delete failed')}}} className="p-2 text-red-500"><Trash2 size={15}/></button></div></div>})}</div>}
+          {liveWebinars.length===0 ? <p className="p-6 text-sm text-brand-muted">No live sessions scheduled.</p> : <div className="divide-y divide-brand-border dark:divide-brand-dark-border">{liveWebinars.map(w=>{const ongoing=new Date(w.startsAt)<=new Date()&&(!w.endsAt||new Date(w.endsAt)>new Date());return <div key={w.id} className="p-4 flex items-center justify-between gap-4"><div><div className="flex items-center gap-2"><span className="font-semibold">{w.title}</span>{ongoing&&<StatusBadge status="Ongoing"/>}</div><p className="text-xs text-brand-muted mt-1">{w.provider} · {new Date(w.startsAt).toLocaleString()} · {w.access === 'free' ? 'Free' : w.access === 'enrolled_free' ? `Enrolled free · ₹${w.price}` : `Paid · ₹${w.price}`}</p></div><div className="flex items-center gap-2">{new Date(w.startsAt).getTime() > Date.now() && <button onClick={()=>loadWebinarIntoForm(w)} className="p-2 text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg" title="Edit upcoming webinar"><Edit2 size={15}/></button>}<a href={w.joinUrl} target="_blank" rel="noreferrer" className="p-2 text-primary-500"><ExternalLink size={15}/></a><button onClick={async()=>{try{await deleteLiveWebinar(w.id);setLiveWebinars(prev=>prev.filter(x=>x.id!==w.id));toast.success('Webinar deleted')}catch(e){toast.error(e instanceof Error?e.message:'Delete failed')}}} className="p-2 text-red-500"><Trash2 size={15}/></button></div></div>})}</div>}
         </div>
 
         <div className="card overflow-hidden">
           <div className="p-5 border-b border-brand-border dark:border-brand-dark-border"><h3 className="font-bold">Published replays</h3></div>
-          {webinarRecordings.length===0?<p className="p-6 text-sm text-brand-muted">No recordings yet.</p>:<div className="divide-y divide-brand-border dark:divide-brand-dark-border">{webinarRecordings.map(w=><div key={w.id} className="p-4 flex items-center justify-between gap-4"><div><p className="font-semibold">{w.title}</p><p className="text-xs text-brand-muted mt-1">{w.sessionDate} · {w.duration||'Duration not set'}</p></div><a href={w.videoUrl||'#'} target="_blank" rel="noreferrer" className="text-sm font-semibold text-violet-600">Watch</a></div>)}</div>}
+          {webinarRecordings.length===0?<p className="p-6 text-sm text-brand-muted">No recordings yet.</p>:<div className="divide-y divide-brand-border dark:divide-brand-dark-border">{webinarRecordings.map(w=><div key={w.id} className="p-4 flex items-center justify-between gap-4"><div className="min-w-0"><p className="font-semibold truncate">{w.title}</p><p className="text-xs text-brand-muted mt-1">{w.sessionDate} · {w.duration||'Duration not set'} · {w.access === 'free' ? 'Free' : w.access === 'enrolled_free' ? `Enrolled free · ₹${w.price}` : `Paid · ₹${w.price}`}</p></div><div className="flex items-center gap-3 shrink-0">{w.videoUrl&&<a href={w.videoUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-violet-600">Watch</a>}<button onClick={async()=>{if(!window.confirm(`Delete replay \"${w.title}\"? This removes the stored video and database entry.`))return;try{setWebinarBusy(true);await deleteWebinarRecording(w);setWebinarRecordings(prev=>prev.filter(x=>x.id!==w.id));toast.success('Webinar recording deleted')}catch(e){toast.error(e instanceof Error?e.message:'Delete failed')}finally{setWebinarBusy(false)}}} className="p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" title="Delete replay"><Trash2 size={15}/></button></div></div>)}</div>}
         </div>
       </div>
     )
@@ -4686,11 +4751,24 @@ export default function AdminDashboard() {
                     <Field label="Platform"><select value={liveProvider} onChange={e=>setLiveProvider(e.target.value as WebinarProvider)} className={inputCls}><option>Google Meet</option><option>Zoom</option></select></Field>
                     <Field label="Join URL *"><input value={liveJoinUrl} onChange={e=>setLiveJoinUrl(e.target.value)} className={inputCls} placeholder="https://meet.google.com/..." /></Field>
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Field label="Access">
+                      <select value={liveAccess} onChange={e=>setLiveAccess(e.target.value as WebinarAccess)} className={inputCls}>
+                        <option value="free">Free for everyone</option>
+                        <option value="paid">Paid for everyone</option>
+                        <option value="enrolled_free">Free for enrolled students, paid for others</option>
+                      </select>
+                    </Field>
+                    <Field label="Price (₹)">
+                      <input type="number" min="0" step="1" value={livePrice} disabled={liveAccess !== 'paid' && liveAccess !== 'enrolled_free'} onChange={e=>setLivePrice(e.target.value)} className={inputCls} placeholder="499" />
+                    </Field>
+                  </div>
+                  {liveAccess === 'enrolled_free' && <p className="text-xs text-violet-600 dark:text-violet-300 -mt-2">Students with any active course enrollment get this webinar free. Everyone else sees the paid price.</p>}
                   <div className="space-y-3">
                     {webinarTimeField('Start time *', startDate, setStartDate, startHour, setStartHour, startMinute, setStartMinute, startPeriod, setStartPeriod)}
                     <div className="rounded-xl border border-brand-border dark:border-brand-dark-border px-3 py-3">
                       <label className="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" checked={hasEndTime} onChange={e=>setHasEndTime(e.target.checked)} className="h-4 w-4 rounded" />
+                        <input type="checkbox" checked={hasEndTime} onChange={e=>{const checked=e.target.checked;setHasEndTime(checked);if(checked){setEndDate(endDate||startDate);setEndHour(endHour||startHour||'12');setEndMinute(endMinute||'00');setEndPeriod(endHour?endPeriod:startPeriod)}}} className="h-4 w-4 rounded" />
                         <span className="text-sm font-semibold text-brand-text dark:text-brand-dark-text">Add an end time</span>
                         <span className="text-xs font-medium text-brand-muted">Optional</span>
                       </label>
@@ -4779,7 +4857,7 @@ export default function AdminDashboard() {
                   if(hasEndTime&&new Date(endValue).getTime()<=new Date(startValue).getTime()){toast.error('End time must be after the start time');return}
                   try{
                     setWebinarBusy(true)
-                    const updated=await updateLiveWebinar(editingWebinarId,{title:liveTitle.trim(),description:liveDescription,provider:liveProvider,joinUrl:liveJoinUrl.trim(),startsAt:new Date(startValue).toISOString(),endsAt:endValue?new Date(endValue).toISOString():null})
+                    const updated=await updateLiveWebinar(editingWebinarId,{title:liveTitle.trim(),description:liveDescription,provider:liveProvider,joinUrl:liveJoinUrl.trim(),startsAt:new Date(startValue).toISOString(),endsAt:endValue?new Date(endValue).toISOString():null,access:liveAccess,price:liveAccess==='free'?0:Math.max(0,Number(livePrice)||0)})
                     setLiveWebinars(prev=>prev.map(w=>w.id===updated.id?updated:w))
                     toast.success('Webinar updated successfully')
                     resetWebinarForm()

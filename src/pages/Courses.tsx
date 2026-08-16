@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { motion } from 'framer-motion'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { BookOpen, Clock, Users, Star, Search, Play, SlidersHorizontal, ChevronDown, X, Loader2, Lock, CheckCircle2, Sparkles, GraduationCap, Radio, Video, ExternalLink, CalendarDays, MonitorPlay, Trophy, TrendingUp, Zap, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -52,14 +52,16 @@ interface CourseCardProps {
   course: Course
   userId: string | null
   isAdmin: boolean
+  isPremium: boolean
   isEnrolled: boolean
+  isPending: boolean
   onPlay: (course: Course) => void
   onEnroll: (course: Course) => void
   onRated: (courseId: string, average: number, count: number) => void
 }
 
-function CourseCard({ course, userId, isAdmin, isEnrolled, onPlay, onEnroll, onRated }: CourseCardProps) {
-  const canWatch = isAdmin || isEnrolled
+function CourseCard({ course, userId, isAdmin, isPremium, isEnrolled, isPending, onPlay, onEnroll, onRated }: CourseCardProps) {
+  const canWatch = isAdmin || isPremium || isEnrolled
 
   return (
     <motion.div
@@ -92,11 +94,15 @@ function CourseCard({ course, userId, isAdmin, isEnrolled, onPlay, onEnroll, onR
             <span className="px-2.5 py-1 text-xs font-semibold bg-primary-500 text-white rounded-lg">FREE</span>
           )}
         </div>
-        {canWatch && (
+        {canWatch ? (
           <div className="absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold bg-green-500 text-white rounded-lg">
-            <CheckCircle2 size={11} /> {isAdmin ? 'ADMIN' : 'ENROLLED'}
+            <CheckCircle2 size={11} /> {isAdmin ? 'ADMIN' : isPremium ? 'PREMIUM ALL-ACCESS' : 'ENROLLED'}
           </div>
-        )}
+        ) : isPending ? (
+          <div className="absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold bg-amber-500 text-white rounded-lg animate-pulse">
+            <Clock size={11} /> PENDING APPROVAL
+          </div>
+        ) : null}
         {/* Play / Lock button on hover */}
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center border border-white/40">
@@ -135,7 +141,6 @@ function CourseCard({ course, userId, isAdmin, isEnrolled, onPlay, onEnroll, onR
             )}
           </div>
           <div className="flex items-center gap-2">
-            {/* Three-dot rating & feedback menu — just above/beside the Enroll button */}
             <CourseRatingMenu
               courseId={course.id}
               userId={userId}
@@ -149,6 +154,13 @@ function CourseCard({ course, userId, isAdmin, isEnrolled, onPlay, onEnroll, onR
                 className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-primary-500 rounded-xl hover:bg-primary-600 transition-colors"
               >
                 <Play size={11} /> Watch Video
+              </button>
+            ) : isPending ? (
+              <button
+                onClick={() => toast('Your payment proof with UPI UTR is currently being verified by the Admin. Access will unlock once approved.', { icon: '⏳' })}
+                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-amber-800 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-300 rounded-xl hover:bg-amber-200 transition-colors"
+              >
+                <Clock size={11} /> Pending Review
               </button>
             ) : (
               <button
@@ -226,7 +238,9 @@ export default function Courses() {
   const userId = user?.id ?? null
 
   const [enrolledIds, setEnrolledIds] = useState<Set<string>>(new Set())
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set())
   const [enrollCourse, setEnrollCourse] = useState<Course | null>(null)
+  const [showPremiumModal, setShowPremiumModal] = useState(false)
   const [playCourse, setPlayCourse] = useState<Course | null>(null)
 
   const requireLogin = () => {
@@ -247,17 +261,26 @@ export default function Courses() {
     })()
   }, [])
 
-  useEffect(() => {
-    if (!userId) { setEnrolledIds(new Set()); return }
-    (async () => {
-      try {
-        const enrollments = await getEnrollmentsForUser(userId)
-        setEnrolledIds(new Set(enrollments.filter(e => e.status !== 'pending').map(e => e.courseId)))
-      } catch (err) {
-        console.error('Failed to load enrollments:', err)
-      }
-    })()
+  const loadUserEnrollments = useCallback(async () => {
+    if (!userId) {
+      setEnrolledIds(new Set())
+      setPendingIds(new Set())
+      return
+    }
+    try {
+      const enrollments = await getEnrollmentsForUser(userId)
+      const approved = enrollments.filter(e => e.status === 'paid' || e.status === 'free').map(e => e.courseId)
+      const pending = enrollments.filter(e => e.status === 'pending').map(e => e.courseId)
+      setEnrolledIds(new Set(approved))
+      setPendingIds(new Set(pending))
+    } catch (err) {
+      console.error('Failed to load enrollments:', err)
+    }
   }, [userId])
+
+  useEffect(() => {
+    loadUserEnrollments()
+  }, [loadUserEnrollments])
 
   const handlePlay = (course: Course) => {
     if (!isAuthenticated) return requireLogin()
@@ -943,7 +966,9 @@ export default function Courses() {
                   course={course}
                   userId={userId}
                   isAdmin={isAdmin}
+                  isPremium={Boolean(user?.isPremium)}
                   isEnrolled={enrolledIds.has(course.id)}
+                  isPending={pendingIds.has(course.id)}
                   onPlay={handlePlay}
                   onEnroll={handleEnroll}
                   onRated={handleCourseRated}
@@ -1074,7 +1099,26 @@ export default function Courses() {
           defaultEmail={user?.email}
           defaultName={user?.name}
           onClose={() => setEnrollCourse(null)}
-          onEnrolled={(courseId) => { handleEnrolled(courseId); setEnrollCourse(null) }}
+          onEnrolled={(courseId) => {
+            handleEnrolled(courseId)
+            loadUserEnrollments()
+            setEnrollCourse(null)
+          }}
+        />
+      )}
+
+      {showPremiumModal && (
+        <EnrollModal
+          isPremiumMembership={true}
+          premiumAmount={999}
+          userId={userId ?? `guest-${Date.now()}`}
+          defaultEmail={user?.email}
+          defaultName={user?.name}
+          onClose={() => setShowPremiumModal(false)}
+          onEnrolled={() => {
+            loadUserEnrollments()
+            setShowPremiumModal(false)
+          }}
         />
       )}
 
@@ -1084,7 +1128,7 @@ export default function Courses() {
           userId={userId ?? ''}
           userName={user?.name ?? 'Guest'}
           isAdmin={isAdmin}
-          canWatch={isAdmin || enrolledIds.has(playCourse.id)}
+          canWatch={isAdmin || Boolean(user?.isPremium) || enrolledIds.has(playCourse.id)}
           onClose={() => setPlayCourse(null)}
         />
       )}

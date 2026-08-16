@@ -4,9 +4,23 @@ import {
   LayoutDashboard, BookOpen, FileText, HelpCircle, Map,
   Users, Settings, Plus, Edit2, Trash2, Search,
   X, Shield, TrendingUp, Eye, Download, EyeOff,
-  CheckCircle, Zap, Video, Loader2, RotateCw, Compass, ListVideo, Clock, Briefcase, Mail, Phone,
-  ChevronDown, Check, Radio, ExternalLink, CalendarDays
+  CheckCircle, Zap, Video, Loader2, RotateCw, Compass, ListVideo, Clock, Trophy, Minus, Save, LogOut,
+  CreditCard, DollarSign, ExternalLink, RefreshCw, ChevronRight, Copy, ShieldAlert,
+  QrCode, UploadCloud
 } from 'lucide-react'
+import { useAuthStore } from '../store/authStore'
+import {
+  fetchHackathons as fetchAdminHackathons,
+  createHackathon as createAdminHackathon,
+  updateHackathon as updateAdminHackathon,
+  deleteHackathon as deleteAdminHackathon,
+  fetchTeams as fetchAdminTeams,
+  updateTeamQualification as updateAdminTeamQual,
+  updateTeamPosition as updateAdminTeamPos,
+  markMemberAttendance as markAdminMemberAttendance,
+  isTeamQualifiedForRound,
+} from '../lib/hackathonService'
+import { Hackathon, HackathonTeam, CreateHackathonInput, TeamMember } from '../features/hackathons/types'
 import { useContentStore, Course, Resource, Quiz, Roadmap } from '../store/contentStore'
 import {
   getTimestamps,
@@ -15,6 +29,14 @@ import {
   formatSeconds,
   parseTimeToSeconds,
   VideoTimestamp,
+  getAllEnrollments,
+  approvePaymentRequest,
+  rejectPaymentRequest,
+  revokeAccess,
+  getPaymentSettings,
+  updatePaymentSettings,
+  type PaymentSettings,
+  type Enrollment,
 } from '../lib/videoEngagementService'
 
 // Heuristic check: does this video file actually contain an audio track?
@@ -238,6 +260,12 @@ import type {
   PathFinderExamStatus,
   PathFinderExamType,
 } from '../lib/pathfinderTypes'
+import {
+  fetchAllUsersWithEnrollments,
+  toggleUserPremiumStatus,
+  type UserWithEnrollmentDetails,
+  type UserEnrollmentSummary,
+} from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { getLiveWebinars, createLiveWebinar, updateLiveWebinar, deleteLiveWebinar, getWebinarRecordings, uploadWebinarVideo, createWebinarRecording, type LiveWebinar, type WebinarRecording, type WebinarProvider } from '../lib/webinarService'
 
@@ -245,10 +273,11 @@ type AdminTab =
   | 'overview' | 'courses' | 'resources' | 'quizzes' | 'roadmaps'
   | 'mentorship' | 'youtube-videos' | 'webinars' | 'users' | 'settings' | 'hierarchy'
   | 'pathfinder-careers' | 'pathfinder-exams' | 'pathfinder-mappings'
-  | 'career-applications'
+  | 'hackathons' | 'payment-approvals'
 
 const sidebarItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard; group?: string }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'hackathons', label: 'Hackathons', icon: Trophy, group: '🏆 Competitions' },
   { id: 'courses', label: 'Courses', icon: BookOpen, group: 'Content' },
   { id: 'resources', label: 'Resources', icon: FileText, group: 'Content' },
   { id: 'quizzes', label: 'Quizzes', icon: HelpCircle, group: 'Content' },
@@ -261,6 +290,7 @@ const sidebarItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard;
   { id: 'pathfinder-careers', label: 'Career Paths', icon: Compass, group: '🧭 Skills021 PathFinder' },
   { id: 'pathfinder-exams', label: 'Exams', icon: FileText, group: '🧭 Skills021 PathFinder' },
   { id: 'pathfinder-mappings', label: 'Career Mapping', icon: Map, group: '🧭 Skills021 PathFinder' },
+  { id: 'payment-approvals', label: 'Payment Approvals', icon: CreditCard, group: 'Admin' },
   { id: 'users', label: 'Users', icon: Users, group: 'Admin' },
   { id: 'settings', label: 'Settings', icon: Settings, group: 'Admin' },
 ]
@@ -707,6 +737,410 @@ export default function AdminDashboard() {
 
   // Stores
   const content = useContentStore()
+  const { adminUser, adminLogout, logoutUser } = useAuthStore()
+
+  // ─── Payment Gateway & UPI QR Settings ─────────────────────────────────────
+  const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>({
+    upiId: 'skills021@upi',
+    upiName: 'Skills021',
+    qrCodeUrl: '',
+    instructions: 'Scan QR or pay directly to the UPI ID, then enter your 12-digit UTR number and upload screenshot proof.',
+  })
+  const [draftPaymentSettings, setDraftPaymentSettings] = useState<PaymentSettings>({
+    upiId: 'skills021@upi',
+    upiName: 'Skills021',
+    qrCodeUrl: '',
+    instructions: 'Scan QR or pay directly to the UPI ID, then enter your 12-digit UTR number and upload screenshot proof.',
+  })
+  const [paymentSettingsLoading, setPaymentSettingsLoading] = useState(false)
+  const [showQrSettingsPanel, setShowQrSettingsPanel] = useState(false)
+
+  useEffect(() => {
+    getPaymentSettings().then((s) => {
+      if (s) {
+        setPaymentSettings(s)
+        setDraftPaymentSettings(s)
+      }
+    })
+  }, [])
+
+  // ─── Supabase Hackathons State ─────────────────────────────────────────────
+  const [adminHackathons, setAdminHackathons] = useState<Hackathon[]>([])
+  const [adminHackathonsLoading, setAdminHackathonsLoading] = useState(false)
+  const [selectedAdminHackathon, setSelectedAdminHackathon] = useState<Hackathon | null>(null)
+  const [adminTeams, setAdminTeams] = useState<HackathonTeam[]>([])
+  const [adminTeamsLoading, setAdminTeamsLoading] = useState(false)
+
+  // Hackathon Modal states
+  const [hTitleInput, setHTitleInput] = useState('')
+  const [hDescInput, setHDescInput] = useState('')
+  const [hStartInput, setHStartInput] = useState('')
+  const [hEndInput, setHEndInput] = useState('')
+  const [hDeadlineInput, setHDeadlineInput] = useState('')
+  const [hVenueInput, setHVenueInput] = useState('')
+  const [hBannerInput, setHBannerInput] = useState('')
+  const [hMinTeamInput, setHMinTeamInput] = useState<number>(1)
+  const [hMaxTeamInput, setHMaxTeamInput] = useState<number>(4)
+  const [hMaxTeamsInput, setHMaxTeamsInput] = useState<number>(50)
+  const [hDaysInput, setHDaysInput] = useState<number>(1)
+  const [hRoundsInput, setHRoundsInput] = useState<number>(1)
+  const [hRulesInput, setHRulesInput] = useState('')
+  const [hStatusInput, setHStatusInput] = useState<'upcoming' | 'ongoing' | 'completed'>('upcoming')
+  const [hRegOpenInput, setHRegOpenInput] = useState(true)
+  const [showHackathonModal, setShowHackathonModal] = useState(false)
+  const [editingHackathonId, setEditingHackathonId] = useState<string | null>(null)
+  const [hackathonSaving, setHackathonSaving] = useState(false)
+
+  // GitHub/Render style hackathon deletion modal state
+  const [deletingHackathon, setDeletingHackathon] = useState<Hackathon | null>(null)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [isDeletingHackathon, setIsDeletingHackathon] = useState(false)
+
+  const loadAdminHackathons = useCallback(async () => {
+    setAdminHackathonsLoading(true)
+    try {
+      const data = await fetchAdminHackathons()
+      setAdminHackathons(data)
+    } catch (err) {
+      console.error('Failed to load hackathons:', err)
+      toast.error('Failed to load hackathons')
+    } finally {
+      setAdminHackathonsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'hackathons') loadAdminHackathons()
+  }, [activeTab, loadAdminHackathons])
+
+  const loadAdminTeams = async (hackathonId: string) => {
+    setAdminTeamsLoading(true)
+    try {
+      const data = await fetchAdminTeams(hackathonId)
+      setAdminTeams(data)
+    } catch (err) {
+      toast.error('Failed to load team registrations')
+    } finally {
+      setAdminTeamsLoading(false)
+    }
+  }
+
+  const handleSelectHackathonForTeams = (h: Hackathon) => {
+    setSelectedAdminHackathon(h)
+    loadAdminTeams(h.id)
+    if (h.status !== 'ongoing') {
+      toast.error(`Team management is locked. Set status to ONGOING to edit teams.`)
+    }
+  }
+
+  const handleUpdateStatus = async (h: Hackathon, status: 'upcoming' | 'ongoing' | 'completed') => {
+    try {
+      const isRegistrationOpen = (status === 'ongoing' || status === 'completed') ? false : h.isRegistrationOpen
+      const updated = await updateAdminHackathon(h.id, { status, isRegistrationOpen })
+      if (updated) {
+        setAdminHackathons(prev => prev.map(item => item.id === h.id ? updated : item))
+        if (selectedAdminHackathon?.id === h.id) setSelectedAdminHackathon(updated)
+        toast.success(`Status updated to ${status.toUpperCase()}${!isRegistrationOpen ? ' (Registration Closed)' : ''}`)
+      }
+    } catch (err) {
+      toast.error('Failed to update status')
+    }
+  }
+
+  const handleToggleRegistration = async (h: Hackathon) => {
+    try {
+      const updated = await updateAdminHackathon(h.id, { isRegistrationOpen: !h.isRegistrationOpen })
+      if (updated) {
+        setAdminHackathons(prev => prev.map(item => item.id === h.id ? updated : item))
+        if (selectedAdminHackathon?.id === h.id) setSelectedAdminHackathon(updated)
+        toast.success(`Registration ${updated.isRegistrationOpen ? 'opened' : 'closed'}`)
+      }
+    } catch (err) {
+      toast.error('Failed to update registration status')
+    }
+  }
+
+  // Progression draft state for hackathons (- / + controls)
+  const [progressionDrafts, setProgressionDrafts] = useState<Record<string, { currentDay: number; numberOfDays: number; currentRound: number; numberOfRounds: number }>>({})
+  const [savingProgressionId, setSavingProgressionId] = useState<string | null>(null)
+
+  const getProgressionValues = (h: Hackathon) => {
+    const draft = progressionDrafts[h.id]
+    if (draft) return draft
+    return {
+      currentDay: h.currentDay,
+      numberOfDays: h.numberOfDays,
+      currentRound: h.currentRound,
+      numberOfRounds: h.numberOfRounds,
+    }
+  }
+
+  const handleStepDay = (h: Hackathon, delta: number) => {
+    const curr = getProgressionValues(h)
+    const newDay = Math.max(1, curr.currentDay + delta)
+    const newTotalDays = Math.max(curr.numberOfDays, newDay)
+    setProgressionDrafts(prev => ({
+      ...prev,
+      [h.id]: {
+        ...curr,
+        currentDay: newDay,
+        numberOfDays: newTotalDays,
+      }
+    }))
+  }
+
+  const handleStepRound = (h: Hackathon, delta: number) => {
+    const curr = getProgressionValues(h)
+    const newRound = Math.max(1, curr.currentRound + delta)
+    const newTotalRounds = Math.max(curr.numberOfRounds, newRound)
+    setProgressionDrafts(prev => ({
+      ...prev,
+      [h.id]: {
+        ...curr,
+        currentRound: newRound,
+        numberOfRounds: newTotalRounds,
+      }
+    }))
+  }
+
+  const handleSaveProgression = async (h: Hackathon) => {
+    const draft = progressionDrafts[h.id]
+    if (!draft) return
+
+    setSavingProgressionId(h.id)
+    try {
+      const updated = await updateAdminHackathon(h.id, {
+        currentDay: draft.currentDay,
+        numberOfDays: draft.numberOfDays,
+        currentRound: draft.currentRound,
+        numberOfRounds: draft.numberOfRounds,
+      })
+      if (updated) {
+        setAdminHackathons(prev => prev.map(item => item.id === h.id ? updated : item))
+        if (selectedAdminHackathon?.id === h.id) setSelectedAdminHackathon(updated)
+        setProgressionDrafts(prev => {
+          const next = { ...prev }
+          delete next[h.id]
+          return next
+        })
+        toast.success(`Saved Day ${updated.currentDay}/${updated.numberOfDays} • Round ${updated.currentRound}/${updated.numberOfRounds}`)
+      }
+    } catch (err) {
+      toast.error('Failed to save progression changes')
+    } finally {
+      setSavingProgressionId(null)
+    }
+  }
+
+  const handleToggleQualification = async (teamId: string, round: number, current: boolean) => {
+    try {
+      const nextQual = !current
+      await updateAdminTeamQual(teamId, round, nextQual)
+      let resetPosNeeded = false
+
+      setAdminTeams(prev => prev.map(t => {
+        if (t.id === teamId) {
+          if (!nextQual && t.position) resetPosNeeded = true
+          return {
+            ...t,
+            qualifications: { ...t.qualifications, [String(round)]: nextQual },
+            position: !nextQual ? null : t.position,
+          }
+        }
+        return t
+      }))
+
+      if (resetPosNeeded && selectedAdminHackathon) {
+        await updateAdminTeamPos(selectedAdminHackathon.id, teamId, null)
+      }
+
+      toast.success(`Team Round ${round} status updated`)
+    } catch (err) {
+      toast.error('Failed to update team qualification')
+    }
+  }
+
+  const handleSetPodiumPosition = async (teamId: string, pos: 1 | 2 | 3 | null) => {
+    if (!selectedAdminHackathon) return
+    try {
+      await updateAdminTeamPos(selectedAdminHackathon.id, teamId, pos)
+      setAdminTeams(prev => prev.map(t => {
+        if (t.id === teamId) return { ...t, position: pos }
+        if (t.position === pos && pos !== null) return { ...t, position: null }
+        return t
+      }))
+      toast.success(pos ? `Assigned #${pos} Place Podium!` : 'Cleared podium position')
+    } catch (err) {
+      toast.error('Failed to set podium position')
+    }
+  }
+
+  const handleToggleMemberAttendance = async (team: HackathonTeam, memberIdx: number) => {
+    if (!selectedAdminHackathon) return
+    const currentDay = selectedAdminHackathon.currentDay
+    const updatedMembers = [...team.members]
+    updatedMembers[memberIdx] = {
+      ...updatedMembers[memberIdx],
+      present: !updatedMembers[memberIdx].present
+    }
+    try {
+      await markAdminMemberAttendance(team.id, currentDay, updatedMembers)
+      setAdminTeams(prev => prev.map(t => {
+        if (t.id === team.id) {
+          return {
+            ...t,
+            members: updatedMembers,
+            dayAttendance: {
+              ...t.dayAttendance,
+              [String(currentDay)]: { marked: true, markedAt: new Date().toISOString(), members: updatedMembers }
+            }
+          }
+        }
+        return t
+      }))
+      toast.success('Member attendance updated')
+    } catch (err) {
+      toast.error('Failed to update attendance')
+    }
+  }
+
+  const openAddHackathonModal = () => {
+    setEditingHackathonId(null)
+    setHTitleInput('')
+    setHDescInput('')
+    setHStartInput(new Date().toISOString().slice(0, 16))
+    setHEndInput(new Date(Date.now() + 86400000 * 2).toISOString().slice(0, 16))
+    setHDeadlineInput(new Date(Date.now() + 86400000).toISOString().slice(0, 16))
+    setHVenueInput('Main Campus Auditorium & Discord')
+    setHBannerInput('https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=1200&q=80')
+    setHMinTeamInput(1)
+    setHMaxTeamInput(4)
+    setHMaxTeamsInput(50)
+    setHDaysInput(2)
+    setHRoundsInput(3)
+    setHRulesInput('1. Write clean original code.\n2. Respect judge decisions.')
+    setHStatusInput('upcoming')
+    setHRegOpenInput(true)
+    setShowHackathonModal(true)
+  }
+
+  const openEditHackathonModal = (h: Hackathon) => {
+    setEditingHackathonId(h.id)
+    setHTitleInput(h.title)
+    setHDescInput(h.description)
+    setHStartInput(h.startDate.slice(0, 16))
+    setHEndInput(h.endDate.slice(0, 16))
+    setHDeadlineInput(h.registrationDeadline.slice(0, 16))
+    setHVenueInput(h.venue)
+    setHBannerInput(h.bannerUrl)
+    setHMinTeamInput(h.minTeamSize)
+    setHMaxTeamInput(h.maxTeamSize)
+    setHMaxTeamsInput(h.maxTeams)
+    setHDaysInput(h.numberOfDays)
+    setHRoundsInput(h.numberOfRounds)
+    setHRulesInput(h.rules)
+    setHStatusInput(h.status)
+    setHRegOpenInput(h.isRegistrationOpen)
+    setShowHackathonModal(true)
+  }
+
+  const handleSaveHackathonForm = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!hTitleInput.trim()) {
+      toast.error('Title is required')
+      return
+    }
+
+    setHackathonSaving(true)
+    try {
+      const payload: CreateHackathonInput = {
+        title: hTitleInput.trim(),
+        description: hDescInput.trim(),
+        startDate: hStartInput,
+        endDate: hEndInput,
+        registrationDeadline: hDeadlineInput,
+        venue: hVenueInput.trim(),
+        bannerUrl: hBannerInput.trim(),
+        minTeamSize: hMinTeamInput,
+        maxTeamSize: hMaxTeamInput,
+        maxTeams: hMaxTeamsInput,
+        numberOfDays: hDaysInput,
+        numberOfRounds: hRoundsInput,
+        isRegistrationOpen: (hStatusInput === 'ongoing' || hStatusInput === 'completed') ? false : hRegOpenInput,
+        status: hStatusInput,
+        rules: hRulesInput.trim(),
+      }
+
+      if (editingHackathonId) {
+        const updated = await updateAdminHackathon(editingHackathonId, payload)
+        if (updated) {
+          setAdminHackathons(prev => prev.map(h => h.id === editingHackathonId ? updated : h))
+          if (selectedAdminHackathon?.id === editingHackathonId) setSelectedAdminHackathon(updated)
+          toast.success('Hackathon updated!')
+        }
+      } else {
+        const created = await createAdminHackathon(payload)
+        setAdminHackathons(prev => [created, ...prev])
+        toast.success('Hackathon created!')
+      }
+      setShowHackathonModal(false)
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save hackathon')
+    } finally {
+      setHackathonSaving(false)
+    }
+  }
+
+  const openDeleteModal = (h: Hackathon) => {
+    setDeletingHackathon(h)
+    setDeleteConfirmText('')
+  }
+
+  const handleConfirmDeleteHackathon = async () => {
+    if (!deletingHackathon) return
+    if (deleteConfirmText.trim() !== deletingHackathon.title.trim()) {
+      toast.error('Hackathon title does not match')
+      return
+    }
+
+    setIsDeletingHackathon(true)
+    try {
+      await deleteAdminHackathon(deletingHackathon.id)
+      setAdminHackathons(prev => prev.filter(h => h.id !== deletingHackathon.id))
+      if (selectedAdminHackathon?.id === deletingHackathon.id) setSelectedAdminHackathon(null)
+      toast.success(`Hackathon "${deletingHackathon.title}" deleted successfully`)
+      setDeletingHackathon(null)
+      setDeleteConfirmText('')
+    } catch (err) {
+      toast.error('Failed to delete hackathon')
+    } finally {
+      setIsDeletingHackathon(false)
+    }
+  }
+
+  const exportTeamsCSV = () => {
+    if (!selectedAdminHackathon || adminTeams.length === 0) return
+    const headers = ['Team Code', 'Team Name', 'Leader Name', 'Leader Email', 'College', 'Branch', 'Member Count', 'Podium Position']
+    const rows = adminTeams.map(t => [
+      `"${t.teamCode}"`,
+      `"${t.teamName.replace(/"/g, '""')}"`,
+      `"${t.leaderName.replace(/"/g, '""')}"`,
+      `"${t.leaderEmail.replace(/"/g, '""')}"`,
+      `"${t.leaderCollege.replace(/"/g, '""')}"`,
+      `"${t.leaderBranch.replace(/"/g, '""')}"`,
+      t.members.length,
+      t.position ? `"${t.position} Place"` : '"N/A"',
+    ])
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement('a')
+    link.setAttribute('href', encodedUri)
+    link.setAttribute('download', `${selectedAdminHackathon.title.replace(/[^a-zA-Z0-9]/g, '_')}_Registrations.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    toast.success('CSV Report Downloaded!')
+  }
 
   // ─── Supabase Mentorship State ─────────────────────────────────────────────
   const [dbMentors, setDbMentors] = useState<Mentor[]>([])
@@ -884,6 +1318,54 @@ export default function AdminDashboard() {
   const [examPage, setExamPage] = useState(1)
   const [examSort, setExamSort] = useState<'title' | 'registration_end' | 'exam_date' | 'status'>('registration_end')
   const [examSortDir, setExamSortDir] = useState<'asc' | 'desc'>('asc')
+
+  // ─── Users from Supabase ──────────────────────────────────────────────────
+  const [dbUsers, setDbUsers] = useState<UserWithEnrollmentDetails[]>([])
+  const [usersLoading, setUsersLoading] = useState(false)
+  const [selectedUserDetail, setSelectedUserDetail] = useState<UserWithEnrollmentDetails | null>(null)
+  const [userFilter, setUserFilter] = useState<'all' | 'paid' | 'free' | 'none'>('all')
+
+  // ─── Payment Approvals & Verification State ───────────────────────────────
+  const [paymentRequests, setPaymentRequests] = useState<Enrollment[]>([])
+  const [paymentsLoading, setPaymentsLoading] = useState(false)
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'pending' | 'paid' | 'rejected'>('pending')
+  const [inspectProofImage, setInspectProofImage] = useState<string | null>(null)
+  const [rejectModalId, setRejectModalId] = useState<string | null>(null)
+  const [rejectReason, setRejectReason] = useState('')
+
+  const loadPaymentRequests = useCallback(async () => {
+    setPaymentsLoading(true)
+    try {
+      const data = await getAllEnrollments()
+      setPaymentRequests(data)
+    } catch (err) {
+      console.error('Failed to load payment requests:', err)
+    } finally {
+      setPaymentsLoading(false)
+    }
+  }, [])
+
+  const loadDbUsers = useCallback(async () => {
+    setUsersLoading(true)
+    try {
+      const data = await fetchAllUsersWithEnrollments()
+      setDbUsers(data)
+    } catch (err) {
+      console.error('Failed to load users from Supabase:', err)
+      toast.error(err instanceof Error ? err.message : 'Failed to load users from Supabase')
+    } finally {
+      setUsersLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'users' || activeTab === 'overview') {
+      loadDbUsers()
+    }
+    if (activeTab === 'payment-approvals' || activeTab === 'overview') {
+      loadPaymentRequests()
+    }
+  }, [activeTab, loadDbUsers, loadPaymentRequests])
 
   // ─── Load resources from Supabase ──────────────────────────────────────────
   const loadDbResources = useCallback(async () => {
@@ -1424,8 +1906,8 @@ export default function AdminDashboard() {
     }
   }
 
-  // Users from localStorage
-  const users = JSON.parse(localStorage.getItem('skills021_users') || '[]')
+  // Users loaded directly from Supabase profiles & enrollments
+  const users = dbUsers
 
   const openAdd = (type?: string) => {
     if (type === 'course') {
@@ -1611,7 +2093,8 @@ export default function AdminDashboard() {
       { label: 'Quizzes', val: content.quizzes.length, icon: HelpCircle, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-900/20' },
       { label: 'Roadmaps', val: content.roadmaps.length, icon: Map, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
       { label: 'Active Mentors', val: dbMentors.filter(m => m.status === 'Active').length, icon: Users, color: 'text-indigo-500', bg: 'bg-indigo-50 dark:bg-indigo-900/20' },
-      { label: 'Total Users', val: users.length, icon: Users, color: 'text-rose-500', bg: 'bg-rose-50 dark:bg-rose-900/20' },
+      { label: 'Total Supabase Users', val: dbUsers.length, icon: Users, color: 'text-rose-500', bg: 'bg-rose-50 dark:bg-rose-900/20' },
+      { label: 'Paid Course Students', val: dbUsers.filter(u => u.hasPaidCourses).length, icon: CreditCard, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
       { label: 'New Guidance Requests', val: dbGuidanceRequests.filter(r => r.status === 'New').length, icon: Users, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
       { label: 'New Join Us Applications', val: careerApplications.filter(a => a.status === 'New').length, icon: Briefcase, color: 'text-orange-500', bg: 'bg-orange-50 dark:bg-orange-900/20' },
     ]
@@ -2363,39 +2846,1096 @@ export default function AdminDashboard() {
     )
   }
 
-  // ─── Users ──────────────────────────────────────────────────────────────────
+  // ─── Users (Supabase Profiles & Paid Courses) ──────────────────────────────
   const renderUsers = () => {
-    const filtered = users.filter((u: any) => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()))
+    const getInitials = (name: string) =>
+      (name || 'User')
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2)
+
+    const searchLower = search.toLowerCase()
+    const filtered = dbUsers.filter((u) => {
+      const matchText =
+        (u.name || '').toLowerCase().includes(searchLower) ||
+        (u.email || '').toLowerCase().includes(searchLower) ||
+        (u.college || '').toLowerCase().includes(searchLower) ||
+        (u.phone || '').toLowerCase().includes(searchLower)
+      if (!matchText) return false
+
+      if (userFilter === 'paid') return u.hasPaidCourses
+      if (userFilter === 'free') return u.freeCoursesCount > 0 && !u.hasPaidCourses
+      if (userFilter === 'none') return u.totalCoursesCount === 0
+      return true
+    })
+
+    const totalPaidRevenue = dbUsers.reduce((sum, u) => sum + (u.totalAmountPaid || 0), 0)
+    const totalPaidLearners = dbUsers.filter((u) => u.hasPaidCourses).length
+    const totalFreeLearners = dbUsers.filter((u) => u.freeCoursesCount > 0 && !u.hasPaidCourses).length
+
+    const handleTogglePremium = async (u: UserWithEnrollmentDetails) => {
+      const newStatus = !u.is_premium
+      const ok = await toggleUserPremiumStatus(u.id, newStatus)
+      if (ok) {
+        toast.success(newStatus ? `Granted All-Access Premium to ${u.name}! ⭐` : `Revoked Premium access for ${u.name}`)
+        setDbUsers(prev => prev.map(item => item.id === u.id ? { ...item, is_premium: newStatus } : item))
+        if (selectedUserDetail && selectedUserDetail.id === u.id) {
+          setSelectedUserDetail(prev => prev ? { ...prev, is_premium: newStatus } : null)
+        }
+      } else {
+        toast.error('Failed to update premium membership in Supabase')
+      }
+    }
+
     return (
-      <div>
-        <SectionHeader title="Manage Users" count={users.length} />
-        <SearchBar value={search} onChange={setSearch} placeholder="Search users..." />
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">Manage Users & Enrollments</h2>
+            <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">
+              Live user profiles, premium memberships & course purchase records synced with Supabase
+            </p>
+          </div>
+
+          <button
+            onClick={loadDbUsers}
+            disabled={usersLoading}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-brand-border dark:border-brand-dark-border text-xs font-semibold text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+          >
+            <RefreshCw size={13} className={usersLoading ? 'animate-spin' : ''} /> Refresh Data
+          </button>
+        </div>
+
+        {/* Metric Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="card p-4">
+            <p className="text-xs text-brand-muted dark:text-brand-dark-muted font-medium">Total Registered Users</p>
+            <p className="text-2xl font-bold text-brand-text dark:text-brand-dark-text mt-1">{dbUsers.length}</p>
+          </div>
+          <div className="card p-4">
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Paid Course Students</p>
+            <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{totalPaidLearners}</p>
+          </div>
+          <div className="card p-4">
+            <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">Free Course Students</p>
+            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">{totalFreeLearners}</p>
+          </div>
+          <div className="card p-4">
+            <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">Total Paid Revenue</p>
+            <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">₹{totalPaidRevenue.toLocaleString()}</p>
+          </div>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+          <div className="relative flex-1 max-w-sm">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
+            <input
+              type="text"
+              placeholder="Search by name, email, phone or college..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="input pl-9 text-xs"
+            />
+          </div>
+
+          <div className="flex gap-1.5 flex-wrap">
+            {[
+              { id: 'all', label: `All Users (${dbUsers.length})` },
+              { id: 'paid', label: `Paid Students (${totalPaidLearners})` },
+              { id: 'free', label: `Free Only (${totalFreeLearners})` },
+              { id: 'none', label: `No Enrollments` },
+            ].map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setUserFilter(f.id as any)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  userFilter === f.id
+                    ? 'bg-primary-500 text-white shadow-sm'
+                    : 'bg-gray-100 dark:bg-white/5 text-brand-muted hover:bg-gray-200 dark:hover:bg-white/10'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Users Table */}
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-white/5">
-                <tr>{['Name', 'Email', 'College', 'Role', 'Joined', 'Status'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
-                ))}</tr>
+                <tr>
+                  {['Student', 'Contact & College', 'Role', 'Membership & Access', 'Paid Courses Taken', 'Total Courses', 'Joined Date', 'Actions'].map((h) => (
+                    <th
+                      key={h}
+                      className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
               </thead>
               <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
-                {filtered.map((u: any) => (
-                  <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
-                    <td className="px-4 py-3 font-medium text-brand-text dark:text-brand-dark-text">{u.name}</td>
-                    <td className="px-4 py-3 text-brand-muted text-xs">{u.email}</td>
-                    <td className="px-4 py-3 text-brand-muted text-xs">{u.college}</td>
-                    <td className="px-4 py-3"><span className={`badge text-xs ${u.role === 'admin' ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-600'}`}>{u.role}</span></td>
-                    <td className="px-4 py-3 text-brand-muted text-xs">{u.joinedDate}</td>
-                    <td className="px-4 py-3"><StatusBadge status={u.disabled ? 'Inactive' : 'Active'} /></td>
+                {usersLoading ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-12 text-center text-brand-muted text-sm">
+                      <Loader2 size={24} className="animate-spin mx-auto text-primary-500 mb-2" />
+                      Loading users from Supabase...
+                    </td>
                   </tr>
-                ))}
-                {filtered.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-brand-muted text-sm">No users found.</td></tr>
+                ) : (
+                  filtered.map((u) => (
+                    <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                      {/* Student */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-primary-500/10 dark:bg-primary-500/20 text-primary-600 dark:text-primary-400 font-bold flex items-center justify-center text-xs flex-shrink-0">
+                            {getInitials(u.name || 'U')}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-brand-text dark:text-brand-dark-text text-sm leading-snug truncate">
+                              {u.name}
+                            </p>
+                            <p className="text-xs text-brand-muted dark:text-brand-dark-muted truncate">{u.email}</p>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Contact & College */}
+                      <td className="px-4 py-3 text-xs">
+                        <div className="text-brand-text dark:text-brand-dark-text font-medium">{u.college}</div>
+                        <div className="text-brand-muted dark:text-brand-dark-muted text-[11px] mt-0.5">
+                          {u.phone || 'No phone'}
+                        </div>
+                      </td>
+
+                      {/* Role */}
+                      <td className="px-4 py-3">
+                        <span
+                          className={`badge text-xs ${
+                            u.role === 'admin'
+                              ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 font-semibold'
+                              : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300'
+                          }`}
+                        >
+                          {u.role}
+                        </span>
+                      </td>
+
+                      {/* Membership & Access */}
+                      <td className="px-4 py-3">
+                        <div className="space-y-1.5">
+                          {u.is_premium ? (
+                            <span className="badge text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-bold">
+                              ⭐ ALL-ACCESS PREMIUM
+                            </span>
+                          ) : u.hasPaidCourses ? (
+                            <span className="badge text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 font-semibold">
+                              COURSE PURCHASER
+                            </span>
+                          ) : (
+                            <span className="badge text-[10px] bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400">
+                              Free Standard
+                            </span>
+                          )}
+                          <div>
+                            <button
+                              onClick={() => handleTogglePremium(u)}
+                              className={`text-[10px] font-semibold underline transition-colors ${
+                                u.is_premium
+                                  ? 'text-red-500 hover:text-red-600'
+                                  : 'text-primary-600 dark:text-primary-400 hover:text-primary-700'
+                              }`}
+                            >
+                              {u.is_premium ? 'Revoke Premium' : '+ Grant All-Access'}
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Paid Courses Taken */}
+                      <td className="px-4 py-3">
+                        {u.hasPaidCourses ? (
+                          <div className="space-y-1">
+                            <span className="badge text-[11px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 font-bold">
+                              PAID ({u.paidCoursesCount})
+                            </span>
+                            <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                              ₹{u.totalAmountPaid.toLocaleString()} paid
+                            </p>
+                          </div>
+                        ) : u.freeCoursesCount > 0 ? (
+                          <span className="badge text-[11px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-semibold">
+                            Free Courses ({u.freeCoursesCount})
+                          </span>
+                        ) : (
+                          <span className="text-xs text-brand-muted dark:text-brand-dark-muted italic">None</span>
+                        )}
+                      </td>
+
+                      {/* Total Courses */}
+                      <td className="px-4 py-3 text-xs font-semibold text-brand-text dark:text-brand-dark-text">
+                        {u.totalCoursesCount} course{u.totalCoursesCount !== 1 ? 's' : ''}
+                      </td>
+
+                      {/* Joined Date */}
+                      <td className="px-4 py-3 text-xs text-brand-muted dark:text-brand-dark-muted whitespace-nowrap">
+                        {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => setSelectedUserDetail(u)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/40 text-xs font-semibold transition-colors"
+                        >
+                          <Eye size={12} /> View Details
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+                {!usersLoading && filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-12 text-center text-brand-muted text-sm">
+                      No users found matching your search.
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
           </div>
         </div>
+
+        {/* Selected User Course & Enrollment Details Modal */}
+        <AnimatePresence>
+          {selectedUserDetail && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedUserDetail(null)}
+              className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="relative w-full max-w-2xl bg-white dark:bg-brand-dark-card rounded-2xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col"
+              >
+                {/* Header */}
+                <div className="p-6 border-b border-brand-border dark:border-brand-dark-border flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-primary-500 text-white font-bold flex items-center justify-center text-base">
+                      {getInitials(selectedUserDetail.name || 'U')}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">
+                          {selectedUserDetail.name}
+                        </h3>
+                        {selectedUserDetail.is_premium && (
+                          <span className="badge text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-bold">
+                            ⭐ PREMIUM ALL-ACCESS
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-brand-muted dark:text-brand-dark-muted">{selectedUserDetail.email}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setSelectedUserDetail(null)}
+                    className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* User Info Overview */}
+                <div className="p-6 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-gray-50 dark:bg-white/5 border-b border-brand-border dark:border-brand-dark-border">
+                  <div>
+                    <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">Phone</span>
+                    <span className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
+                      {selectedUserDetail.phone || 'N/A'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">College</span>
+                    <span className="text-xs font-semibold text-brand-text dark:text-brand-dark-text truncate block">
+                      {selectedUserDetail.college}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">Paid Courses</span>
+                    <span className="text-xs font-bold text-emerald-500">
+                      {selectedUserDetail.paidCoursesCount} (₹{selectedUserDetail.totalAmountPaid.toLocaleString()})
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">Joined Date</span>
+                    <span className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
+                      {selectedUserDetail.created_at
+                        ? new Date(selectedUserDetail.created_at).toLocaleDateString()
+                        : 'N/A'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Enrolled Courses List */}
+                <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                  <h4 className="font-bold text-sm text-brand-text dark:text-brand-dark-text flex items-center justify-between">
+                    <span>Courses Taken ({selectedUserDetail.enrollments.length})</span>
+                    <span className="text-xs font-normal text-brand-muted">Recorded in Supabase</span>
+                  </h4>
+
+                  {selectedUserDetail.enrollments.length === 0 ? (
+                    <div className="py-8 text-center text-brand-muted text-xs">
+                      No course enrollments recorded for this user.
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {selectedUserDetail.enrollments.map((enr) => {
+                        const isPaid = enr.paymentStatus === 'paid' || enr.amount > 0
+                        return (
+                          <div
+                            key={enr.id}
+                            className="p-3.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg flex items-center justify-between gap-4"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span
+                                  className={`badge text-[10px] font-bold ${
+                                    isPaid
+                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                                  }`}
+                                >
+                                  {isPaid ? `PAID (₹${enr.amount})` : 'FREE COURSE'}
+                                </span>
+                                <span className="text-[11px] text-brand-muted">
+                                  {new Date(enr.createdAt).toLocaleDateString()}
+                                </span>
+                              </div>
+                              <p className="font-semibold text-xs text-brand-text dark:text-brand-dark-text truncate">
+                                {enr.courseTitle}
+                              </p>
+                              <p className="text-[11px] text-brand-muted mt-0.5">
+                                Contact: {enr.phone || selectedUserDetail.phone || 'N/A'} • Status: {enr.paymentStatus}
+                              </p>
+                            </div>
+                            <div className="text-right flex-shrink-0 flex flex-col items-end gap-1.5">
+                              <span className="text-sm font-bold text-brand-text dark:text-brand-dark-text">
+                                {isPaid ? `₹${enr.amount}` : '₹0'}
+                              </span>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await revokeAccess(enr.id, 'Access revoked by Admin')
+                                    toast.success(`Access to ${enr.courseTitle} revoked! 🔒`)
+                                    loadDbUsers()
+                                    loadPaymentRequests()
+                                    setSelectedUserDetail((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            enrollments: prev.enrollments.filter((e) => e.id !== enr.id),
+                                            paidCoursesCount: Math.max(0, prev.paidCoursesCount - (isPaid ? 1 : 0)),
+                                            totalCoursesCount: Math.max(0, prev.totalCoursesCount - 1),
+                                          }
+                                        : null
+                                    )
+                                  } catch (err: any) {
+                                    toast.error(err.message || 'Failed to revoke course access')
+                                  }
+                                }}
+                                className="px-2 py-1 rounded-lg bg-red-500/10 text-red-600 hover:bg-red-500 hover:text-white border border-red-500/20 text-[10px] font-bold transition-all flex items-center gap-1"
+                              >
+                                <ShieldAlert size={11} /> Revoke Access
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="p-4 bg-gray-50 dark:bg-white/5 border-t border-brand-border dark:border-brand-dark-border text-right">
+                  <button
+                    onClick={() => setSelectedUserDetail(null)}
+                    className="px-4 py-2 bg-gray-200 dark:bg-white/10 text-brand-text dark:text-brand-dark-text text-xs font-semibold rounded-xl hover:bg-gray-300 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    )
+  }
+
+  // ─── Payment Gateway & UPI Settings Form ────────────────────────────────────
+  const renderPaymentGatewaySettingsForm = () => {
+    const handleSaveSettings = async (e: React.FormEvent) => {
+      e.preventDefault()
+      if (!draftPaymentSettings.upiId.trim()) {
+        toast.error('UPI ID cannot be empty')
+        return
+      }
+      setPaymentSettingsLoading(true)
+      try {
+        const updated = await updatePaymentSettings(draftPaymentSettings)
+        setPaymentSettings(updated)
+        setDraftPaymentSettings(updated)
+        toast.success('UPI ID & QR Code settings saved to Supabase! 🎉')
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to save payment settings')
+      } finally {
+        setPaymentSettingsLoading(false)
+      }
+    }
+
+    const handleQrUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please upload an image file (PNG, JPG, or WEBP)')
+        return
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('Image size must be under 5 MB')
+        return
+      }
+      const reader = new FileReader()
+      reader.onload = () => {
+        setDraftPaymentSettings((prev) => ({ ...prev, qrCodeUrl: reader.result as string }))
+        toast.success('QR Code image loaded! Click "Save Payment Settings" below to apply.')
+      }
+      reader.readAsDataURL(file)
+    }
+
+    const previewUpiIntentUrl = `upi://pay?pa=${encodeURIComponent(draftPaymentSettings.upiId || 'skills021@upi')}&pn=${encodeURIComponent(draftPaymentSettings.upiName || 'Skills021')}&am=499&cu=INR`
+    const previewQrUrl = draftPaymentSettings.qrCodeUrl && draftPaymentSettings.qrCodeUrl.trim() !== ''
+      ? draftPaymentSettings.qrCodeUrl
+      : `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(previewUpiIntentUrl)}&size=240x240&margin=10`
+
+    return (
+      <div className="card p-6 border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card shadow-xs">
+        <div className="flex items-center justify-between pb-4 mb-6 border-b border-brand-border dark:border-brand-dark-border">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary-500/10 text-primary-600 dark:text-primary-400 flex items-center justify-center">
+              <QrCode size={20} />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-brand-text dark:text-brand-dark-text">UPI & QR Code Configuration</h3>
+              <p className="text-xs text-brand-muted dark:text-brand-dark-muted">
+                Configure your official UPI ID and upload your merchant QR code shown to students at checkout
+              </p>
+            </div>
+          </div>
+          {draftPaymentSettings.updatedAt && (
+            <span className="text-[11px] text-brand-muted">
+              Last saved: {new Date(draftPaymentSettings.updatedAt).toLocaleDateString()}
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Settings Form */}
+          <form onSubmit={handleSaveSettings} className="lg:col-span-7 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-brand-text dark:text-brand-dark-text mb-1">
+                  Official UPI ID *
+                </label>
+                <input
+                  type="text"
+                  value={draftPaymentSettings.upiId}
+                  onChange={(e) => setDraftPaymentSettings((p) => ({ ...p, upiId: e.target.value }))}
+                  placeholder="e.g. yourname@oksbi or skills021@upi"
+                  className="input text-xs font-mono"
+                  required
+                />
+                <p className="text-[11px] text-brand-muted mt-1">Students copy this ID to make UPI payments</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-brand-text dark:text-brand-dark-text mb-1">
+                  Payee / Business Name *
+                </label>
+                <input
+                  type="text"
+                  value={draftPaymentSettings.upiName}
+                  onChange={(e) => setDraftPaymentSettings((p) => ({ ...p, upiName: e.target.value }))}
+                  placeholder="e.g. Skills021 Learning"
+                  className="input text-xs"
+                  required
+                />
+                <p className="text-[11px] text-brand-muted mt-1">Displayed in student UPI app & receipt</p>
+              </div>
+            </div>
+
+            {/* Custom QR Code Upload */}
+            <div>
+              <label className="block text-xs font-bold text-brand-text dark:text-brand-dark-text mb-1">
+                Upload UPI QR Code Image (PhonePe / GPay / Paytm / Bank QR)
+              </label>
+              <div className="border-2 border-dashed border-brand-border dark:border-brand-dark-border rounded-xl p-4 text-center bg-gray-50 dark:bg-white/5 hover:bg-gray-100/70 dark:hover:bg-white/10 transition-colors relative group">
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={handleQrUpload}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                />
+                <div className="flex flex-col items-center justify-center gap-1.5">
+                  <UploadCloud size={24} className="text-primary-500" />
+                  <p className="text-xs font-bold text-brand-text dark:text-brand-dark-text">
+                    {draftPaymentSettings.qrCodeUrl ? 'Click or Drag to Replace QR Code Image' : 'Click or Drag to Upload QR Code Image'}
+                  </p>
+                  <p className="text-[11px] text-brand-muted">Supports PNG, JPG, WEBP (Max 5MB)</p>
+                </div>
+              </div>
+              {draftPaymentSettings.qrCodeUrl && (
+                <div className="flex items-center justify-between mt-2 pt-2 border-t border-brand-border dark:border-brand-dark-border">
+                  <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                    <CheckCircle size={13} /> Custom QR Code image active
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraftPaymentSettings((p) => ({ ...p, qrCodeUrl: '' }))
+                      toast.success('Reset to dynamic QR generator. Click "Save Payment Settings" to apply.')
+                    }}
+                    className="text-xs font-semibold text-red-500 hover:underline"
+                  >
+                    Remove Custom Image (Use Dynamic QR)
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Verification Instructions */}
+            <div>
+              <label className="block text-xs font-bold text-brand-text dark:text-brand-dark-text mb-1">
+                Checkout Instructions for Students
+              </label>
+              <textarea
+                value={draftPaymentSettings.instructions || ''}
+                onChange={(e) => setDraftPaymentSettings((p) => ({ ...p, instructions: e.target.value }))}
+                rows={2}
+                placeholder="Scan QR or pay directly to the UPI ID..."
+                className="input text-xs resize-none"
+              />
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="submit"
+                disabled={paymentSettingsLoading}
+                className="px-5 py-2.5 rounded-xl bg-[#0A0A0A] dark:bg-white text-white dark:text-black font-bold text-xs hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors shadow-sm flex items-center gap-2"
+              >
+                {paymentSettingsLoading ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                Save Payment Settings
+              </button>
+            </div>
+          </form>
+
+          {/* Live Student Checkout Preview */}
+          <div className="lg:col-span-5 bg-gray-50 dark:bg-white/5 rounded-2xl p-5 border border-brand-border dark:border-brand-dark-border flex flex-col items-center justify-center text-center">
+            <p className="text-xs font-bold text-brand-muted uppercase tracking-wider mb-2">Live Student Checkout Preview</p>
+            <div className="p-3 bg-white rounded-xl shadow-sm border border-brand-border max-w-[200px] max-h-[200px] flex items-center justify-center overflow-hidden mb-3">
+              <img
+                src={previewQrUrl}
+                alt="UPI QR Code Preview"
+                className="w-40 h-40 object-contain rounded-lg"
+              />
+            </div>
+            <div className="w-full max-w-xs space-y-1">
+              <p className="text-xs font-mono font-bold text-brand-text dark:text-brand-dark-text bg-white dark:bg-brand-dark-card px-3 py-1.5 rounded-lg border border-brand-border dark:border-brand-dark-border truncate">
+                {draftPaymentSettings.upiId || 'skills021@upi'}
+              </p>
+              <p className="text-[11px] text-brand-muted">
+                Payee: <span className="font-semibold text-brand-text dark:text-brand-dark-text">{draftPaymentSettings.upiName || 'Skills021'}</span>
+              </p>
+              {draftPaymentSettings.qrCodeUrl ? (
+                <span className="badge text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 font-bold">
+                  Custom Uploaded QR Active
+                </span>
+              ) : (
+                <span className="badge text-[10px] bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 font-semibold">
+                  Dynamic UPI QR Active
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ─── Payment Approvals & Verification ──────────────────────────────────────
+  const renderPaymentApprovals = () => {
+    const searchLower = search.toLowerCase()
+    const filtered = paymentRequests.filter((p) => {
+      const matchText =
+        (p.firstName || '').toLowerCase().includes(searchLower) ||
+        (p.lastName || '').toLowerCase().includes(searchLower) ||
+        (p.email || '').toLowerCase().includes(searchLower) ||
+        (p.phone || '').toLowerCase().includes(searchLower) ||
+        (p.utrNumber || '').toLowerCase().includes(searchLower) ||
+        (p.itemTitle || '').toLowerCase().includes(searchLower) ||
+        (p.courseId || '').toLowerCase().includes(searchLower)
+      if (!matchText) return false
+
+      if (paymentFilter === 'pending') return p.status === 'pending'
+      if (paymentFilter === 'paid') return p.status === 'paid'
+      if (paymentFilter === 'rejected') return p.status === 'rejected'
+      return true
+    })
+
+    const pendingCount = paymentRequests.filter((p) => p.status === 'pending').length
+    const approvedCount = paymentRequests.filter((p) => p.status === 'paid').length
+    const rejectedCount = paymentRequests.filter((p) => p.status === 'rejected').length
+    const totalVerifiedRevenue = paymentRequests
+      .filter((p) => p.status === 'paid')
+      .reduce((sum, p) => sum + (p.amount || 0), 0)
+
+    const handleApprove = async (req: Enrollment) => {
+      try {
+        await approvePaymentRequest(req.id)
+        toast.success(`Payment approved! Access granted to ${req.firstName || req.email} 🎉`)
+        setPaymentRequests((prev) =>
+          prev.map((item) => (item.id === req.id ? { ...item, status: 'paid', rejectionReason: '' } : item))
+        )
+        loadDbUsers()
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to approve payment')
+      }
+    }
+
+    const handleRevoke = async (req: Enrollment) => {
+      try {
+        await revokeAccess(req.id, 'Access revoked by Admin')
+        toast.success(`Access revoked for ${req.firstName || req.email}! 🔒`)
+        setPaymentRequests((prev) =>
+          prev.map((item) =>
+            item.id === req.id
+              ? { ...item, status: 'rejected', rejectionReason: 'Access revoked by Admin' }
+              : item
+          )
+        )
+        loadDbUsers()
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to revoke access')
+      }
+    }
+
+    const handleConfirmReject = async () => {
+      if (!rejectModalId) return
+      try {
+        await rejectPaymentRequest(rejectModalId, rejectReason.trim() || 'Payment details could not be verified')
+        toast.success('Payment request marked as rejected')
+        setPaymentRequests((prev) =>
+          prev.map((item) =>
+            item.id === rejectModalId
+              ? { ...item, status: 'rejected', rejectionReason: rejectReason.trim() || 'Rejected by Admin' }
+              : item
+          )
+        )
+        setRejectModalId(null)
+        setRejectReason('')
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to reject payment')
+      }
+    }
+
+    const copyToClipboard = (text: string, label: string) => {
+      navigator.clipboard.writeText(text).then(() => toast.success(`${label} copied!`))
+    }
+
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-2.5">
+              <span>Payment Approvals & Verification</span>
+              {pendingCount > 0 && (
+                <span className="px-2.5 py-0.5 rounded-full bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold text-xs">
+                  {pendingCount} Pending
+                </span>
+              )}
+            </h2>
+            <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">
+              Review UPI receipts, verify 12-digit UTR numbers, and manage student course access
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowQrSettingsPanel((prev) => !prev)}
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all ${
+                showQrSettingsPanel
+                  ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black border-transparent shadow-xs'
+                  : 'border-brand-border dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5'
+              }`}
+            >
+              <QrCode size={14} /> {showQrSettingsPanel ? 'Hide UPI & QR Settings' : 'Configure UPI & QR Code'}
+            </button>
+
+            <button
+              onClick={loadPaymentRequests}
+              disabled={paymentsLoading}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-brand-border dark:border-brand-dark-border text-xs font-semibold text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+            >
+              <RefreshCw size={13} className={paymentsLoading ? 'animate-spin' : ''} /> Refresh
+            </button>
+          </div>
+        </div>
+
+        {/* Collapsible UPI & QR Code Settings Panel */}
+        <AnimatePresence>
+          {showQrSettingsPanel && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden"
+            >
+              {renderPaymentGatewaySettingsForm()}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Metrics Overview — Clean & Professional */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="card p-5 border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card shadow-xs">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider">Pending Review</p>
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+            </div>
+            <p className="text-3xl font-extrabold text-brand-text dark:text-brand-dark-text mt-2">{pendingCount}</p>
+          </div>
+          <div className="card p-5 border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card shadow-xs">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider">Approved Payments</p>
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            </div>
+            <p className="text-3xl font-extrabold text-brand-text dark:text-brand-dark-text mt-2">{approvedCount}</p>
+          </div>
+          <div className="card p-5 border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card shadow-xs">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider">Rejected Proofs</p>
+              <span className="w-2.5 h-2.5 rounded-full bg-gray-400"></span>
+            </div>
+            <p className="text-3xl font-extrabold text-brand-text dark:text-brand-dark-text mt-2">{rejectedCount}</p>
+          </div>
+        </div>
+
+        {/* Search & Status Filter */}
+        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+          <div className="relative flex-1 max-w-sm">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
+            <input
+              type="text"
+              placeholder="Search by student, email, UTR #, or course..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="input pl-9 text-xs"
+            />
+          </div>
+
+          <div className="flex gap-1.5 flex-wrap">
+            {[
+              { id: 'pending', label: `Pending Review (${pendingCount})` },
+              { id: 'paid', label: `Approved (${approvedCount})` },
+              { id: 'rejected', label: `Rejected (${rejectedCount})` },
+              { id: 'all', label: `All Requests (${paymentRequests.length})` },
+            ].map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setPaymentFilter(f.id as any)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  paymentFilter === f.id
+                    ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black shadow-xs'
+                    : 'bg-gray-100 dark:bg-white/5 text-brand-muted hover:bg-gray-200 dark:hover:bg-white/10'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-white/5">
+                <tr>
+                  {['Student Info', 'Item Requested', 'Amount', 'UTR / Ref Number', 'Screenshot Proof', 'Date Submitted', 'Status', 'Admin Actions'].map(
+                    (h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap"
+                      >
+                        {h}
+                      </th>
+                    )
+                  )}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
+                {paymentsLoading ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-12 text-center text-brand-muted text-sm">
+                      <Loader2 size={24} className="animate-spin mx-auto text-primary-500 mb-2" />
+                      Loading payment requests...
+                    </td>
+                  </tr>
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-12 text-center text-brand-muted text-sm">
+                      No payment requests found for this filter.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((req) => (
+                    <tr key={req.id} className="hover:bg-gray-50/70 dark:hover:bg-white/5 transition-colors">
+                      {/* Student Info */}
+                      <td className="px-4 py-3.5">
+                        <p className="font-bold text-brand-text dark:text-brand-dark-text text-sm">
+                          {req.firstName} {req.lastName}
+                        </p>
+                        <p className="text-xs text-brand-muted dark:text-brand-dark-muted">{req.email}</p>
+                        {req.phone && (
+                          <p className="text-[11px] text-brand-muted font-mono">{req.phone}</p>
+                        )}
+                      </td>
+
+                      {/* Item Requested */}
+                      <td className="px-4 py-3.5">
+                        <div className="space-y-1">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider ${
+                              req.itemType === 'premium_membership'
+                                ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/40'
+                                : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300'
+                            }`}
+                          >
+                            {req.itemType === 'premium_membership' ? '⭐ PREMIUM PASS' : 'COURSE PURCHASE'}
+                          </span>
+                          <p className="text-xs font-semibold text-brand-text dark:text-brand-dark-text line-clamp-1">
+                            {req.itemTitle || `Course #${req.courseId}`}
+                          </p>
+                        </div>
+                      </td>
+
+                      {/* Amount */}
+                      <td className="px-4 py-3.5 font-bold text-brand-text dark:text-brand-dark-text">
+                        ₹{req.amount}
+                      </td>
+
+                      {/* UTR Number */}
+                      <td className="px-4 py-3.5">
+                        {req.utrNumber ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-xs font-medium px-2 py-1 bg-gray-100 dark:bg-white/10 rounded-md select-all text-brand-text dark:text-brand-dark-text">
+                              {req.utrNumber}
+                            </span>
+                            <button
+                              onClick={() => copyToClipboard(req.utrNumber!, 'UTR Number')}
+                              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-white/10 text-brand-muted"
+                              title="Copy UTR"
+                            >
+                              <Copy size={13} />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-brand-muted italic">—</span>
+                        )}
+                      </td>
+
+                      {/* Screenshot Proof */}
+                      <td className="px-4 py-3.5">
+                        {req.screenshotUrl ? (
+                          <button
+                            onClick={() => setInspectProofImage(req.screenshotUrl!)}
+                            className="group relative w-11 h-11 rounded-lg overflow-hidden border border-brand-border dark:border-brand-dark-border hover:ring-2 hover:ring-primary-500 transition-all flex items-center justify-center bg-gray-100 dark:bg-white/5"
+                          >
+                            <img src={req.screenshotUrl} alt="Receipt proof" className="w-full h-full object-cover" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
+                              <Eye size={14} />
+                            </div>
+                          </button>
+                        ) : (
+                          <span className="text-xs text-brand-muted italic">—</span>
+                        )}
+                      </td>
+
+                      {/* Date Submitted */}
+                      <td className="px-4 py-3.5 text-xs text-brand-muted whitespace-nowrap">
+                        {req.createdAt ? new Date(req.createdAt).toLocaleString() : '—'}
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-4 py-3.5">
+                        {req.status === 'paid' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40">
+                            <CheckCircle size={12} /> Approved
+                          </span>
+                        ) : req.status === 'rejected' ? (
+                          <div className="space-y-0.5">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300 border border-gray-200 dark:border-white/10">
+                              Rejected
+                            </span>
+                            {req.rejectionReason && (
+                              <p className="text-[10px] text-brand-muted max-w-[120px] truncate" title={req.rejectionReason}>
+                                {req.rejectionReason}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40">
+                            Pending Review
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {req.status !== 'paid' && (
+                            <button
+                              onClick={() => handleApprove(req)}
+                              className="px-3 py-1.5 rounded-lg bg-[#0A0A0A] dark:bg-white text-white dark:text-black text-xs font-semibold hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors shadow-xs"
+                            >
+                              Approve Access
+                            </button>
+                          )}
+                          {req.status === 'paid' && (
+                            <button
+                              onClick={() => handleRevoke(req)}
+                              className="px-2.5 py-1.5 rounded-lg border border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 text-xs font-semibold transition-colors flex items-center gap-1"
+                              title="Revoke access immediately"
+                            >
+                              <ShieldAlert size={12} /> Revoke
+                            </button>
+                          )}
+                          {req.status === 'pending' && (
+                            <button
+                              onClick={() => {
+                                setRejectModalId(req.id)
+                                setRejectReason('')
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 text-xs font-semibold transition-colors"
+                            >
+                              Reject
+                            </button>
+                          )}
+                          {req.screenshotUrl && (
+                            <button
+                              onClick={() => setInspectProofImage(req.screenshotUrl!)}
+                              className="p-1.5 rounded-lg bg-gray-100 dark:bg-white/10 hover:bg-gray-200 text-brand-muted transition-colors"
+                              title="View Proof Image"
+                            >
+                              <Eye size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Screenshot Zoom Modal */}
+        <AnimatePresence>
+          {inspectProofImage && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setInspectProofImage(null)}
+              className="fixed inset-0 bg-black/80 z-[80] flex items-center justify-center p-4"
+            >
+              <motion.div
+                initial={{ scale: 0.95 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0.95 }}
+                onClick={(e) => e.stopPropagation()}
+                className="relative max-w-xl w-full bg-white dark:bg-brand-dark-card rounded-2xl overflow-hidden shadow-2xl p-4"
+              >
+                <div className="flex items-center justify-between pb-3 border-b border-brand-border dark:border-brand-dark-border mb-3">
+                  <h4 className="font-bold text-sm text-brand-text dark:text-brand-dark-text">Payment Proof Screenshot</h4>
+                  <button onClick={() => setInspectProofImage(null)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10">
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="max-h-[75vh] overflow-y-auto flex items-center justify-center bg-gray-50 dark:bg-black/50 rounded-xl p-2">
+                  <img src={inspectProofImage} alt="Full screenshot proof" className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-sm" />
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Reject Reason Modal */}
+        <AnimatePresence>
+          {rejectModalId && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setRejectModalId(null)}
+              className="fixed inset-0 bg-black/60 z-[80] flex items-center justify-center p-4"
+            >
+              <motion.div
+                initial={{ scale: 0.95 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0.95 }}
+                onClick={(e) => e.stopPropagation()}
+                className="relative max-w-md w-full bg-white dark:bg-brand-dark-card rounded-2xl overflow-hidden shadow-2xl p-6 space-y-4"
+              >
+                <h4 className="font-bold text-lg text-brand-text dark:text-brand-dark-text">Reject Payment Proof</h4>
+                <p className="text-xs text-brand-muted dark:text-brand-dark-muted">
+                  Please state why this payment could not be verified (e.g. Invalid UTR, Amount Mismatch, Duplicate submission).
+                </p>
+                <textarea
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="e.g. UTR number not found in bank statement"
+                  rows={3}
+                  className="input text-xs resize-none"
+                />
+                <div className="flex gap-2 justify-end pt-2">
+                  <button
+                    onClick={() => setRejectModalId(null)}
+                    className="px-4 py-2 border border-brand-border dark:border-brand-dark-border text-xs font-semibold rounded-xl text-brand-muted hover:bg-gray-100"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmReject}
+                    className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-xl"
+                  >
+                    Confirm Rejection
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     )
   }
@@ -2403,15 +3943,25 @@ export default function AdminDashboard() {
   // ─── Settings ────────────────────────────────────────────────────────────────
   const renderSettings = () => (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">Platform Settings</h2>
-      <div className="card p-6">
-        <div className="flex items-center gap-3 mb-6">
+      <div>
+        <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">Platform & Payment Settings</h2>
+        <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">
+          Manage your UPI payment gateway details, QR code uploads, and platform overview
+        </p>
+      </div>
+
+      {/* Payment Gateway Configuration */}
+      {renderPaymentGatewaySettingsForm()}
+
+      {/* Platform Overview */}
+      <div className="card p-6 border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card shadow-xs">
+        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-brand-border dark:border-brand-dark-border">
           <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-xl flex items-center justify-center">
             <Shield size={24} className="text-primary-500" />
           </div>
           <div>
-            <h3 className="font-bold text-brand-text dark:text-brand-dark-text">Admin Panel</h3>
-            <p className="text-sm text-brand-muted dark:text-brand-dark-muted">Manage platform configurations</p>
+            <h3 className="font-bold text-brand-text dark:text-brand-dark-text">Platform Overview</h3>
+            <p className="text-sm text-brand-muted dark:text-brand-dark-muted">Summary of all live modules on Skills021</p>
           </div>
         </div>
         {[
@@ -2892,6 +4442,336 @@ export default function AdminDashboard() {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ─── Hackathons Panel ──────────────────────────────────────────────────────
+  const renderHackathons = () => {
+    const filtered = adminHackathons.filter(h => h.title.toLowerCase().includes(search.toLowerCase()))
+
+    return (
+      <div className="space-y-6">
+        <SectionHeader title="Manage Hackathons" count={adminHackathons.length} onAdd={openAddHackathonModal} addLabel="Add Hackathon" />
+        <SearchBar value={search} onChange={setSearch} placeholder="Search hackathons..." />
+
+        {adminHackathonsLoading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <Loader2 size={32} className="animate-spin text-brand-muted dark:text-brand-dark-muted mb-3" />
+            <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Loading hackathons...</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Table of Hackathons */}
+            <div className="card overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 dark:bg-white/5">
+                    <tr>
+                      {['Hackathon Title', 'Status', 'Reg Status', 'Teams', 'Days / Rounds', 'Progression', 'Actions'].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
+                    {filtered.map(h => {
+                      const draft = getProgressionValues(h)
+                      const isModified =
+                        draft.currentDay !== h.currentDay ||
+                        draft.numberOfDays !== h.numberOfDays ||
+                        draft.currentRound !== h.currentRound ||
+                        draft.numberOfRounds !== h.numberOfRounds
+
+                      return (
+                        <tr key={h.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                          <td className="px-4 py-3 font-bold text-brand-text dark:text-brand-dark-text max-w-[200px] truncate">
+                            {h.title}
+                          </td>
+                          <td className="px-4 py-3">
+                            <select
+                              value={h.status}
+                              onChange={e => handleUpdateStatus(h, e.target.value as any)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${
+                                h.status === 'ongoing' ? 'bg-emerald-500 text-white border-emerald-600' :
+                                h.status === 'upcoming' ? 'bg-blue-500 text-white border-blue-600' :
+                                'bg-gray-500 text-white border-gray-600'
+                              }`}
+                              title="Set hackathon status (ONGOING is Active)"
+                            >
+                              <option value="upcoming" className="bg-white text-gray-900 dark:bg-gray-800 dark:text-white">UPCOMING</option>
+                              <option value="ongoing" className="bg-white text-gray-900 dark:bg-gray-800 dark:text-white">ONGOING (ACTIVE)</option>
+                              <option value="completed" className="bg-white text-gray-900 dark:bg-gray-800 dark:text-white">COMPLETED</option>
+                            </select>
+                          </td>
+                          <td className="px-4 py-3">
+                            <button
+                              onClick={() => handleToggleRegistration(h)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
+                                h.isRegistrationOpen ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
+                              }`}
+                            >
+                              {h.isRegistrationOpen ? 'OPEN' : 'CLOSED'}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-brand-text dark:text-brand-dark-text">
+                            {h.currentTeams}/{h.maxTeams}
+                          </td>
+                          <td className="px-4 py-3 text-xs font-medium text-brand-muted dark:text-brand-dark-muted">
+                            Day {draft.currentDay}/{draft.numberOfDays} • Round {draft.currentRound}/{draft.numberOfRounds}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-col gap-1.5 min-w-[190px]">
+                              {/* Day Control */}
+                              <div className="flex items-center justify-between gap-1.5 bg-gray-100 dark:bg-white/5 p-1.5 rounded-xl border border-gray-200 dark:border-white/10">
+                                <span className="text-[11px] font-bold text-brand-muted pl-1">Day</span>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => handleStepDay(h, -1)}
+                                    disabled={draft.currentDay <= 1}
+                                    className="w-5 h-5 flex items-center justify-center rounded-md bg-white dark:bg-white/10 text-brand-text dark:text-brand-dark-text font-bold hover:bg-gray-200 dark:hover:bg-white/20 disabled:opacity-30 text-xs transition-colors"
+                                    title="Decrease Day"
+                                  >
+                                    <Minus size={11} />
+                                  </button>
+                                  <span className="text-xs font-mono font-bold w-9 text-center text-primary-600 dark:text-primary-400">
+                                    {draft.currentDay}/{draft.numberOfDays}
+                                  </span>
+                                  <button
+                                    onClick={() => handleStepDay(h, 1)}
+                                    className="w-5 h-5 flex items-center justify-center rounded-md bg-white dark:bg-white/10 text-brand-text dark:text-brand-dark-text font-bold hover:bg-gray-200 dark:hover:bg-white/20 text-xs transition-colors"
+                                    title="Increase Day"
+                                  >
+                                    <Plus size={11} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Round Control */}
+                              <div className="flex items-center justify-between gap-1.5 bg-gray-100 dark:bg-white/5 p-1.5 rounded-xl border border-gray-200 dark:border-white/10">
+                                <span className="text-[11px] font-bold text-brand-muted pl-1">Round</span>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => handleStepRound(h, -1)}
+                                    disabled={draft.currentRound <= 1}
+                                    className="w-5 h-5 flex items-center justify-center rounded-md bg-white dark:bg-white/10 text-brand-text dark:text-brand-dark-text font-bold hover:bg-gray-200 dark:hover:bg-white/20 disabled:opacity-30 text-xs transition-colors"
+                                    title="Decrease Round"
+                                  >
+                                    <Minus size={11} />
+                                  </button>
+                                  <span className="text-xs font-mono font-bold w-9 text-center text-emerald-600 dark:text-emerald-400">
+                                    {draft.currentRound}/{draft.numberOfRounds}
+                                  </span>
+                                  <button
+                                    onClick={() => handleStepRound(h, 1)}
+                                    className="w-5 h-5 flex items-center justify-center rounded-md bg-white dark:bg-white/10 text-brand-text dark:text-brand-dark-text font-bold hover:bg-gray-200 dark:hover:bg-white/20 text-xs transition-colors"
+                                    title="Increase Round"
+                                  >
+                                    <Plus size={11} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Save Button */}
+                              {isModified && (
+                                <button
+                                  onClick={() => handleSaveProgression(h)}
+                                  disabled={savingProgressionId === h.id}
+                                  className="w-full py-1 px-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all animate-pulse"
+                                >
+                                  {savingProgressionId === h.id ? (
+                                    <>
+                                      <Loader2 size={12} className="animate-spin" /> Saving...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Save size={12} /> Save Progression
+                                    </>
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleSelectHackathonForTeams(h)}
+                              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                                h.status === 'ongoing'
+                                  ? 'bg-primary-500 text-white hover:bg-primary-600 shadow-xs'
+                                  : 'bg-gray-200 dark:bg-white/10 text-gray-500 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-white/20'
+                              }`}
+                              title={h.status === 'ongoing' ? 'Manage Teams' : 'Hackathon must be ONGOING to manage teams'}
+                            >
+                              Manage Teams {h.status !== 'ongoing' && '(Locked)'}
+                            </button>
+                            <button onClick={() => openEditHackathonModal(h)} className="p-1.5 rounded-lg hover:bg-primary-50 text-primary-500">
+                              <Edit2 size={14} />
+                            </button>
+                            <button onClick={() => openDeleteModal(h)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500" title="Delete Hackathon">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                    {filtered.length === 0 && (
+                      <tr><td colSpan={7} className="px-4 py-8 text-center text-brand-muted text-sm">No hackathons found.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Managed Hackathon Teams & Attendance Panel */}
+            {selectedAdminHackathon && (() => {
+              const isHackathonActive = selectedAdminHackathon.status === 'ongoing'
+              return (
+                <div className="card p-6 space-y-4 border-2 border-primary-500/30">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-brand-border dark:border-brand-dark-border pb-4">
+                    <div>
+                      <span className="text-xs font-bold text-primary-500 uppercase tracking-widest">SELECTED HACKATHON</span>
+                      <h3 className="text-xl font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-2">
+                        {selectedAdminHackathon.title}
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                          isHackathonActive ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                        }`}>
+                          {selectedAdminHackathon.status}
+                        </span>
+                      </h3>
+                      <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-0.5">
+                        Day {selectedAdminHackathon.currentDay} of {selectedAdminHackathon.numberOfDays} • Active Round: Round {selectedAdminHackathon.currentRound}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={exportTeamsCSV} className="px-3.5 py-2 bg-emerald-500 text-white rounded-xl text-xs font-bold hover:bg-emerald-600 flex items-center gap-1.5">
+                        <Download size={14} /> Export CSV
+                      </button>
+                    </div>
+                  </div>
+
+                  {!isHackathonActive && (
+                    <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                      <Shield size={16} className="shrink-0 text-amber-500" />
+                      <span>
+                        Team management is <strong>LOCKED</strong> because hackathon status is currently <strong>{selectedAdminHackathon.status.toUpperCase()}</strong>. Change status to <strong>ONGOING (ACTIVE)</strong> in the table above to edit attendance or qualifications.
+                      </span>
+                    </div>
+                  )}
+
+                  {adminTeamsLoading ? (
+                    <div className="py-8 text-center text-xs text-brand-muted">Loading teams...</div>
+                  ) : adminTeams.length === 0 ? (
+                    <div className="py-8 text-center text-sm text-brand-muted">No teams registered for this hackathon yet.</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      {(() => {
+                        const isLastRound = selectedAdminHackathon.currentRound === selectedAdminHackathon.numberOfRounds
+                        return (
+                          <table className="w-full text-xs sm:text-sm text-left">
+                            <thead className="bg-gray-50 dark:bg-white/5 uppercase text-[10px] font-bold text-brand-muted">
+                              <tr>
+                                <th className="px-4 py-3">Code</th>
+                                <th className="px-4 py-3">Team Name</th>
+                                <th className="px-4 py-3">Leader</th>
+                                <th className="px-4 py-3">Member Attendance (Day {selectedAdminHackathon.currentDay})</th>
+                                <th className="px-4 py-3">Round {selectedAdminHackathon.currentRound} Qualification</th>
+                                {isLastRound && <th className="px-4 py-3">Podium Place</th>}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
+                              {adminTeams.map(team => {
+                                const isEligible = isTeamQualifiedForRound(team, selectedAdminHackathon.currentRound)
+                                const isQualified = team.qualifications[String(selectedAdminHackathon.currentRound)] === true
+                                return (
+                                  <tr key={team.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                                    <td className="px-4 py-3 font-mono font-bold text-primary-500">{team.teamCode}</td>
+                                    <td className="px-4 py-3 font-bold text-brand-text dark:text-brand-dark-text">{team.teamName}</td>
+                                    <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted">{team.leaderName} ({team.leaderEmail})</td>
+
+                                    {/* Member-wise Attendance Checklist */}
+                                    <td className="px-4 py-3">
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {team.members.map((m, mIdx) => (
+                                          <button
+                                            key={mIdx}
+                                            disabled={!isHackathonActive}
+                                            onClick={() => handleToggleMemberAttendance(team, mIdx)}
+                                            className={`px-2 py-1 rounded text-[11px] font-medium border ${
+                                              m.present
+                                                ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-bold'
+                                                : 'bg-gray-100 dark:bg-white/5 text-gray-400 border-transparent'
+                                            } ${!isHackathonActive ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                          >
+                                            {m.name.split(' ')[0]} {m.present ? '✓' : '✗'}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </td>
+
+                                    {/* Round Qualification Toggle */}
+                                    <td className="px-4 py-3">
+                                      {!isEligible ? (
+                                        <span
+                                          className="px-2.5 py-1 rounded-lg text-xs font-bold bg-gray-500/10 text-gray-400 border border-gray-500/20 inline-flex items-center gap-1"
+                                          title="Team was eliminated in a previous round"
+                                        >
+                                          ELIMINATED PREV ROUND
+                                        </span>
+                                      ) : (
+                                        <button
+                                          disabled={!isHackathonActive}
+                                          onClick={() => handleToggleQualification(team.id, selectedAdminHackathon.currentRound, isQualified)}
+                                          className={`px-3 py-1 rounded-lg text-xs font-bold ${
+                                            isQualified ? 'bg-emerald-500 text-white' : 'bg-red-500/20 text-red-500 border border-red-500/30'
+                                          } ${!isHackathonActive ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        >
+                                          {isQualified ? 'QUALIFIED' : 'NOT QUALIFIED'}
+                                        </button>
+                                      )}
+                                    </td>
+
+                                    {/* Podium Selection - Only visible in final round for qualified final round teams */}
+                                    {isLastRound && (
+                                      <td className="px-4 py-3">
+                                        {isEligible && isQualified ? (
+                                          <select
+                                            disabled={!isHackathonActive}
+                                            value={team.position ?? ''}
+                                            onChange={e => {
+                                              const val = e.target.value ? Number(e.target.value) as 1 | 2 | 3 : null
+                                              handleSetPodiumPosition(team.id, val)
+                                            }}
+                                            className={`px-2 py-1 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-xs font-semibold ${
+                                              !isHackathonActive ? 'opacity-60 cursor-not-allowed' : ''
+                                            }`}
+                                          >
+                                            <option value="">None</option>
+                                            <option value="1">🥇 1st Place</option>
+                                            <option value="2">🥈 2nd Place</option>
+                                            <option value="3">🥉 3rd Place</option>
+                                          </select>
+                                        ) : (
+                                          <span className="text-xs text-brand-muted/60 dark:text-brand-dark-muted/60 italic">
+                                            N/A (Not Qualified)
+                                          </span>
+                                        )}
+                                      </td>
+                                    )}
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        )
+                      })()}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )}
       </div>
@@ -4558,6 +6438,7 @@ export default function AdminDashboard() {
   const renderContent = () => {
     switch (activeTab) {
       case 'overview': return renderOverview()
+      case 'hackathons': return renderHackathons()
       case 'courses': return renderCourses()
       case 'resources': return renderResources()
       case 'quizzes': return renderQuizzes()
@@ -4569,7 +6450,7 @@ export default function AdminDashboard() {
       case 'pathfinder-careers': return renderPathfinderCareers()
       case 'pathfinder-exams': return renderPathfinderExams()
       case 'pathfinder-mappings': return renderPathfinderMappings()
-      case 'career-applications': return renderCareerApplications()
+      case 'payment-approvals': return renderPaymentApprovals()
       case 'users': return renderUsers()
       case 'settings': return renderSettings()
       default: return null
@@ -4577,6 +6458,7 @@ export default function AdminDashboard() {
   }
 
   const groups = Array.from(new Set(sidebarItems.map(i => i.group || 'Main')))
+  const pendingPaymentsCount = paymentRequests.filter(p => p.status === 'pending').length
 
   return (
     <div className="min-h-screen bg-brand-bg dark:bg-brand-dark-bg pt-16">
@@ -4586,14 +6468,23 @@ export default function AdminDashboard() {
           {/* Sidebar */}
           <aside className="hidden lg:flex flex-col w-64 flex-shrink-0">
             <div className="card p-4 sticky top-24">
-              <div className="flex items-center gap-2.5 px-2 py-2 mb-4 border-b border-brand-border dark:border-brand-dark-border pb-4">
-                <div className="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center">
-                  <Shield size={16} className="text-white" />
+              <div className="flex items-center justify-between px-2 py-2 mb-4 border-b border-brand-border dark:border-brand-dark-border pb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-md">
+                    <Shield size={16} className="text-white" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black text-brand-text dark:text-brand-dark-text">Admin Panel</p>
+                    <p className="text-[10px] text-primary-500 font-bold truncate max-w-[110px]">{adminUser?.email || 'admin@skills021.com'}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-bold text-brand-text dark:text-brand-dark-text">Admin Panel</p>
-                  <p className="text-[10px] text-brand-muted dark:text-brand-dark-muted">Skill021</p>
-                </div>
+                <button
+                  onClick={() => { adminLogout(); logoutUser(); window.location.href = '/admin/login' }}
+                  className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 text-xs font-bold transition-all flex items-center gap-1"
+                  title="Sign out of Admin Dashboard"
+                >
+                  <LogOut size={14} />
+                </button>
               </div>
 
               <nav className="space-y-1">
@@ -4608,16 +6499,18 @@ export default function AdminDashboard() {
                         <button
                           key={item.id}
                           onClick={() => { setActiveTab(item.id); setSearch('') }}
-                          className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${activeTab === item.id
+                          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${activeTab === item.id
                             ? 'bg-primary-500 text-white'
                             : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-100 dark:hover:bg-white/10'
                             }`}
                         >
-                          <item.icon size={16} />
-                          {item.label}
-                          {item.id === 'career-applications' && careerApplications.filter(a => a.status === 'New').length > 0 && (
-                            <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === item.id ? 'bg-white/20 text-white' : 'bg-red-500 text-white'}`}>
-                              {careerApplications.filter(a => a.status === 'New').length}
+                          <div className="flex items-center gap-2.5">
+                            <item.icon size={16} />
+                            <span>{item.label}</span>
+                          </div>
+                          {item.id === 'payment-approvals' && pendingPaymentsCount > 0 && (
+                            <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-black">
+                              {pendingPaymentsCount}
                             </span>
                           )}
                         </button>
@@ -4635,10 +6528,17 @@ export default function AdminDashboard() {
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`flex-shrink-0 flex flex-col items-center gap-1 px-3 py-3 text-xs transition-colors ${activeTab === item.id ? 'text-primary-500' : 'text-brand-muted dark:text-brand-dark-muted'
+                className={`flex-shrink-0 relative flex flex-col items-center gap-1 px-3 py-3 text-xs transition-colors ${activeTab === item.id ? 'text-primary-500' : 'text-brand-muted dark:text-brand-dark-muted'
                   }`}
               >
-                <item.icon size={18} />
+                <div className="relative">
+                  <item.icon size={18} />
+                  {item.id === 'payment-approvals' && pendingPaymentsCount > 0 && (
+                    <span className="absolute -top-1 -right-2 w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] font-black flex items-center justify-center">
+                      {pendingPaymentsCount}
+                    </span>
+                  )}
+                </div>
                 <span className="hidden sm:block">{item.label.split(' ')[0]}</span>
               </button>
             ))}
@@ -5072,6 +6972,174 @@ export default function AdminDashboard() {
                 <button onClick={handleHierarchySave} disabled={hierarchySaving} className="flex-1 py-3 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600 disabled:opacity-60 flex items-center justify-center gap-2">
                   {hierarchySaving && <Loader2 size={14} className="animate-spin" />}
                   {hierarchyEditItem ? 'Update' : 'Add'} Record
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Hackathon Modal */}
+        {showHackathonModal && (
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-xl w-full shadow-xl my-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-5 border-b border-brand-border dark:border-brand-dark-border pb-3">
+                <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">
+                  {editingHackathonId ? 'Edit Hackathon' : 'Create New Hackathon'}
+                </h3>
+                <button onClick={() => setShowHackathonModal(false)}><X size={18} className="text-brand-muted" /></button>
+              </div>
+
+              <form onSubmit={handleSaveHackathonForm} className="space-y-4">
+                <Field label="Hackathon Title *">
+                  <input required value={hTitleInput} onChange={e => setHTitleInput(e.target.value)} className={inputCls} placeholder="e.g. Skills021 Innovation Hackathon 2026" />
+                </Field>
+
+                <Field label="Description">
+                  <textarea rows={3} value={hDescInput} onChange={e => setHDescInput(e.target.value)} className={inputCls + ' resize-none'} placeholder="Detailed description of the hackathon..." />
+                </Field>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Start Date">
+                    <input type="datetime-local" required value={hStartInput} onChange={e => setHStartInput(e.target.value)} className={inputCls} />
+                  </Field>
+                  <Field label="End Date">
+                    <input type="datetime-local" required value={hEndInput} onChange={e => setHEndInput(e.target.value)} className={inputCls} />
+                  </Field>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Registration Deadline">
+                    <input type="datetime-local" required value={hDeadlineInput} onChange={e => setHDeadlineInput(e.target.value)} className={inputCls} />
+                  </Field>
+                  <Field label="Venue / Location">
+                    <input value={hVenueInput} onChange={e => setHVenueInput(e.target.value)} className={inputCls} placeholder="Auditorium / Online Discord" />
+                  </Field>
+                </div>
+
+                <Field label="Banner Image URL">
+                  <input value={hBannerInput} onChange={e => setHBannerInput(e.target.value)} className={inputCls} placeholder="https://..." />
+                </Field>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <Field label="Min Team Size">
+                    <input type="number" min={1} value={hMinTeamInput} onChange={e => setHMinTeamInput(Number(e.target.value))} className={inputCls} />
+                  </Field>
+                  <Field label="Max Team Size">
+                    <input type="number" min={1} value={hMaxTeamInput} onChange={e => setHMaxTeamInput(Number(e.target.value))} className={inputCls} />
+                  </Field>
+                  <Field label="Max Teams Capacity">
+                    <input type="number" min={1} value={hMaxTeamsInput} onChange={e => setHMaxTeamsInput(Number(e.target.value))} className={inputCls} />
+                  </Field>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <Field label="Total Days">
+                    <input type="number" min={1} value={hDaysInput} onChange={e => setHDaysInput(Number(e.target.value))} className={inputCls} />
+                  </Field>
+                  <Field label="Total Rounds">
+                    <input type="number" min={1} value={hRoundsInput} onChange={e => setHRoundsInput(Number(e.target.value))} className={inputCls} />
+                  </Field>
+                  <Field label="Status">
+                    <select value={hStatusInput} onChange={e => setHStatusInput(e.target.value as any)} className={inputCls}>
+                      <option value="upcoming">Upcoming</option>
+                      <option value="ongoing">Ongoing</option>
+                      <option value="completed">Completed</option>
+                    </select>
+                  </Field>
+                </div>
+
+                <Field label="Official Rules & Guidelines">
+                  <textarea rows={3} value={hRulesInput} onChange={e => setHRulesInput(e.target.value)} className={inputCls + ' resize-none'} placeholder="Rules list..." />
+                </Field>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <input
+                    type="checkbox"
+                    id="regOpenCheck"
+                    checked={hRegOpenInput}
+                    onChange={e => setHRegOpenInput(e.target.checked)}
+                    className="w-4 h-4 text-primary-500 rounded border-gray-300"
+                  />
+                  <label htmlFor="regOpenCheck" className="text-sm font-semibold text-brand-text dark:text-brand-dark-text">
+                    Registration Open Currently
+                  </label>
+                </div>
+
+                <div className="flex gap-3 pt-4 border-t border-brand-border dark:border-brand-dark-border">
+                  <button type="button" onClick={() => setShowHackathonModal(false)} className="flex-1 py-3 border border-brand-border dark:border-brand-dark-border rounded-xl text-sm font-semibold">
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={hackathonSaving} className="flex-1 py-3 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600">
+                    {hackathonSaving ? 'Saving...' : editingHackathonId ? 'Update Hackathon' : 'Create Hackathon'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Hackathon Deletion Confirmation Modal (GitHub / Render style text match) */}
+        {deletingHackathon && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-[#131926] rounded-3xl max-w-md w-full p-6 sm:p-8 border border-red-500/30 shadow-2xl space-y-5 relative">
+              <button
+                onClick={() => setDeletingHackathon(null)}
+                className="absolute top-5 right-5 text-gray-400 hover:text-gray-600 dark:hover:text-white"
+              >
+                <X size={20} />
+              </button>
+
+              <div className="flex items-center gap-3 text-red-500">
+                <div className="p-3 bg-red-500/10 rounded-2xl border border-red-500/20">
+                  <Trash2 size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-gray-900 dark:text-white">Delete Hackathon</h3>
+                  <p className="text-xs text-red-500 font-semibold uppercase tracking-wider">Irreversible Action</p>
+                </div>
+              </div>
+
+              <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-xs sm:text-sm text-red-700 dark:text-red-300 leading-relaxed">
+                <p className="font-bold mb-1">⚠️ Danger Zone Warning:</p>
+                This action <strong>cannot be undone</strong>. This will permanently delete the hackathon{' '}
+                <span className="font-extrabold text-gray-900 dark:text-white">"{deletingHackathon.title}"</span>, all registered teams, member records, and round qualifications.
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">
+                  To confirm deletion, type <span className="select-all font-mono font-extrabold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20">"{deletingHackathon.title}"</span> in the box below:
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={e => setDeleteConfirmText(e.target.value)}
+                  placeholder={`Type "${deletingHackathon.title}"`}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-white/10 bg-gray-50 dark:bg-white/5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDeletingHackathon(null)}
+                  className="px-4 py-2.5 rounded-xl border border-gray-300 dark:border-white/10 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={deleteConfirmText.trim() !== deletingHackathon.title.trim() || isDeletingHackathon}
+                  onClick={handleConfirmDeleteHackathon}
+                  className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  {isDeletingHackathon ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" /> Deleting...
+                    </>
+                  ) : (
+                    'Delete this hackathon'
+                  )}
                 </button>
               </div>
             </motion.div>

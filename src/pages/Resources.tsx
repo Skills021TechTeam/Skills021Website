@@ -24,6 +24,7 @@ import {
 } from '../lib/resourceService'
 import toast from 'react-hot-toast'
 import ConfirmDownloadDialog from '../components/ConfirmDownloadDialog'
+import { useAuthStore } from '../store/authStore'
 
 const RESOURCE_TYPES: { label: string; icon: typeof FileText }[] = [
   { label: 'Notes', icon: FileText },
@@ -40,6 +41,8 @@ const RESOURCE_TYPES: { label: string; icon: typeof FileText }[] = [
 
 function ResourceCard({ resource, onDownload }: { resource: Resource; onDownload: (resource: Resource) => void }) {
   const [bookmarked, setBookmarked] = useState(false)
+  const { user } = useAuthStore()
+  const hasAccess = !resource.isPremium || Boolean(user?.isPremium) || user?.role === 'admin'
 
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href).then(() => toast.success('Link copied to clipboard!'))
@@ -90,7 +93,7 @@ function ResourceCard({ resource, onDownload }: { resource: Resource; onDownload
     >
       {resource.isPremium && (
         <div className="absolute top-0 right-0 bg-[#0A0A0A] text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl">
-          PREMIUM
+          {user?.isPremium ? 'PREMIUM (UNLOCKED)' : 'PREMIUM'}
         </div>
       )}
 
@@ -122,20 +125,19 @@ function ResourceCard({ resource, onDownload }: { resource: Resource; onDownload
 
       {/* Actions */}
       <div className="flex items-center gap-2">
-        {resource.isPremium ? (
-          <button
-            type="button"
-            onClick={() => toast.success(`Premium access for "${resource.title}" is ready to unlock.`)}
-            className="dynamic-button flex-1 flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-violet-600 to-blue-600 text-white rounded-xl text-xs font-semibold hover:from-violet-700 hover:to-blue-700"
-          >
-            <Lock size={13} /> Unlock for ₹{resource.price}
-          </button>
-        ) : (
+        {hasAccess ? (
           <button
             onClick={() => onDownload(resource)}
             className="dynamic-button flex-1 flex items-center justify-center gap-2 py-2 bg-[#0A0A0A] dark:bg-white text-white dark:text-black rounded-xl text-xs font-semibold hover:bg-gray-800 dark:hover:bg-gray-100"
           >
-            <Download size={13} /> Download Free
+            <Download size={13} /> {resource.isPremium ? 'Download (Premium Access)' : 'Download Free'}
+          </button>
+        ) : (
+          <button
+            onClick={() => toast.error('This resource requires Premium Membership or separate purchase.')}
+            className="flex-1 flex items-center justify-center gap-2 py-2 bg-[#0A0A0A] text-white rounded-xl text-xs font-semibold hover:bg-gray-800 transition-colors"
+          >
+            <Lock size={13} /> Unlock for ₹{resource.price}
           </button>
         )}
         <button

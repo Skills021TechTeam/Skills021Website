@@ -1,30 +1,37 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
-import { 
+import {
   LayoutDashboard, BookOpen, Settings,
   Clock, CheckCircle, TrendingUp, Play, Save,
-  User, Phone, School, Lock, AlertCircle
+  User, Phone, School, Lock, AlertCircle, CreditCard, ShieldCheck, Loader2, Sparkles, Copy
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
-import { courses } from '../data/courses'
+import { fetchPublishedSiteCourses } from '../lib/courseService'
+import { Course } from '../store/contentStore'
+import { getEnrollmentsForUser, Enrollment } from '../lib/videoEngagementService'
+import { updateUserAuthPassword } from '../lib/supabase'
+import VideoPlayerModal from '../components/VideoPlayerModal'
+import EnrollModal from '../components/EnrollModal'
 import toast from 'react-hot-toast'
 
-type DashboardTab = 'overview' | 'courses' | 'profile'
+type DashboardTab = 'overview' | 'courses' | 'transactions' | 'profile'
 
 const sidebarItems = [
   { id: 'overview' as DashboardTab, label: 'Overview', icon: LayoutDashboard },
   { id: 'courses' as DashboardTab, label: 'My Courses', icon: BookOpen },
+  { id: 'transactions' as DashboardTab, label: 'Paid Enrollments', icon: CreditCard },
   { id: 'profile' as DashboardTab, label: 'Profile Settings', icon: Settings },
 ]
 
-// Mock enrolled courses for demo
-const mockProgress = ['course-1', 'course-3', 'course-6']
-const progressData: Record<string, number> = { 'course-1': 65, 'course-3': 30, 'course-6': 10 }
-
 export default function UserDashboard() {
-  const { user, updateProfile } = useAuthStore()
+  const { user, updateProfileInSupabase } = useAuthStore()
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview')
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [coursesList, setCoursesList] = useState<Course[]>([])
+  const [enrollments, setEnrollments] = useState<Enrollment[]>([])
+  const [loading, setLoading] = useState(true)
+  const [activePlayCourse, setActivePlayCourse] = useState<Course | null>(null)
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+
   const [profileForm, setProfileForm] = useState({
     name: user?.name || '',
     college: user?.college || '',
@@ -32,42 +39,206 @@ export default function UserDashboard() {
     password: '',
     confirmPassword: '',
   })
-  const [saving, setSaving] = useState(false)
+  const [savingProfile, setSavingProfile] = useState(false)
+  const [savingPassword, setSavingPassword] = useState(false)
 
-  const enrolledCourses = courses.filter(c => mockProgress.includes(c.id))
-  const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+  useEffect(() => {
+    if (user) {
+      setProfileForm((prev) => ({
+        ...prev,
+        name: user.name || '',
+        college: user.college || '',
+        phone: user.phone || '',
+      }))
+    }
+  }, [user])
+
+  const loadData = useCallback(async () => {
+    if (!user?.id) return
+    setLoading(true)
+    try {
+      const [allCourses, userEnrollments] = await Promise.all([
+        fetchPublishedSiteCourses().catch(() => []),
+        getEnrollmentsForUser(user.id).catch(() => []),
+      ])
+      setCoursesList(allCourses)
+      setEnrollments(userEnrollments)
+    } catch (err) {
+      console.error('Failed to load user dashboard data:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  const getInitials = (name: string) =>
+    name
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2)
+
+  // Filter only active courses (approved 'paid' or 'free', excluding rejected and pending)
+  const activeEnrollments = enrollments.filter(
+    (enr) => (enr.status === 'paid' || enr.status === 'free') && enr.itemType !== 'premium_membership'
+  )
+
+  // Map active enrolled courses
+  const enrolledCoursesWithMeta = activeEnrollments.map((enr) => {
+    const matchedCourse = coursesList.find((c) => String(c.id) === String(enr.courseId))
+    return {
+      enrollment: enr,
+      course: (matchedCourse || {
+        id: enr.courseId,
+        title: enr.itemTitle || `Course #${enr.courseId}`,
+        description: 'Enrolled via Skills021 Platform',
+        group: 'College & Tech Courses',
+        subcategory: 'Web Development',
+        instructor: 'Skills021 Faculty',
+        duration: 'Self-paced',
+        lectures: 1,
+        level: 'All Levels',
+        rating: 4.8,
+        reviews: 12,
+        price: enr.amount > 0 ? enr.amount : 'FREE',
+        tags: [],
+        modules: [],
+        status: 'Published',
+        enrolled: 1,
+        gradientFrom: '#00BFA6',
+        gradientTo: '#00897B',
+        createdAt: enr.createdAt,
+      }) as Course,
+    }
+  })
+
+  const paidEnrollments = enrollments.filter((e) => e.status === 'paid')
+  const freeEnrollments = enrollments.filter((e) => e.status === 'free')
+  const totalAmountPaid = paidEnrollments.reduce((sum, e) => sum + (e.amount || 0), 0)
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (profileForm.password && profileForm.password !== profileForm.confirmPassword) {
+    setSavingProfile(true)
+    const success = await updateProfileInSupabase({
+      name: profileForm.name.trim(),
+      college: profileForm.college.trim(),
+      phone: profileForm.phone.trim(),
+    })
+    setSavingProfile(false)
+    if (success) {
+      toast.success('Profile details updated in Supabase! 🎉')
+    } else {
+      toast.error('Failed to update profile in Supabase')
+    }
+  }
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!profileForm.password) {
+      toast.error('Please enter a new password')
+      return
+    }
+    if (profileForm.password.length < 6) {
+      toast.error('Password must be at least 6 characters')
+      return
+    }
+    if (profileForm.password !== profileForm.confirmPassword) {
       toast.error('Passwords do not match')
       return
     }
-    setSaving(true)
-    await new Promise(r => setTimeout(r, 800))
-    updateProfile({ name: profileForm.name, college: profileForm.college, phone: profileForm.phone })
-    setSaving(false)
-    toast.success('Profile updated successfully!')
+
+    setSavingPassword(true)
+    try {
+      await updateUserAuthPassword(profileForm.password)
+      setProfileForm((p) => ({ ...p, password: '', confirmPassword: '' }))
+      toast.success('Password updated successfully in Supabase! 🔐')
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to update password')
+    } finally {
+      setSavingPassword(false)
+    }
   }
 
   const renderContent = () => {
+    if (loading) {
+      return (
+        <div className="flex flex-col items-center justify-center py-24">
+          <Loader2 size={36} className="animate-spin text-primary-500 mb-3" />
+          <p className="text-sm text-brand-muted dark:text-brand-dark-muted">Loading your learning records from Supabase...</p>
+        </div>
+      )
+    }
+
     switch (activeTab) {
       case 'overview':
         return (
           <div className="space-y-6">
-            <div>
-              <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">
-                Welcome back, {user?.name?.split(' ')[0]}! 👋
-              </h2>
-              <p className="text-brand-muted dark:text-brand-dark-muted mt-1">Here's your learning progress</p>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">
+                  Welcome back, {user?.name?.split(' ')[0]}! 👋
+                </h2>
+                <p className="text-brand-muted dark:text-brand-dark-muted mt-1 text-sm">
+                  Logged in with Supabase ID: <span className="font-mono text-xs opacity-75">{user?.id}</span>
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {user?.isPremium ? (
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/10 to-yellow-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-bold shadow-sm">
+                    ⭐ All-Access Premium Member
+                  </div>
+                ) : user?.role !== 'admin' ? (
+                  <button
+                    onClick={() => setShowUpgradeModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-primary-500 to-indigo-600 text-white font-bold text-xs shadow-md hover:opacity-90 transition-all"
+                  >
+                    <Sparkles size={13} /> Upgrade to All-Access (₹999)
+                  </button>
+                ) : null}
+                {paidEnrollments.length > 0 && (
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold">
+                    <ShieldCheck size={14} /> Course Purchaser ({paidEnrollments.length} Paid Course{paidEnrollments.length > 1 ? 's' : ''})
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
-                { label: 'Enrolled Courses', value: '3', icon: BookOpen, color: 'text-primary-500', bg: 'bg-primary-50 dark:bg-primary-900/20' },
-                { label: 'Completed', value: '0', icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-50 dark:bg-green-900/20' },
-                { label: 'Hours Learned', value: '24', icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+                {
+                  label: 'Total Enrolled Courses',
+                  value: activeEnrollments.length.toString(),
+                  icon: BookOpen,
+                  color: 'text-primary-500',
+                  bg: 'bg-primary-50 dark:bg-primary-900/20',
+                },
+                {
+                  label: 'Paid Courses Taken',
+                  value: paidEnrollments.length.toString(),
+                  icon: CreditCard,
+                  color: 'text-emerald-500',
+                  bg: 'bg-emerald-50 dark:bg-emerald-900/20',
+                },
+                {
+                  label: 'Free Courses Enrolled',
+                  value: freeEnrollments.length.toString(),
+                  icon: CheckCircle,
+                  color: 'text-blue-500',
+                  bg: 'bg-blue-50 dark:bg-blue-900/20',
+                },
+                {
+                  label: 'Total Invested',
+                  value: `₹${totalAmountPaid.toLocaleString()}`,
+                  icon: TrendingUp,
+                  color: 'text-amber-500',
+                  bg: 'bg-amber-50 dark:bg-amber-900/20',
+                },
               ].map((stat) => (
                 <motion.div
                   key={stat.label}
@@ -86,65 +257,72 @@ export default function UserDashboard() {
 
             {/* Continue Learning */}
             <div>
-              <h3 className="font-bold text-brand-text dark:text-brand-dark-text mb-4 flex items-center gap-2">
-                <TrendingUp size={18} className="text-primary-500" />
-                Continue Learning
-              </h3>
-              <div className="space-y-3">
-                {enrolledCourses.slice(0, 2).map((course) => (
-                  <div key={course.id} className="card p-4 flex items-center gap-4">
-                    <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{ background: `linear-gradient(135deg, ${course.gradientFrom}, ${course.gradientTo})` }}
-                    >
-                      <BookOpen size={22} className="text-white" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm text-brand-text dark:text-brand-dark-text truncate">{course.title}</p>
-                      <div className="flex items-center gap-2 mt-1.5">
-                        <div className="flex-1 bg-gray-200 dark:bg-white/10 rounded-full h-1.5">
-                          <div
-                            className="h-1.5 rounded-full bg-primary-500"
-                            style={{ width: `${progressData[course.id] || 0}%` }}
-                          />
-                        </div>
-                        <span className="text-xs text-brand-muted dark:text-brand-dark-muted whitespace-nowrap">
-                          {progressData[course.id] || 0}%
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => { setActiveTab('courses'); toast.success(`Opening ${course.title}`) }}
-                      className="dynamic-button flex items-center gap-1.5 px-3 py-2 bg-primary-500 text-white text-xs font-semibold rounded-xl flex-shrink-0"
-                    >
-                      <Play size={12} /> Continue
-                    </button>
-                  </div>
-                ))}
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-2">
+                  <TrendingUp size={18} className="text-primary-500" />
+                  Your Active Courses
+                </h3>
+                {enrolledCoursesWithMeta.length > 2 && (
+                  <button
+                    onClick={() => setActiveTab('courses')}
+                    className="text-xs font-semibold text-primary-500 hover:underline"
+                  >
+                    View All ({enrolledCoursesWithMeta.length})
+                  </button>
+                )}
               </div>
-            </div>
 
-            {/* Recent Activity */}
-            <div>
-              <h3 className="font-bold text-brand-text dark:text-brand-dark-text mb-4">Recent Activity</h3>
-              <div className="card overflow-hidden">
-                {[
-                  { text: 'Enrolled in "DSA with Java — Complete Bootcamp"', time: '2 days ago', icon: BookOpen, color: 'text-primary-500' },
-                  { text: 'Completed Module 3: Linked Lists', time: '3 days ago', icon: CheckCircle, color: 'text-green-500' },
-                  { text: 'Started Web Development Bootcamp', time: '1 week ago', icon: TrendingUp, color: 'text-teal-500' },
-                ].map((activity, i) => (
-                  <div key={i} className={`flex items-center gap-3 px-5 py-4 ${i !== 2 ? 'border-b border-brand-border dark:border-brand-dark-border' : ''}`}>
-                    <div className="w-8 h-8 rounded-lg bg-gray-50 dark:bg-white/10 flex items-center justify-center flex-shrink-0">
-                      <activity.icon size={15} className={activity.color} />
+              {enrolledCoursesWithMeta.length === 0 ? (
+                <div className="card p-8 text-center">
+                  <BookOpen size={36} className="mx-auto text-brand-muted dark:text-brand-dark-muted mb-2 opacity-50" />
+                  <p className="font-semibold text-brand-text dark:text-brand-dark-text">No courses enrolled yet</p>
+                  <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1 mb-4">
+                    Explore our expert-led courses and start learning today!
+                  </p>
+                  <a
+                    href="/courses"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white text-xs font-semibold rounded-xl hover:bg-primary-600 transition-colors"
+                  >
+                    Browse Courses
+                  </a>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {enrolledCoursesWithMeta.slice(0, 3).map(({ enrollment, course }) => (
+                    <div key={enrollment.id} className="card p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-teal-500 flex items-center justify-center flex-shrink-0 text-white font-bold">
+                        <BookOpen size={22} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span
+                            className={`badge text-[10px] px-2 py-0.5 ${enrollment.status === 'paid' || enrollment.amount > 0
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                              }`}
+                          >
+                            {enrollment.status === 'paid' || enrollment.amount > 0
+                              ? `Paid ₹${enrollment.amount}`
+                              : 'Free Course'}
+                          </span>
+                          <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted">
+                            Enrolled on {new Date(enrollment.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p className="font-semibold text-sm text-brand-text dark:text-brand-dark-text truncate">
+                          {course.title}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setActivePlayCourse(course)}
+                        className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-primary-500 text-white text-xs font-semibold rounded-xl hover:bg-primary-600 transition-colors flex-shrink-0"
+                      >
+                        <Play size={12} /> Watch Video
+                      </button>
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-brand-text dark:text-brand-dark-text">{activity.text}</p>
-                    </div>
-                    <span className="text-xs text-brand-muted dark:text-brand-dark-muted whitespace-nowrap">{activity.time}</span>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )
@@ -152,146 +330,349 @@ export default function UserDashboard() {
       case 'courses':
         return (
           <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">My Courses</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {enrolledCourses.map((course) => (
-                <div key={course.id} className="card overflow-hidden">
-                  <div
-                    className="h-28 flex items-center justify-center"
-                    style={{ background: `linear-gradient(135deg, ${course.gradientFrom}, ${course.gradientTo})` }}
-                  >
-                    <BookOpen size={36} className="text-white/60" />
-                  </div>
-                  <div className="p-5">
-                    <span className="badge bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400 text-xs mb-2">{course.category}</span>
-                    <h3 className="font-bold text-sm text-brand-text dark:text-brand-dark-text mb-3">{course.title}</h3>
-                    <div className="mb-4">
-                      <div className="flex items-center justify-between text-xs text-brand-muted dark:text-brand-dark-muted mb-1.5">
-                        <span>Progress</span>
-                        <span className="font-semibold">{progressData[course.id] || 0}%</span>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">My Enrolled Courses</h2>
+                <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">
+                  All courses saved to your Supabase account
+                </p>
+              </div>
+              <a
+                href="/courses"
+                className="text-xs font-semibold px-3 py-2 rounded-xl bg-gray-100 dark:bg-white/10 text-brand-text dark:text-brand-dark-text hover:bg-gray-200 transition-colors"
+              >
+                + Explore More Courses
+              </a>
+            </div>
+
+            {enrolledCoursesWithMeta.length === 0 ? (
+              <div className="card p-12 text-center">
+                <BookOpen size={48} className="mx-auto text-brand-muted dark:text-brand-dark-muted mb-3 opacity-40" />
+                <h3 className="text-base font-bold text-brand-text dark:text-brand-dark-text">You haven't enrolled in any courses yet</h3>
+                <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1 max-w-sm mx-auto mb-5">
+                  Browse our catalog of Free and Premium courses to accelerate your skills.
+                </p>
+                <a href="/courses" className="btn-primary inline-flex text-xs px-5 py-2.5">
+                  Browse Courses Catalog
+                </a>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {enrolledCoursesWithMeta.map(({ enrollment, course }) => (
+                  <div key={enrollment.id} className="card overflow-hidden flex flex-col justify-between">
+                    <div className="p-5">
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        <span
+                          className={`badge text-xs ${enrollment.status === 'paid' || enrollment.amount > 0
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                            : 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                            }`}
+                        >
+                          {enrollment.status === 'paid' || enrollment.amount > 0
+                            ? `PAID COURSE — ₹${enrollment.amount}`
+                            : 'FREE COURSE'}
+                        </span>
+                        <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted">
+                          {new Date(enrollment.createdAt).toLocaleDateString()}
+                        </span>
                       </div>
-                      <div className="w-full bg-gray-200 dark:bg-white/10 rounded-full h-2">
-                        <div
-                          className="h-2 rounded-full bg-primary-500 transition-all duration-1000"
-                          style={{ width: `${progressData[course.id] || 0}%` }}
-                        />
-                      </div>
+
+                      <h3 className="font-bold text-base text-brand-text dark:text-brand-dark-text mb-2 line-clamp-2">
+                        {course.title}
+                      </h3>
+                      <p className="text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-2 mb-4">
+                        {course.description}
+                      </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => { setActiveTab('courses'); toast.success(`Opening ${course.title}`) }}
-                      className="dynamic-button w-full flex items-center justify-center gap-2 py-2.5 bg-primary-500 text-white text-sm font-semibold rounded-xl"
-                    >
-                      <Play size={14} /> Continue Learning
-                    </button>
+
+                    <div className="p-5 pt-0 border-t border-brand-border dark:border-brand-dark-border mt-auto">
+                      <div className="flex items-center justify-between text-xs text-brand-muted dark:text-brand-dark-muted py-3">
+                        <span>Instructor: {course.instructor || 'Skills021'}</span>
+                        <span className="font-semibold">{course.duration || 'Full Access'}</span>
+                      </div>
+                      <button
+                        onClick={() => setActivePlayCourse(course)}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary-500 text-white text-xs font-bold rounded-xl hover:bg-primary-600 transition-colors"
+                      >
+                        <Play size={13} /> Watch Course Video
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+            )}
+          </div>
+        )
+
+      case 'transactions':
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">Paid Course Enrollments & Receipts</h2>
+              <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">
+                Complete record of your paid course transactions stored in Supabase
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="card p-4">
+                <p className="text-xs text-brand-muted dark:text-brand-dark-muted">Total Paid Courses</p>
+                <p className="text-xl font-bold text-brand-text dark:text-brand-dark-text mt-1">{paidEnrollments.length}</p>
+              </div>
+              <div className="card p-4">
+                <p className="text-xs text-brand-muted dark:text-brand-dark-muted">Total Amount Paid</p>
+                <p className="text-xl font-bold text-emerald-500 mt-1">₹{totalAmountPaid.toLocaleString()}</p>
+              </div>
+              <div className="card p-4">
+                <p className="text-xs text-brand-muted dark:text-brand-dark-muted">Account Status</p>
+                <p className="text-xl font-bold text-primary-500 mt-1">Verified User</p>
+              </div>
+            </div>
+
+            <div className="card overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 dark:bg-white/5">
+                    <tr>
+                      {['Item / Course', 'Type', 'Amount', 'UTR / Ref Number', 'Admin Approval Status', 'Date Submitted'].map((h) => (
+                        <th
+                          key={h}
+                          className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap"
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
+                    {enrollments.map((enr) => {
+                      const matched = coursesList.find((c) => String(c.id) === String(enr.courseId))
+                      const isPremium = enr.itemType === 'premium_membership'
+                      const isPaid = enr.status === 'paid'
+                      const isPending = enr.status === 'pending'
+                      const isRejected = enr.status === 'rejected'
+
+                      return (
+                        <tr key={enr.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                          <td className="px-4 py-3 font-medium text-brand-text dark:text-brand-dark-text max-w-xs">
+                            <p className="font-semibold text-sm truncate">
+                              {enr.itemTitle || matched?.title || (isPremium ? 'All-Access Premium Membership' : `Course #${enr.courseId}`)}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`badge text-xs font-bold ${
+                                isPremium
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                                  : enr.amount > 0
+                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                  : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                              }`}
+                            >
+                              {isPremium ? '⭐ PREMIUM PASS' : enr.amount > 0 ? 'PAID COURSE' : 'FREE'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-bold text-brand-text dark:text-brand-dark-text">
+                            {enr.amount > 0 ? `₹${enr.amount}` : '₹0 (Free)'}
+                          </td>
+                          <td className="px-4 py-3">
+                            {enr.utrNumber ? (
+                              <span className="font-mono text-xs font-bold px-2 py-0.5 bg-gray-100 dark:bg-white/10 rounded">
+                                {enr.utrNumber}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-brand-muted italic">N/A (Free)</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {isPaid ? (
+                              <span className="badge text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 font-bold">
+                                ✅ APPROVED & ACTIVE
+                              </span>
+                            ) : isPending ? (
+                              <span className="badge text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-bold animate-pulse">
+                                ⏳ PENDING ADMIN APPROVAL
+                              </span>
+                            ) : isRejected ? (
+                              <span className="badge text-xs bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 font-bold">
+                                ❌ REJECTED {enr.rejectionReason ? `(${enr.rejectionReason})` : ''}
+                              </span>
+                            ) : (
+                              <span className="badge text-xs bg-blue-100 text-blue-700 font-bold">
+                                ACTIVE FREE
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-brand-muted dark:text-brand-dark-muted whitespace-nowrap">
+                            {enr.createdAt ? new Date(enr.createdAt).toLocaleDateString() : 'N/A'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {enrollments.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-8 text-center text-brand-muted text-sm">
+                          No transaction records found.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )
 
-
       case 'profile':
         return (
           <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">Profile Settings</h2>
+            <div>
+              <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">Profile Settings</h2>
+              <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">
+                Manage your Verified User profile & password
+              </p>
+            </div>
+
+            {/* Personal Details Form */}
             <form onSubmit={handleSaveProfile} className="space-y-5">
               <div className="card p-6 space-y-5">
                 <h3 className="font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-2">
-                  <User size={18} className="text-primary-500" /> Personal Information
+                  <User size={18} className="text-primary-500" /> Personal Information (Saved in Supabase)
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">Full Name</label>
+                    <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">
+                      Full Name
+                    </label>
                     <div className="relative">
                       <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
                       <input
                         type="text"
                         value={profileForm.name}
-                        onChange={e => setProfileForm(p => ({ ...p, name: e.target.value }))}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, name: e.target.value }))}
                         className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-sm text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        required
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">Email (read-only)</label>
+                    <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">
+                      Email address (Supabase Auth ID)
+                    </label>
                     <div className="relative">
                       <AlertCircle size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
-                      <input type="email" value={user?.email} disabled className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-gray-50 dark:bg-white/5 text-sm text-brand-muted dark:text-brand-dark-muted cursor-not-allowed" />
+                      <input
+                        type="email"
+                        value={user?.email}
+                        disabled
+                        className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-gray-50 dark:bg-white/5 text-sm text-brand-muted dark:text-brand-dark-muted cursor-not-allowed"
+                      />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">Phone</label>
+                    <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">
+                      Phone Number
+                    </label>
                     <div className="relative">
                       <Phone size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
                       <input
                         type="tel"
                         value={profileForm.phone}
-                        onChange={e => setProfileForm(p => ({ ...p, phone: e.target.value }))}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, phone: e.target.value }))}
                         placeholder="+91 98765 43210"
                         className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-sm text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500"
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">College</label>
+                    <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">
+                      College Affiliation
+                    </label>
                     <div className="relative">
                       <School size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
                       <input
                         type="text"
                         value={profileForm.college}
-                        onChange={e => setProfileForm(p => ({ ...p, college: e.target.value }))}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, college: e.target.value }))}
                         className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-sm text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500"
                       />
                     </div>
                   </div>
                 </div>
-              </div>
 
+                <div className="pt-2">
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    type="submit"
+                    disabled={savingProfile}
+                    className="flex items-center gap-2 btn-primary disabled:opacity-60 text-xs px-5 py-2.5"
+                  >
+                    {savingProfile ? (
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <Save size={15} />
+                    )}
+                    {savingProfile ? 'Saving in Supabase...' : 'Save Profile Changes'}
+                  </motion.button>
+                </div>
+              </div>
+            </form>
+
+            {/* Change Password Form */}
+            <form onSubmit={handleChangePassword} className="space-y-4">
               <div className="card p-6 space-y-4">
                 <h3 className="font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-2">
-                  <Lock size={18} className="text-primary-500" /> Change Password
+                  <Lock size={18} className="text-primary-500" /> Update Supabase Password
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">New Password</label>
+                    <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">
+                      New Password
+                    </label>
                     <div className="relative">
                       <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
                       <input
                         type="password"
                         value={profileForm.password}
-                        onChange={e => setProfileForm(p => ({ ...p, password: e.target.value }))}
-                        placeholder="Leave blank to keep current"
+                        onChange={(e) => setProfileForm((p) => ({ ...p, password: e.target.value }))}
+                        placeholder="Min 6 characters"
                         className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-sm text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500"
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">Confirm Password</label>
+                    <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">
+                      Confirm New Password
+                    </label>
                     <div className="relative">
                       <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
                       <input
                         type="password"
                         value={profileForm.confirmPassword}
-                        onChange={e => setProfileForm(p => ({ ...p, confirmPassword: e.target.value }))}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, confirmPassword: e.target.value }))}
                         placeholder="Repeat new password"
                         className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-sm text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500"
                       />
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <motion.button
-                whileTap={{ scale: 0.97 }}
-                type="submit"
-                disabled={saving}
-                className="flex items-center gap-2 btn-primary disabled:opacity-60"
-              >
-                {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save size={16} />}
-                {saving ? 'Saving...' : 'Save Changes'}
-              </motion.button>
+                <div className="pt-2">
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    type="submit"
+                    disabled={savingPassword || !profileForm.password}
+                    className="flex items-center gap-2 btn-primary disabled:opacity-60 text-xs px-5 py-2.5"
+                  >
+                    {savingPassword ? (
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <Lock size={15} />
+                    )}
+                    {savingPassword ? 'Updating Password...' : 'Update Password in Supabase'}
+                  </motion.button>
+                </div>
+              </div>
             </form>
           </div>
         )
@@ -310,25 +691,29 @@ export default function UserDashboard() {
             <div className="card p-5 sticky top-24">
               {/* User Avatar */}
               <div className="flex flex-col items-center text-center mb-6 pb-6 border-b border-brand-border dark:border-brand-dark-border">
-                <div className="w-16 h-16 rounded-full bg-primary-500 flex items-center justify-center text-white text-xl font-bold mb-3">
+                <div className="w-16 h-16 rounded-full bg-primary-500 flex items-center justify-center text-white text-xl font-bold mb-3 shadow-md">
                   {getInitials(user?.name || 'U')}
                 </div>
                 <h3 className="font-bold text-brand-text dark:text-brand-dark-text">{user?.name}</h3>
                 <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-0.5">{user?.email}</p>
                 <span className="mt-2 badge bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400 text-xs">
-                  {user?.college}
+                  {user?.college || 'Student'}
                 </span>
+                {user?.phone && (
+                  <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted mt-1 flex items-center gap-1">
+                    <Phone size={11} /> {user.phone}
+                  </span>
+                )}
               </div>
               <nav className="space-y-1">
                 {sidebarItems.map((item) => (
                   <button
                     key={item.id}
                     onClick={() => setActiveTab(item.id)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
-                      activeTab === item.id
-                        ? 'bg-primary-500 text-white shadow-sm'
-                        : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-100 dark:hover:bg-white/10'
-                    }`}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${activeTab === item.id
+                      ? 'bg-primary-500 text-white shadow-sm font-semibold'
+                      : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-100 dark:hover:bg-white/10'
+                      }`}
                   >
                     <item.icon size={18} />
                     {item.label}
@@ -344,12 +729,11 @@ export default function UserDashboard() {
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`flex-1 flex flex-col items-center gap-1 py-3 text-xs transition-colors ${
-                  activeTab === item.id ? 'text-primary-500' : 'text-brand-muted dark:text-brand-dark-muted'
-                }`}
+                className={`flex-1 flex flex-col items-center gap-1 py-3 text-xs transition-colors ${activeTab === item.id ? 'text-primary-500 font-bold' : 'text-brand-muted dark:text-brand-dark-muted'
+                  }`}
               >
                 <item.icon size={20} />
-                <span className="hidden sm:block">{item.label.split(' ')[0]}</span>
+                <span className="text-[10px]">{item.label.split(' ')[0]}</span>
               </button>
             ))}
           </div>
@@ -367,6 +751,32 @@ export default function UserDashboard() {
           </main>
         </div>
       </div>
+
+      {activePlayCourse && (
+        <VideoPlayerModal
+          course={activePlayCourse}
+          userId={user?.id || ''}
+          userName={user?.name || 'Student'}
+          isAdmin={user?.role === 'admin'}
+          canWatch={true}
+          onClose={() => setActivePlayCourse(null)}
+        />
+      )}
+
+      {showUpgradeModal && (
+        <EnrollModal
+          isPremiumMembership={true}
+          premiumAmount={999}
+          userId={user?.id || `user-${Date.now()}`}
+          defaultEmail={user?.email}
+          defaultName={user?.name}
+          onClose={() => setShowUpgradeModal(false)}
+          onEnrolled={() => {
+            loadData()
+            setShowUpgradeModal(false)
+          }}
+        />
+      )}
     </div>
   )
 }

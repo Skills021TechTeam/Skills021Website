@@ -8,3 +8,408 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+export interface UserProfile {
+  id: string
+  email: string
+  name: string
+  first_name?: string
+  last_name?: string
+  college: string
+  phone: string
+  role: 'user' | 'admin'
+  is_premium?: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+export interface UserEnrollmentSummary {
+  id: string
+  courseId: string
+  courseTitle?: string
+  firstName: string
+  lastName: string
+  email: string
+  phone: string
+  amount: number
+  paymentStatus: 'pending' | 'paid' | 'free'
+  status: string
+  createdAt: string
+}
+
+export interface UserWithEnrollmentDetails extends UserProfile {
+  enrollments: UserEnrollmentSummary[]
+  hasPaidCourses: boolean
+  paidCoursesCount: number
+  totalAmountPaid: number
+  freeCoursesCount: number
+  totalCoursesCount: number
+}
+
+function splitName(fullName: string) {
+  const parts = (fullName || '').trim().split(' ')
+  const firstName = parts[0] || ''
+  const lastName = parts.slice(1).join(' ') || ''
+  return { firstName, lastName }
+}
+
+/** Supabase Auth Helpers **/
+export async function signUpUser(
+  email: string,
+  password: string,
+  name: string,
+  college: string,
+  phone: string = ''
+) {
+  const { firstName, lastName } = splitName(name)
+
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        name,
+        first_name: firstName,
+        last_name: lastName,
+        college,
+        phone,
+        role: 'user',
+        is_premium: false,
+      },
+    },
+  })
+  if (error) throw error
+
+  // Best-effort profile upsert into public.profiles
+  if (data.user) {
+    try {
+      await supabase.from('profiles').upsert(
+        {
+          id: data.user.id,
+          email: data.user.email || email,
+          first_name: firstName,
+          last_name: lastName,
+          phone,
+          role: 'user',
+          is_premium: false,
+        },
+        { onConflict: 'id' }
+      )
+    } catch (profileErr) {
+      console.warn('Could not auto-insert profile row:', profileErr)
+    }
+  }
+
+  return data
+}
+
+export async function signInUser(email: string, password: string) {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  })
+  if (error) throw error
+
+  // If user signed in successfully, ensure their profile exists in public.profiles
+  if (data.user) {
+    try {
+      const u = data.user
+      const fullName = u.user_metadata?.name || u.email?.split('@')[0] || 'User'
+      const { firstName, lastName } = splitName(fullName)
+
+      await supabase.from('profiles').upsert(
+        {
+          id: u.id,
+          email: u.email || email,
+          first_name: u.user_metadata?.first_name || firstName,
+          last_name: u.user_metadata?.last_name || lastName,
+          phone: u.user_metadata?.phone || '',
+          role: u.user_metadata?.role || 'user',
+          is_premium: u.user_metadata?.is_premium || false,
+        },
+        { onConflict: 'id' }
+      )
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  return data
+}
+
+export async function signOutUser() {
+  const { error } = await supabase.auth.signOut()
+  if (error) throw error
+}
+
+export async function getCurrentSession() {
+  const { data, error } = await supabase.auth.getSession()
+  if (error) throw error
+  return data.session
+}
+
+/** User Profile DB Helpers **/
+export async function getUserProfile(userId: string): Promise<UserProfile | null> {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle()
+
+    if (error) {
+      console.warn('Error fetching profile:', error.message)
+      return null
+    }
+    if (!data) return null
+
+    const fullName =
+      data.name ||
+      `${data.first_name || ''} ${data.last_name || ''}`.trim() ||
+      data.email?.split('@')[0] ||
+      'User'
+
+    return {
+      id: data.id,
+      email: data.email,
+      name: fullName,
+      first_name: data.first_name || '',
+      last_name: data.last_name || '',
+      college: data.college || 'Student Institution',
+      phone: data.phone || '',
+      role: data.role || 'user',
+      is_premium: Boolean(data.is_premium ?? false),
+      created_at: data.created_at,
+      updated_at: data.updated_at,
+    }
+  } catch (err) {
+    console.warn('Profile fetch exception:', err)
+    return null
+  }
+}
+
+export async function upsertUserProfile(
+  profile: Partial<UserProfile> & { id: string }
+): Promise<UserProfile | null> {
+  const fullName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
+  const { firstName, lastName } = splitName(fullName)
+
+  const payload: any = {
+    id: profile.id,
+    email: profile.email,
+    first_name: profile.first_name || firstName,
+    last_name: profile.last_name || lastName,
+    phone: profile.phone || '',
+    role: profile.role || 'user',
+  }
+
+  if (profile.is_premium !== undefined) {
+    payload.is_premium = profile.is_premium
+  }
+  if (profile.college) {
+    payload.college = profile.college
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .upsert(payload, { onConflict: 'id' })
+    .select('*')
+    .single()
+
+  if (error) throw new Error(`Failed to update profile: ${error.message}`)
+
+  const nameResolved =
+    data.name ||
+    `${data.first_name || ''} ${data.last_name || ''}`.trim() ||
+    data.email?.split('@')[0] ||
+    'User'
+
+  return {
+    id: data.id,
+    email: data.email,
+    name: nameResolved,
+    first_name: data.first_name || '',
+    last_name: data.last_name || '',
+    college: data.college || profile.college || 'Student Institution',
+    phone: data.phone || '',
+    role: data.role || 'user',
+    is_premium: Boolean(data.is_premium ?? false),
+    created_at: data.created_at,
+    updated_at: data.updated_at,
+  }
+}
+
+export async function toggleUserPremiumStatus(userId: string, isPremium: boolean): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ is_premium: isPremium, updated_at: new Date().toISOString() })
+      .eq('id', userId)
+
+    if (error) throw error
+    return true
+  } catch (err) {
+    console.error('Failed to update premium status:', err)
+    return false
+  }
+}
+
+export async function updateUserAuthPassword(newPassword: string): Promise<void> {
+  const { error } = await supabase.auth.updateUser({
+    password: newPassword,
+  })
+  if (error) throw error
+}
+
+/** Admin / Aggregate queries for users and paid courses from Supabase **/
+export async function fetchAllUsersWithEnrollments(): Promise<UserWithEnrollmentDetails[]> {
+  try {
+    // 1. Fetch all profiles
+    const { data: profilesData, error: profilesError } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (profilesError) {
+      console.warn('Could not load profiles from table, falling back to enrollments aggregation:', profilesError.message)
+    }
+
+    // 2. Fetch all enrollments
+    const { data: enrollmentsData, error: enrollmentsError } = await supabase
+      .from('enrollments')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (enrollmentsError) {
+      console.warn('Could not load enrollments:', enrollmentsError.message)
+    }
+
+    // 3. Fetch courses title lookup
+    const { data: coursesData } = await supabase
+      .from('site_courses')
+      .select('id, title, price')
+
+    const courseTitleMap = new Map<string, string>()
+    if (coursesData) {
+      for (const c of coursesData) {
+        courseTitleMap.set(String(c.id), c.title)
+      }
+    }
+
+    const enrollments = enrollmentsData ?? []
+    const profiles = profilesData ?? []
+
+    // Group enrollments by user_id or email
+    const enrollmentsByUserId = new Map<string, UserEnrollmentSummary[]>()
+    const enrollmentsByEmail = new Map<string, UserEnrollmentSummary[]>()
+
+    for (const row of enrollments) {
+      const summary: UserEnrollmentSummary = {
+        id: row.id,
+        courseId: String(row.item_id),
+        courseTitle: courseTitleMap.get(String(row.item_id)) || `Course #${row.item_id}`,
+        firstName: row.first_name || '',
+        lastName: row.last_name || '',
+        email: row.email || '',
+        phone: row.phone || '',
+        amount: Number(row.amount || 0),
+        paymentStatus: row.payment_status || 'free',
+        status: row.status || 'active',
+        createdAt: row.created_at,
+      }
+
+      if (row.user_id) {
+        const list = enrollmentsByUserId.get(row.user_id) || []
+        list.push(summary)
+        enrollmentsByUserId.set(row.user_id, list)
+      }
+      if (row.email) {
+        const list = enrollmentsByEmail.get(row.email.toLowerCase()) || []
+        list.push(summary)
+        enrollmentsByEmail.set(row.email.toLowerCase(), list)
+      }
+    }
+
+    const processedUserIds = new Set<string>()
+    const results: UserWithEnrollmentDetails[] = []
+
+    // Add users from profiles table
+    for (const p of profiles) {
+      processedUserIds.add(p.id)
+      const userEnrolls =
+        enrollmentsByUserId.get(p.id) ||
+        (p.email ? enrollmentsByEmail.get(p.email.toLowerCase()) : []) ||
+        []
+
+      const paidEnrolls = userEnrolls.filter(
+        (e) => e.paymentStatus === 'paid' || (e.amount > 0 && e.paymentStatus !== 'pending')
+      )
+      const freeEnrolls = userEnrolls.filter((e) => e.paymentStatus === 'free' || e.amount === 0)
+      const totalAmount = paidEnrolls.reduce((sum, e) => sum + (e.amount || 0), 0)
+
+      const fullName =
+        p.name ||
+        `${p.first_name || ''} ${p.last_name || ''}`.trim() ||
+        p.email?.split('@')[0] ||
+        'User'
+
+      results.push({
+        id: p.id,
+        email: p.email,
+        name: fullName,
+        first_name: p.first_name || '',
+        last_name: p.last_name || '',
+        college: p.college || 'Student Institution',
+        phone: p.phone || (userEnrolls[0]?.phone ?? ''),
+        role: p.role || 'user',
+        is_premium: Boolean(p.is_premium ?? false),
+        created_at: p.created_at,
+        updated_at: p.updated_at,
+        enrollments: userEnrolls,
+        hasPaidCourses: paidEnrolls.length > 0,
+        paidCoursesCount: paidEnrolls.length,
+        freeCoursesCount: freeEnrolls.length,
+        totalCoursesCount: userEnrolls.length,
+        totalAmountPaid: totalAmount,
+      })
+    }
+
+    // Also include any user who enrolled via email/user_id even if profile trigger hasn't fired yet
+    for (const e of enrollments) {
+      if (e.user_id && !processedUserIds.has(e.user_id)) {
+        processedUserIds.add(e.user_id)
+        const userEnrolls = enrollmentsByUserId.get(e.user_id) || []
+        const paidEnrolls = userEnrolls.filter(
+          (item) => item.paymentStatus === 'paid' || (item.amount > 0 && item.paymentStatus !== 'pending')
+        )
+        const freeEnrolls = userEnrolls.filter((item) => item.paymentStatus === 'free' || item.amount === 0)
+        const totalAmount = paidEnrolls.reduce((sum, item) => sum + (item.amount || 0), 0)
+
+        const fullName = `${e.first_name || ''} ${e.last_name || ''}`.trim() || e.email?.split('@')[0] || 'User'
+
+        results.push({
+          id: e.user_id,
+          email: e.email || 'N/A',
+          name: fullName,
+          college: 'Student Institution',
+          phone: e.phone || '',
+          role: 'user',
+          is_premium: false,
+          created_at: e.created_at,
+          updated_at: e.created_at,
+          enrollments: userEnrolls,
+          hasPaidCourses: paidEnrolls.length > 0,
+          paidCoursesCount: paidEnrolls.length,
+          freeCoursesCount: freeEnrolls.length,
+          totalCoursesCount: userEnrolls.length,
+          totalAmountPaid: totalAmount,
+        })
+      }
+    }
+
+    return results
+  } catch (err) {
+    console.error('Failed to fetch users and enrollments:', err)
+    return []
+  }
+}

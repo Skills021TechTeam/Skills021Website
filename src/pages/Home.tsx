@@ -10,6 +10,7 @@ import HomeLoadingScreen from '../components/HomeLoadingScreen'
 import MagneticButton from '../components/MagneticButton'
 import LaptopIllustration from '../components/LaptopIllustration'
 import HomeCoursesSection from '../components/HomeCoursesSection'
+import HomeHackathonsSection from '../components/HomeHackathonsSection'
 
 // Existing functional components
 import VideoCarousel from '../components/VideoCarousel'
@@ -387,6 +388,7 @@ export default function Home() {
         <WebinarSection />
         <HeroSection />
         <HomeCoursesSection />
+        <HomeHackathonsSection />
         <VideoSection onVideoPlay={setSelectedVideo} />
         <FooterCTABanner />
       </main>

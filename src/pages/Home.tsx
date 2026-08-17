@@ -16,6 +16,7 @@ import HomeHackathonsSection from '../components/HomeHackathonsSection'
 import VideoCarousel from '../components/VideoCarousel'
 import { YouTubeVideo } from '../store/videoStore'
 import { getLiveWebinars, getWebinarRecordings, type LiveWebinar, type WebinarRecording } from '../lib/webinarService'
+import { useAuthStore } from '../store/authStore'
 
 // ─── Hero Section ─────────────────────────────────────────────────────────────
 const words = ['Learn.', 'Build.', 'Get', 'Placed.']
@@ -185,6 +186,7 @@ function VideoSection({ onVideoPlay }: { onVideoPlay: (v: YouTubeVideo) => void 
 
 // ─── Webinar Popup ────────────────────────────────────────────────────────────
 function WebinarSection() {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const [open, setOpen] = useState(false)
   const [liveWebinars, setLiveWebinars] = useState<LiveWebinar[]>([])
   const [recordings, setRecordings] = useState<WebinarRecording[]>([])
@@ -197,7 +199,7 @@ function WebinarSection() {
 
     const loadWebinars = async () => {
       try {
-        const [live, saved] = await Promise.all([getLiveWebinars(), getWebinarRecordings()])
+        const [live, saved] = await Promise.all([getLiveWebinars(), getWebinarRecordings(isAuthenticated)])
         if (!active) return
         setLiveWebinars(live)
         setRecordings(saved)
@@ -222,7 +224,7 @@ function WebinarSection() {
       active = false
       if (timer) clearInterval(timer)
     }
-  }, [])
+  }, [isAuthenticated])
 
   const now = Date.now()
   const live = liveWebinars.find(w => new Date(w.startsAt).getTime() <= now && (!w.endsAt || new Date(w.endsAt).getTime() > now))
@@ -290,9 +292,15 @@ function WebinarSection() {
             {/* Actions */}
             <div className="flex flex-wrap items-center gap-2.5 lg:justify-end">
               {live ? (
-                <a href={live.joinUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-3 text-xs font-bold text-white shadow-lg shadow-violet-500/20 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-500/25">
-                  <Video size={14} /> Join live <ExternalLink size={12} />
-                </a>
+                isAuthenticated ? (
+                  <a href={live.joinUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-3 text-xs font-bold text-white shadow-lg shadow-violet-500/20 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-500/25">
+                    <Video size={14} /> Join live <ExternalLink size={12} />
+                  </a>
+                ) : (
+                  <Link to="/register" state={{ from: '/courses?tab=webinars' }} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-3 text-xs font-bold text-white shadow-lg shadow-violet-500/20 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-500/25">
+                    <Video size={14} /> Sign up to join <ArrowRight size={12} />
+                  </Link>
+                )
               ) : next ? (
                 <button type="button" onClick={() => setOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-3 text-xs font-bold text-white shadow-lg shadow-violet-500/20 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-500/25">
                   <CalendarDays size={14} /> View details
@@ -302,8 +310,8 @@ function WebinarSection() {
                   <PlayCircle size={14} /> Explore webinars
                 </button>
               )}
-              <Link to="/courses?tab=webinars" className="inline-flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50/80 px-5 py-3 text-xs font-bold text-violet-700 transition-all hover:-translate-y-0.5 hover:bg-violet-100 dark:border-white/10 dark:bg-white/5 dark:text-violet-200 dark:hover:bg-white/10">
-                Webinar hub <ArrowRight size={13} />
+              <Link to={isAuthenticated ? '/courses?tab=webinars' : '/register'} state={!isAuthenticated ? { from: '/courses?tab=webinars' } : undefined} className="inline-flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50/80 px-5 py-3 text-xs font-bold text-violet-700 transition-all hover:-translate-y-0.5 hover:bg-violet-100 dark:border-white/10 dark:bg-white/5 dark:text-violet-200 dark:hover:bg-white/10">
+                {isAuthenticated ? 'Webinar hub' : 'Sign up for webinars'} <ArrowRight size={13} />
               </Link>
             </div>
           </div>
@@ -316,9 +324,17 @@ function WebinarSection() {
             <button type="button" onClick={() => setOpen(false)} aria-label="Close webinar popup" className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/5 dark:bg-white/10"><X size={16}/></button>
             <div className="p-6 sm:p-7">
               <div className="mb-5 flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-cyan-500 text-white shadow-lg"><Radio size={19}/></span><div><span className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-500">Skills021 Webinars</span><h2 className="text-xl font-black text-brand-text dark:text-white">Live sessions & replays</h2></div></div>
-              {live ? <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-900/30 dark:bg-red-500/10"><div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-red-500"><span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse"/> Live now · {live.provider}</div><h3 className="mt-2 font-black text-brand-text dark:text-white">{live.title}</h3><p className="mt-1 text-xs text-brand-muted">{live.description}</p><a href={live.joinUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-xl bg-red-500 px-4 py-2.5 text-xs font-bold text-white"><Video size={14}/> Join live <ExternalLink size={12}/></a></div> : next ? <div className="mb-5 rounded-2xl border border-violet-100 bg-violet-50 p-4 dark:border-white/10 dark:bg-violet-500/10"><div className="text-xs font-bold uppercase tracking-widest text-violet-500">Next webinar · {next.provider}</div><h3 className="mt-1 font-black text-brand-text dark:text-white">{next.title}</h3><p className="mt-1 text-xs text-brand-muted flex items-center gap-1"><CalendarDays size={12}/> {new Date(next.startsAt).toLocaleString([], {dateStyle:'medium',timeStyle:'short'})}</p></div> : <div className="mb-5 rounded-2xl border border-gray-100 p-4 dark:border-white/10"><p className="text-sm font-bold text-brand-text dark:text-white">No live webinar right now.</p><p className="text-xs text-brand-muted mt-1">Replays are available below when published.</p></div>}
-              <div><div className="mb-3 flex items-center justify-between"><h3 className="font-black text-brand-text dark:text-white">Past sessions</h3><span className="text-xs text-brand-muted">{recordings.length}</span></div>{recordings.length===0?<p className="text-xs text-brand-muted">No recordings published yet.</p>:<div className="space-y-2.5 max-h-56 overflow-y-auto">{recordings.slice(0,5).map(r=><a key={r.id} href={r.videoUrl||'#'} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 p-3 hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/5"><span className="min-w-0"><span className="block truncate text-xs font-bold text-brand-text dark:text-white">{r.title}</span><span className="block text-[10px] text-brand-muted mt-0.5">{r.sessionDate}</span></span><PlayCircle size={16} className="shrink-0 text-violet-500"/></a>)}</div>}</div>
-              <Link to="/courses?tab=webinars" onClick={()=>setOpen(false)} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#0A0A0A] px-4 py-3 text-sm font-bold text-white dark:bg-white dark:text-black">Open Webinar Hub <ArrowRight size={15}/></Link>
+              {live ? <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-900/30 dark:bg-red-500/10"><div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-red-500"><span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse"/> Live now · {live.provider}</div><h3 className="mt-2 font-black text-brand-text dark:text-white">{live.title}</h3><p className="mt-1 text-xs text-brand-muted">{live.description}</p>{isAuthenticated ? (
+                <a href={live.joinUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-xl bg-red-500 px-4 py-2.5 text-xs font-bold text-white"><Video size={14}/> Join live <ExternalLink size={12}/></a>
+              ) : (
+                <Link to="/register" state={{ from: '/courses?tab=webinars' }} onClick={()=>setOpen(false)} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-red-500 px-4 py-2.5 text-xs font-bold text-white"><Video size={14}/> Sign up to join <ArrowRight size={12}/></Link>
+              )}</div> : next ? <div className="mb-5 rounded-2xl border border-violet-100 bg-violet-50 p-4 dark:border-white/10 dark:bg-violet-500/10"><div className="text-xs font-bold uppercase tracking-widest text-violet-500">Next webinar · {next.provider}</div><h3 className="mt-1 font-black text-brand-text dark:text-white">{next.title}</h3><p className="mt-1 text-xs text-brand-muted flex items-center gap-1"><CalendarDays size={12}/> {new Date(next.startsAt).toLocaleString([], {dateStyle:'medium',timeStyle:'short'})}</p></div> : <div className="mb-5 rounded-2xl border border-gray-100 p-4 dark:border-white/10"><p className="text-sm font-bold text-brand-text dark:text-white">No live webinar right now.</p><p className="text-xs text-brand-muted mt-1">Replays are available below when published.</p></div>}
+              <div><div className="mb-3 flex items-center justify-between"><h3 className="font-black text-brand-text dark:text-white">Past sessions</h3><span className="text-xs text-brand-muted">{recordings.length}</span></div>{recordings.length===0?<p className="text-xs text-brand-muted">No recordings published yet.</p>:<div className="space-y-2.5 max-h-56 overflow-y-auto">{recordings.slice(0,5).map(r=>isAuthenticated ? (
+                      <a key={r.id} href={r.videoUrl||'#'} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 p-3 hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/5"><span className="min-w-0"><span className="block truncate text-xs font-bold text-brand-text dark:text-white">{r.title}</span><span className="block text-[10px] text-brand-muted mt-0.5">{r.sessionDate}</span></span><PlayCircle size={16} className="shrink-0 text-violet-500"/></a>
+                    ) : (
+                      <Link key={r.id} to="/register" state={{ from: '/courses?tab=webinars' }} onClick={()=>setOpen(false)} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 p-3 hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/5"><span className="min-w-0"><span className="block truncate text-xs font-bold text-brand-text dark:text-white">{r.title}</span><span className="block text-[10px] text-brand-muted mt-0.5">Sign up to watch replay</span></span><ArrowRight size={16} className="shrink-0 text-violet-500"/></Link>
+                    ))}</div>}</div>
+              <Link to={isAuthenticated ? '/courses?tab=webinars' : '/register'} state={!isAuthenticated ? { from: '/courses?tab=webinars' } : undefined} onClick={()=>setOpen(false)} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#0A0A0A] px-4 py-3 text-sm font-bold text-white dark:bg-white dark:text-black">{isAuthenticated ? 'Open Webinar Hub' : 'Sign up to open Webinar Hub'} <ArrowRight size={15}/></Link>
             </div>
           </motion.div>
         </motion.div>

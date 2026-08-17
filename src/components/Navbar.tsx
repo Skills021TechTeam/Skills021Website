@@ -5,7 +5,7 @@ import {
   Menu, X, Sun, Moon, ChevronDown,
   BookOpen, FileText, Users,
   Code2, Target, HelpCircle,
-  FileQuestion, ArrowRight, Home, LogIn, LogOut, UserCircle2, LayoutDashboard, Compass, Trophy, Shield
+  FileQuestion, ArrowRight, Home, LogIn, LogOut, UserCircle2, LayoutDashboard, Compass, Trophy, Shield, Briefcase
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 

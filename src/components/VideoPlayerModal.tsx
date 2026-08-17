@@ -6,6 +6,7 @@ import { Course, Resource } from '../store/contentStore'
 import StarRating from './StarRating'
 import ConfirmDownloadDialog from './ConfirmDownloadDialog'
 import { fetchNotesForSubject, triggerResourceDownload, incrementDownloadCount } from '../lib/resourceService'
+import { getBackblazeVideoUrl } from '../lib/backblazeService'
 import {
   getTimestamps, getComments, addComment, deleteComment,
   getRatingSummary, submitRating,
@@ -31,6 +32,8 @@ export default function VideoPlayerModal({ course, userId, userName, isAdmin, ca
   const [draftInstructorRating, setDraftInstructorRating] = useState(0)
   const [submittingRating, setSubmittingRating] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [playbackUrl, setPlaybackUrl] = useState<string | null>(null)
+  const [playbackLoading, setPlaybackLoading] = useState(false)
   const [descExpanded, setDescExpanded] = useState(false)
 
   // ── Tab selector ──
@@ -52,6 +55,26 @@ export default function VideoPlayerModal({ course, userId, userName, isAdmin, ca
     el.muted = false
     el.defaultMuted = false
     el.volume = 1
+  }, [canWatch, course.videoUrl])
+
+  useEffect(() => {
+    if (!canWatch || !course.videoUrl) {
+      setPlaybackUrl(null)
+      setPlaybackLoading(false)
+      return
+    }
+    let active = true
+    setPlaybackLoading(true)
+    getBackblazeVideoUrl(course.videoUrl)
+      .then((url) => { if (active) setPlaybackUrl(url) })
+      .catch((err) => {
+        if (active) {
+          setPlaybackUrl(null)
+          toast.error(err instanceof Error ? err.message : 'Failed to authorize video playback')
+        }
+      })
+      .finally(() => { if (active) setPlaybackLoading(false) })
+    return () => { active = false }
   }, [canWatch, course.videoUrl])
 
   useEffect(() => {
@@ -209,7 +232,7 @@ export default function VideoPlayerModal({ course, userId, userName, isAdmin, ca
                     {course.videoUrl ? (
                       <video
                         ref={videoRef}
-                        src={course.videoUrl}
+                        src={playbackUrl || undefined}
                         controls
                         muted={false}
                         playsInline

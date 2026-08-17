@@ -104,13 +104,20 @@ export async function uploadWebinarVideo(file: File, sessionDate: string, onProg
 
 // ─── Storage: delete a saved webinar video by its public URL ───────────────
 export async function deleteWebinarVideo(fileUrl: string): Promise<void> {
+  if (isBackblazeRef(fileUrl)) {
+    await deleteBackblazeFile(fileUrl)
+    return
+  }
+
   const storageMatch = fileUrl.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)/)
-  if (isBackblazeRef(fileUrl)) return
   if (!storageMatch) return
+
   const [, bucket, path] = storageMatch
 
   const { error } = await supabase.storage.from(bucket).remove([path])
-  if (error) console.error(`Failed to delete webinar video from Storage: ${error.message}`)
+  if (error) {
+    console.error(`Failed to delete webinar video from Storage: ${error.message}`)
+  }
 }
 
 

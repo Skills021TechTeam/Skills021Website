@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import type { Resource } from '../store/contentStore'
+import { getBackblazeVideoUrl, uploadToBackblaze, deleteBackblazeFile, isBackblazeRef } from './backblazeService'
 
 // ─── Hierarchy entity types ─────────────────────────────────────────────────
 export interface College  { id: number; name: string; short_name: string | null; city: string | null; state: string | null }
@@ -259,18 +260,14 @@ export async function incrementDownloadCount(resourceId: string, currentDownload
 }
 
 // ─── Trigger File Download ──────────────────────────────────────────────────
-// Fetches the file as a blob and triggers a real browser download (so it
-// saves with the resource's title instead of just opening/previewing the
-// PDF in a new tab). Works for public Supabase Storage URLs and any other
-// public file URL, since it only needs the file's public link — it does NOT
-// depend on the Supabase Storage `.download()` API, which requires its own
-// row-level-security SELECT policy on `storage.objects` that may not exist
-// for every bucket. If the fetch fails for any reason (CORS, private file,
-// network), it falls back to simply opening the file in a new tab so the
-// user can still save it manually instead of the click doing nothing.
+// Fetches a resource file as a blob and triggers a real browser download.
+// Supports both legacy Supabase Storage URLs and the current b2:// references
+// stored in Supabase. If a fetch fails, the browser's own save/open handling
+// remains the final fallback.
 export async function triggerResourceDownload(fileUrl: string, fileName: string): Promise<void> {
   try {
-    const response = await fetch(fileUrl, { mode: 'cors' })
+    const resolvedUrl = isBackblazeRef(fileUrl) ? await getBackblazeVideoUrl(fileUrl) : fileUrl
+    const response = await fetch(resolvedUrl, { mode: 'cors' })
     if (!response.ok) {
       throw new Error(`Server responded with ${response.status}`)
     }
@@ -280,7 +277,7 @@ export async function triggerResourceDownload(fileUrl: string, fileName: string)
 
     // Preserve the file's original extension (e.g. "Chapter 1.pdf") even
     // though the resource title usually doesn't include one.
-    const urlExt = fileUrl.split('?')[0].split('.').pop()
+    const urlExt = resolvedUrl.split('?')[0].split('.').pop()
     const hasExt = urlExt && fileName.toLowerCase().endsWith(`.${urlExt.toLowerCase()}`)
     const downloadName = urlExt && !hasExt ? `${fileName}.${urlExt}` : fileName
 
@@ -464,39 +461,20 @@ export async function deleteSubject(id: number): Promise<void> {
   if (error) throw new Error(`Failed to delete subject: ${error.message}`)
 }
 
-// ─── Storage Operations ──────────────────────────────────────────────────────
+// ─── Storage Operations (Backblaze B2 for PDFs/files; Supabase stores refs) ──
 
 export async function uploadResourceFile(file: File, path: string): Promise<string> {
-  const { data, error } = await supabase.storage
-    .from('resources')
-    .upload(path, file, {
-      cacheControl: '3600',
-      upsert: true
-    })
-
-  if (error) {
-    throw new Error(`Failed to upload file to Storage: ${error.message}`)
-  }
-
-  // Get public URL
-  const { data: publicUrlData } = supabase.storage
-    .from('resources')
-    .getPublicUrl(path)
-
-  return publicUrlData.publicUrl
+  return uploadToBackblaze(file, `resources/${path}`, undefined)
 }
-
 export async function deleteResourceFile(fileUrl: string): Promise<void> {
-  // Extract path from the public URL
+  if (isBackblazeRef(fileUrl)) {
+    await deleteBackblazeFile(fileUrl)
+    return
+  }
   const storageMatch = fileUrl.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)/)
   if (!storageMatch) return
   const [, bucket, path] = storageMatch
-  
-  const { error } = await supabase.storage
-    .from(bucket)
-    .remove([path])
 
-  if (error) {
-    console.error(`Failed to delete file from Storage: ${error.message}`)
-  }
+  const { error } = await supabase.storage.from(bucket).remove([path])
+  if (error) console.error(`Failed to delete file from Storage: ${error.message}`)
 }

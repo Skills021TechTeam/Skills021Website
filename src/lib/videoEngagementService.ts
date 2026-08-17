@@ -378,7 +378,7 @@ export async function getComments(courseId: string): Promise<VideoComment[]> {
     courseId: String(r.item_id),
     userId: r.user_id,
     userName: r.user_name || 'Anonymous',
-    comment: r.comment,
+    comment: r.comment_text,
     createdAt: r.created_at,
   }))
 }
@@ -391,7 +391,7 @@ export async function addComment(courseId: string, userId: string, userName: str
       item_id: courseId,
       user_id: userId,
       user_name: userName,
-      comment: comment.trim(),
+      comment_text: comment.trim(),
     })
     .select('*')
     .single()
@@ -402,7 +402,7 @@ export async function addComment(courseId: string, userId: string, userName: str
     courseId: String(data.item_id),
     userId: data.user_id,
     userName: data.user_name || userName,
-    comment: data.comment,
+    comment: data.comment_text,
     createdAt: data.created_at,
   }
 }
@@ -474,14 +474,32 @@ export async function deleteTimestamp(timestampId: string): Promise<void> {
 }
 
 export function parseTimeToSeconds(timeStr: string): number {
-  const parts = timeStr.trim().split(':').map(Number)
+  const value = timeStr.trim()
+  if (!value) return NaN
+
+  // Admin-friendly shorthand: 0.05 means 0 minutes 05 seconds,
+  // 1.30 means 1 minute 30 seconds. This avoids the common mistake of
+  // treating 0.05 as five hundredths of a second.
+  if (/^\d+\.\d{1,2}$/.test(value)) {
+    const [minutesText, secondsText] = value.split('.')
+    const minutes = Number(minutesText)
+    const seconds = Number(secondsText.padEnd(2, '0'))
+    if (seconds >= 60) return NaN
+    return minutes * 60 + seconds
+  }
+
+  const parts = value.split(':').map(Number)
+  if (parts.some(part => !Number.isFinite(part) || part < 0)) return NaN
   if (parts.length === 2) {
-    return (parts[0] || 0) * 60 + (parts[1] || 0)
+    if (parts[1] >= 60) return NaN
+    return parts[0] * 60 + parts[1]
   }
   if (parts.length === 3) {
-    return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0)
+    if (parts[1] >= 60 || parts[2] >= 60) return NaN
+    return parts[0] * 3600 + parts[1] * 60 + parts[2]
   }
-  return Number(timeStr) || 0
+  if (parts.length === 1) return parts[0]
+  return NaN
 }
 
 export function formatSeconds(seconds: number): string {

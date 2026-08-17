@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Bell, CalendarDays, ExternalLink, Radio, Video, X, ArrowRight } from 'lucide-react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useAuthStore } from '../store/authStore'
 import { getLiveWebinars, type LiveWebinar } from '../lib/webinarService'
 
 const DISMISS_KEY = 'skills021_webinar_visit_popup_seen'
@@ -24,6 +25,8 @@ function getCurrentWebinar(webinars: LiveWebinar[]) {
 
 export default function WebinarVisitPopup() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const [notice, setNotice] = useState<ReturnType<typeof getCurrentWebinar>>(null)
   const [open, setOpen] = useState(false)
 
@@ -127,13 +130,19 @@ export default function WebinarVisitPopup() {
 
               <div className="mt-5 flex flex-wrap gap-2.5">
                 {notice.type === 'live' ? (
-                  <a href={notice.webinar.joinUrl} target="_blank" rel="noreferrer" onClick={() => sessionStorage.setItem(DISMISS_KEY, '1')} className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-3 text-xs font-bold text-white shadow-lg shadow-violet-500/20 transition hover:-translate-y-0.5">
-                    Join live <ExternalLink size={13} />
-                  </a>
+                  isAuthenticated ? (
+                    <a href={notice.webinar.joinUrl} target="_blank" rel="noreferrer" onClick={() => sessionStorage.setItem(DISMISS_KEY, '1')} className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-3 text-xs font-bold text-white shadow-lg shadow-violet-500/20 transition hover:-translate-y-0.5">
+                      Join live <ExternalLink size={13} />
+                    </a>
+                  ) : (
+                    <button type="button" onClick={() => { close(); navigate('/register', { state: { from: '/courses?tab=webinars' } }) }} className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-3 text-xs font-bold text-white shadow-lg shadow-violet-500/20 transition hover:-translate-y-0.5">
+                      Sign up to join <ArrowRight size={13} />
+                    </button>
+                  )
                 ) : (
-                  <Link to="/courses?tab=webinars" onClick={close} className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-3 text-xs font-bold text-white shadow-lg shadow-violet-500/20 transition hover:-translate-y-0.5">
-                    View webinar <ArrowRight size={13} />
-                  </Link>
+                  <button type="button" onClick={() => { close(); navigate(isAuthenticated ? '/courses?tab=webinars' : '/register', { state: { from: '/courses?tab=webinars' } }) }} className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-3 text-xs font-bold text-white shadow-lg shadow-violet-500/20 transition hover:-translate-y-0.5">
+                    {isAuthenticated ? 'View webinar' : 'Sign up to view'} <ArrowRight size={13} />
+                  </button>
                 )}
                 <button type="button" onClick={close} className="inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-3 text-xs font-bold text-brand-muted transition hover:bg-gray-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10">
                   Maybe later

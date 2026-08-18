@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
-import { motion } from 'framer-motion'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { BookOpen, Clock, Users, Star, Search, Play, SlidersHorizontal, ChevronDown, X, Loader2, Lock, CheckCircle2, Sparkles, GraduationCap, Radio, Video, ExternalLink, CalendarDays, MonitorPlay, Trophy, TrendingUp, Zap, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -22,7 +22,7 @@ import { getEnrollmentsForUser } from '../lib/videoEngagementService'
 import EnrollModal from '../components/EnrollModal'
 import VideoPlayerModal from '../components/VideoPlayerModal'
 import CourseRatingMenu from '../components/CourseRatingMenu'
-import { getLiveWebinars, getWebinarRecordings, type LiveWebinar, type WebinarRecording } from '../lib/webinarService'
+import { getLiveWebinars, getWebinarRecordings, resolveWebinarRecordingVideo, type LiveWebinar, type WebinarRecording } from '../lib/webinarService'
 
 const GROUPS: { label: CourseGroup }[] = [
   { label: 'Competitive Exams' },
@@ -229,6 +229,7 @@ export default function Courses() {
   const [liveWebinars, setLiveWebinars] = useState<LiveWebinar[]>([])
   const [webinarRecordings, setWebinarRecordings] = useState<WebinarRecording[]>([])
   const [webinarsLoading, setWebinarsLoading] = useState(false)
+  const [openingReplayId, setOpeningReplayId] = useState<string | null>(null)
   const [courses, setCourses] = useState<Course[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -542,7 +543,7 @@ export default function Courses() {
     if (courseSection !== 'webinars') return
     let active = true
     setWebinarsLoading(true)
-    Promise.all([getLiveWebinars(), getWebinarRecordings()])
+    Promise.all([getLiveWebinars(), getWebinarRecordings(false)])
       .then(([live, recordings]) => { if (active) { setLiveWebinars(live); setWebinarRecordings(recordings) } })
       .catch(() => { if (active) toast.error('Could not load webinars right now') })
       .finally(() => { if (active) setWebinarsLoading(false) })
@@ -552,6 +553,37 @@ export default function Courses() {
   const now = Date.now()
   const activeWebinar = liveWebinars.find(w => new Date(w.startsAt).getTime() <= now && (!w.endsAt || new Date(w.endsAt).getTime() > now))
   const upcomingWebinar = liveWebinars.find(w => new Date(w.startsAt).getTime() > now)
+
+  const canAccessWebinar = (webinar: LiveWebinar | WebinarRecording) => {
+    if (isAdmin) return true
+    if (webinar.access === 'free') return true
+    if (webinar.access === 'enrolled_free') return enrolledIds.size > 0
+    return false
+  }
+
+  const webinarAccessLabel = (webinar: LiveWebinar | WebinarRecording) => {
+    if (webinar.access === 'free') return 'Free'
+    if (webinar.access === 'enrolled_free') return enrolledIds.size > 0 ? 'Free for you' : `₹${webinar.price} · Enrolled students free`
+    return `Paid · ₹${webinar.price}`
+  }
+
+  const handleOpenReplay = async (webinar: WebinarRecording) => {
+    if (!isAuthenticated && webinar.access !== 'free') return requireLogin()
+    if (!canAccessWebinar(webinar)) {
+      toast.error(webinar.access === 'enrolled_free' ? 'Enroll in any course to watch this webinar for free.' : `This webinar is paid (₹${webinar.price}). Payment checkout is not connected yet.`)
+      return
+    }
+    try {
+      setOpeningReplayId(webinar.id)
+      const url = await resolveWebinarRecordingVideo(webinar)
+      if (!url) { toast.error('Replay video is not available yet.'); return }
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not open webinar replay')
+    } finally {
+      setOpeningReplayId(null)
+    }
+  }
 
   const published = courses.filter(c => c.status === 'Published')
 
@@ -760,7 +792,7 @@ export default function Courses() {
 
               <div>
                 <div className="flex items-end justify-between mb-5"><div><p className="text-xs font-bold uppercase tracking-widest text-violet-500">Webinar Library</p><h3 className="text-2xl font-black text-brand-text dark:text-white">Past sessions</h3></div><span className="text-xs text-brand-muted">{webinarRecordings.length} replay{webinarRecordings.length !== 1 ? 's' : ''}</span></div>
-                {webinarRecordings.length === 0 ? <div className="rounded-3xl border border-gray-100 dark:border-white/10 p-10 text-center text-sm text-brand-muted">No webinar recordings have been published yet.</div> : <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">{webinarRecordings.map(w => <article key={w.id} className="group overflow-hidden rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-brand-dark-card shadow-sm hover:shadow-xl transition-shadow"><div className="h-40 bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-500 relative flex items-center justify-center">{w.thumbnailUrl ? <img src={w.thumbnailUrl} alt="" className="absolute inset-0 w-full h-full object-cover"/> : <Play size={38} className="text-white/90"/>}<span className="absolute left-3 top-3 rounded-full bg-black/35 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur">REPLAY</span></div><div className="p-5"><p className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">{new Date(w.sessionDate).toLocaleDateString()}</p><h4 className="mt-1 font-black text-brand-text dark:text-white line-clamp-2">{w.title}</h4><p className="mt-2 text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-2">{w.description}</p>{w.videoUrl && <a href={w.videoUrl} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-violet-600 dark:text-violet-300">Watch replay <ExternalLink size={13}/></a>}</div></article>)}</div>}
+                {webinarRecordings.length === 0 ? <div className="rounded-3xl border border-gray-100 dark:border-white/10 p-10 text-center text-sm text-brand-muted">No webinar recordings have been published yet.</div> : <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">{webinarRecordings.map(w => <article key={w.id} className="group overflow-hidden rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-brand-dark-card shadow-sm hover:shadow-xl transition-shadow"><div className="h-40 bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-500 relative flex items-center justify-center">{w.thumbnailUrl ? <img src={w.thumbnailUrl} alt="" className="absolute inset-0 w-full h-full object-cover"/> : <Play size={38} className="text-white/90"/>}<span className="absolute left-3 top-3 rounded-full bg-black/35 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur">REPLAY</span></div><div className="p-5"><p className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">{new Date(w.sessionDate).toLocaleDateString()}</p><span className="mt-1 inline-flex text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300">{webinarAccessLabel(w)}</span><h4 className="mt-1 font-black text-brand-text dark:text-white line-clamp-2">{w.title}</h4><p className="mt-2 text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-2">{w.description}</p>{w.videoUrl && <button onClick={() => handleOpenReplay(w)} disabled={openingReplayId === w.id} className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-violet-600 dark:text-violet-300 disabled:opacity-60">{canAccessWebinar(w) ? (openingReplayId === w.id ? <><Loader2 size={13} className="animate-spin"/> Opening...</> : <>Watch replay <ExternalLink size={13}/></>) : <><Lock size={13}/> {webinarAccessLabel(w)}</>}</button>}</div></article>)}</div>}
               </div>
             </>
           )}

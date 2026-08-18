@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { uploadToBackblaze, deleteBackblazeFile, isBackblazeRef } from './backblazeService'
 import type { Course, CourseGroup, CourseSubcategory } from '../store/contentStore'
 
 // A linked "Notes" subject is stored as a hidden entry inside the existing
@@ -366,20 +367,17 @@ export async function uploadCourseThumbnail(file: File, path: string): Promise<s
   return data.publicUrl
 }
 
-// ─── Storage: Video Upload (bucket: course-videos) ──────────────────────────
+// ─── Storage: Course Video Upload (Backblaze B2) ───────────────────────────
 export async function uploadCourseVideo(file: File, path: string): Promise<string> {
-  const { error } = await supabase.storage
-    .from('course-videos')
-    .upload(path, file, { cacheControl: '3600', upsert: true })
-
-  if (error) throw new Error(`Failed to upload video: ${error.message}`)
-
-  const { data } = supabase.storage.from('course-videos').getPublicUrl(path)
-  return data.publicUrl
+  return uploadToBackblaze(file, `courses/${path}`, undefined)
 }
 
 // ─── Storage: Delete a course file (thumbnail or video) by its public URL ──
 export async function deleteCourseFile(fileUrl: string): Promise<void> {
+  if (isBackblazeRef(fileUrl)) {
+    await deleteBackblazeFile(fileUrl)
+    return
+  }
   const storageMatch = fileUrl.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)/)
   if (!storageMatch) return
   const [, bucket, path] = storageMatch

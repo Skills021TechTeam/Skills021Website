@@ -1,0 +1,25 @@
+[
+  {
+    "corsRuleName": "skills021BrowserUpload",
+    "allowedOrigins": ["*"],
+    "allowedHeaders": ["*"],
+    "allowedOperations": [
+      "b2_upload_file",
+      "s3_put"
+    ],
+    "exposeHeaders": ["x-bz-content-sha1"],
+    "maxAgeSeconds": 3600
+  },
+  {
+    "corsRuleName": "skills021BrowserDownload",
+    "allowedOrigins": ["*"],
+    "allowedHeaders": ["authorization", "range"],
+    "allowedOperations": [
+      "b2_download_file_by_id",
+      "b2_download_file_by_name",
+      "s3_get"
+    ],
+    "exposeHeaders": ["x-bz-content-sha1"],
+    "maxAgeSeconds": 3600
+  }
+]

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, FileText, HelpCircle, Map,
   Users, Settings, Plus, Edit2, Trash2, Search,
   X, Shield, TrendingUp, Eye, Download, EyeOff,
-  CheckCircle, Zap, Video, Loader2, RotateCw, Compass, ListVideo, Clock, Trophy, Minus, Save, LogOut,
+  CheckCircle, Zap, Video, Loader2, RotateCw, Compass, ListVideo, Clock, Briefcase, Mail, Phone, Trophy, Minus, Save, LogOut, ChevronDown, Check, Radio,
   CreditCard, DollarSign, ExternalLink, RefreshCw, ChevronRight, Copy, ShieldAlert,
   QrCode, UploadCloud
 } from 'lucide-react'
@@ -270,6 +270,7 @@ import {
   type UserEnrollmentSummary,
 } from '../lib/supabase'
 import toast from 'react-hot-toast'
+import { isBackblazeRef, deleteBackblazeFile } from '../lib/backblazeService'
 import { getLiveWebinars, createLiveWebinar, updateLiveWebinar, deleteLiveWebinar, getWebinarRecordings, uploadWebinarVideo, createWebinarRecording, deleteWebinarRecording, type LiveWebinar, type WebinarRecording, type WebinarProvider, type WebinarAccess } from '../lib/webinarService'
 import { getBackblazeVideoUrl } from '../lib/backblazeService'
 
@@ -277,6 +278,7 @@ type AdminTab =
   | 'overview' | 'courses' | 'resources' | 'quizzes' | 'roadmaps'
   | 'mentorship' | 'youtube-videos' | 'webinars' | 'users' | 'settings' | 'hierarchy'
   | 'pathfinder-careers' | 'pathfinder-exams' | 'pathfinder-mappings'
+  | 'career-applications'
   | 'hackathons' | 'payment-approvals'
 
 const sidebarItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard; group?: string }[] = [
@@ -1173,7 +1175,8 @@ export default function AdminDashboard() {
   const [courseThumbUploadStatus, setCourseThumbUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle')
   const [courseExistingThumbUrl, setCourseExistingThumbUrl] = useState('')
   // Course chapters / YouTube-style timestamps state
-  const [courseTimestamps, setCourseTimestamps] = useState<VideoTimestamp[]>([])
+  type CourseTimestampDraft = Partial<VideoTimestamp> & { timeSeconds: number; label: string; sortOrder: number }
+  const [courseTimestamps, setCourseTimestamps] = useState<CourseTimestampDraft[]>([])
   const [timestampsLoading, setTimestampsLoading] = useState(false)
   const [newTimestampTime, setNewTimestampTime] = useState('')
   const [newTimestampLabel, setNewTimestampLabel] = useState('')
@@ -2091,22 +2094,28 @@ export default function AdminDashboard() {
   // validation against the video's actual detected duration so admins can't
   // accidentally add a chapter past the end of the video.
   const handleAddChapter = async () => {
-    if (!editItem?.id || !newTimestampTime || !newTimestampLabel.trim()) return
+    if (!newTimestampTime || !newTimestampLabel.trim()) return
     const seconds = parseTimeToSeconds(newTimestampTime)
     if (!Number.isFinite(seconds) || seconds < 0) {
-      toast.error('Enter a valid time, e.g. 1:30')
+      toast.error('Enter a valid time, e.g. 0.05, 0:05, or 0:05:00')
       return
     }
-    if (courseVideoDurationSeconds && seconds > Math.ceil(courseVideoDurationSeconds)) {
+    if (courseVideoDurationSeconds != null && seconds > Math.ceil(courseVideoDurationSeconds)) {
       toast.error(`That's past the end of the video (${formatSeconds(courseVideoDurationSeconds)} long)`)
       return
     }
     setTimestampSaving(true)
     try {
-      const created = await addTimestamp(String(editItem.id), seconds, newTimestampLabel.trim(), courseTimestamps.length)
-      setCourseTimestamps(prev => [...prev, created].sort((a, b) => a.timeSeconds - b.timeSeconds))
+      const draft = { timeSeconds: seconds, label: newTimestampLabel.trim(), sortOrder: courseTimestamps.length }
+      if (editItem?.id) {
+        const created = await addTimestamp(String(editItem.id), seconds, draft.label, courseTimestamps.length)
+        setCourseTimestamps(prev => [...prev, created].sort((a, b) => a.timeSeconds - b.timeSeconds))
+        toast.success('Chapter added')
+      } else {
+        setCourseTimestamps(prev => [...prev, draft].sort((a, b) => a.timeSeconds - b.timeSeconds).map((item, index) => ({ ...item, sortOrder: index })))
+        toast.success('Chapter queued — it will be saved with the course')
+      }
       setNewTimestampTime(''); setNewTimestampLabel('')
-      toast.success('Chapter added')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to add chapter')
     } finally {
@@ -5568,6 +5577,8 @@ export default function AdminDashboard() {
       const handleSave = async () => {
         if (!editItem.title) { toast.error('Title required'); return }
         setCourseSaving(true)
+        let newlyUploadedVideoUrl: string | null = null
+        let newlyUploadedThumbnailUrl: string | null = null
         try {
           let videoUrl = courseExistingVideoUrl
           let thumbnailUrl = courseExistingThumbUrl
@@ -5582,12 +5593,10 @@ export default function AdminDashboard() {
             try {
               const path = `${Date.now()}_${cleanFilename(courseVideoFile.name)}`
               videoUrl = await uploadCourseVideo(courseVideoFile, path)
+              newlyUploadedVideoUrl = videoUrl
               clearInterval(interval)
               setCourseVideoUploadProgress(100)
               setCourseVideoUploadStatus('success')
-              if (editItem.id && courseExistingVideoUrl) {
-                await deleteCourseFile(courseExistingVideoUrl).catch(() => {})
-              }
             } catch (err) {
               clearInterval(interval)
               setCourseVideoUploadStatus('error')
@@ -5601,10 +5610,8 @@ export default function AdminDashboard() {
             try {
               const path = `${Date.now()}_${cleanFilename(courseThumbFile.name)}`
               thumbnailUrl = await uploadCourseThumbnail(courseThumbFile, path)
+              newlyUploadedThumbnailUrl = thumbnailUrl
               setCourseThumbUploadStatus('success')
-              if (editItem.id && courseExistingThumbUrl) {
-                await deleteCourseFile(courseExistingThumbUrl).catch(() => {})
-              }
             } catch (err) {
               setCourseThumbUploadStatus('error')
               throw err
@@ -5631,8 +5638,10 @@ export default function AdminDashboard() {
             subjectId: cSelectedSubjectId ? Number(cSelectedSubjectId) : null,
           }
 
+          let savedCourseId: string
           if (editItem.id) {
             const updated = await updateSiteCourse(editItem.id, payload)
+            savedCourseId = String(updated.id)
             setDbCourses(prev => prev.map(c => c.id === editItem.id ? updated : c))
             if ((updated as unknown as { _subjectLinkFailed?: boolean })._subjectLinkFailed) {
               toast.error('Course saved, but the College/Course/Branch/Semester/Subject link did NOT save — it won\u2019t show up under the Courses page academic filter yet. Reload the Supabase schema cache, then edit and save this course again.', { duration: 8000 })
@@ -5641,6 +5650,7 @@ export default function AdminDashboard() {
             }
           } else {
             const created = await createSiteCourse(payload)
+            savedCourseId = String(created.id)
             setDbCourses(prev => [created, ...prev])
             if ((created as unknown as { _subjectLinkFailed?: boolean })._subjectLinkFailed) {
               toast.error('Course saved, but the College/Course/Branch/Semester/Subject link did NOT save — it won\u2019t show up under the Courses page academic filter yet. Reload the Supabase schema cache, then edit and save this course again.', { duration: 8000 })
@@ -5648,8 +5658,34 @@ export default function AdminDashboard() {
               toast.success('Course added!')
             }
           }
+
+          // New courses can have chapters entered on the same upload form.
+          // Persist them only after the course row exists, so no schema change
+          // or temporary database row is required.
+          const pendingTimestamps = courseTimestamps.filter(t => !t.id)
+          if (pendingTimestamps.length > 0) {
+            const createdTimestamps = []
+            for (const timestamp of pendingTimestamps) {
+              createdTimestamps.push(await addTimestamp(savedCourseId, timestamp.timeSeconds, timestamp.label, timestamp.sortOrder))
+            }
+            setCourseTimestamps(createdTimestamps)
+          }
+
+          // Only remove replaced files after the database points at the new ones.
+          if (editItem.id && courseExistingVideoUrl && videoUrl !== courseExistingVideoUrl) {
+            await deleteCourseFile(courseExistingVideoUrl).catch((err) => console.warn('Old course video cleanup failed:', err))
+          }
+          if (editItem.id && courseExistingThumbUrl && thumbnailUrl !== courseExistingThumbUrl) {
+            await deleteCourseFile(courseExistingThumbUrl).catch((err) => console.warn('Old course thumbnail cleanup failed:', err))
+          }
           closeModal()
         } catch (err) {
+          if (newlyUploadedVideoUrl && isBackblazeRef(newlyUploadedVideoUrl)) {
+            await deleteCourseFile(newlyUploadedVideoUrl).catch(() => {})
+          }
+          if (newlyUploadedThumbnailUrl) {
+            await deleteCourseFile(newlyUploadedThumbnailUrl).catch(() => {})
+          }
           toast.error(err instanceof Error ? err.message : 'Failed to save course')
         } finally {
           setCourseSaving(false)
@@ -5827,12 +5863,7 @@ export default function AdminDashboard() {
                     </span>
                   )}
                 </label>
-                {!editItem.id ? (
-                  <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted bg-gray-50 dark:bg-white/5 rounded-lg px-3 py-2">
-                    Save the course first, then reopen it to add chapters — just like YouTube timestamps students can tap to jump around the video.
-                  </p>
-                ) : (
-                  <div className="border border-brand-border dark:border-brand-dark-border rounded-xl p-3 space-y-3 bg-gray-50 dark:bg-brand-dark-bg">
+                <div className="border border-brand-border dark:border-brand-dark-border rounded-xl p-3 space-y-3 bg-gray-50 dark:bg-brand-dark-bg">
                     {timestampsLoading ? (
                       <div className="flex items-center justify-center py-3"><Loader2 size={16} className="animate-spin text-brand-muted" /></div>
                     ) : courseTimestamps.length === 0 ? (
@@ -5840,13 +5871,17 @@ export default function AdminDashboard() {
                     ) : (
                       <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
                         {courseTimestamps.map(t => (
-                          <div key={t.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border text-xs">
+                          <div key={t.id ?? `pending-${t.sortOrder}-${t.timeSeconds}-${t.label}`} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border text-xs">
                             <span className="font-mono font-semibold text-primary-500 flex-shrink-0">{formatSeconds(t.timeSeconds)}</span>
                             <span className="flex-1 truncate text-brand-text dark:text-brand-dark-text">{t.label}</span>
                             <button
                               type="button"
                               disabled={deletingTimestampId === t.id}
                               onClick={async () => {
+                                if (!t.id) {
+                                  setCourseTimestamps(prev => prev.filter(x => x !== t))
+                                  return
+                                }
                                 setDeletingTimestampId(t.id)
                                 try {
                                   await deleteTimestampApi(t.id)
@@ -5872,7 +5907,7 @@ export default function AdminDashboard() {
                         <input
                           value={newTimestampTime}
                           onChange={e => setNewTimestampTime(e.target.value)}
-                          placeholder={courseVideoDurationSeconds != null && courseVideoDurationSeconds >= 3600 ? 'hh:mm:ss' : 'mm:ss'}
+                          placeholder="0.05 / 0:05"
                           className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card text-xs text-brand-text dark:text-brand-dark-text"
                         />
                       </div>
@@ -5894,13 +5929,10 @@ export default function AdminDashboard() {
                     </div>
                     <p className="text-[10px] text-brand-muted dark:text-brand-dark-muted">
                       {courseVideoDurationSeconds != null
-                        ? (courseVideoDurationSeconds >= 3600
-                          ? `Enter time as hh:mm:ss — this video is ${formatSeconds(courseVideoDurationSeconds)} long.`
-                          : `Enter time as mm:ss — this video is ${formatSeconds(courseVideoDurationSeconds)} long.`)
-                        : 'Enter time as mm:ss (e.g. 1:30) or hh:mm:ss for longer videos.'}
+                        ? `Enter 0.05 for 5 sec, 0.06 for 6 sec, 0.07 for 7 sec, or use 0:05 / 00:05. Video length: ${formatSeconds(courseVideoDurationSeconds)}.`
+                        : 'Enter 0.05 for 5 seconds, 0:05, or 00:05 for timestamp positions.'}
                     </p>
                   </div>
-                )}
               </div>
 
               {/* Thumbnail Upload */}
@@ -6481,7 +6513,7 @@ export default function AdminDashboard() {
               {recordingAccess === 'enrolled_free' && <p className="text-xs text-violet-600 dark:text-violet-300 -mt-2">Any active course-enrolled student gets the replay free; everyone else sees the paid price.</p>}
               <Field label="Video file *"><input type="file" accept="video/*" onChange={e=>setRecordingFile(e.target.files?.[0]??null)} className={inputCls}/></Field>
               {recordingFile && <div className="rounded-xl border border-brand-border dark:border-brand-dark-border p-3 bg-gray-50 dark:bg-white/5"><div className="flex items-center justify-between text-xs mb-1.5"><span className="font-semibold text-brand-text dark:text-brand-dark-text truncate mr-3">{recordingFile.name}</span><span className="text-brand-muted">{(recordingFile.size/1024/1024).toFixed(2)} MB</span></div><div className="h-1.5 rounded-full bg-gray-200 dark:bg-white/10 overflow-hidden"><motion.div className="h-full bg-violet-600 rounded-full" animate={{width:`${recordingUploadProgress}%`}} /></div>{webinarBusy && <p className="mt-1.5 text-[10px] font-semibold text-brand-muted">Uploading {recordingUploadProgress}%...</p>}</div>}
-              <button disabled={webinarBusy||!recordingFile||!recordingTitle.trim()} onClick={async()=>{try{setWebinarBusy(true);setRecordingUploadProgress(0);let duration=recordingDuration; if(!duration){const seconds=await getVideoDurationSeconds(recordingFile!); if(seconds!=null) duration=formatDurationHuman(seconds)} if(!duration){throw new Error('Could not read the video duration. Please choose a valid video file and try again.')} const url=await uploadWebinarVideo(recordingFile!,recordingDate,p=>setRecordingUploadProgress(p)); const created=await createWebinarRecording({title:recordingTitle.trim(),description:recordingDescription.trim(),sessionDate:recordingDate,videoUrl:url,duration,access:recordingAccess,price:recordingAccess==='free'?0:Math.max(0,Number(recordingPrice)||0)}); setWebinarRecordings(prev=>[created,...prev]);setRecordingTitle('');setRecordingDescription('');setRecordingFile(null);setRecordingDuration('');setRecordingAccess('free');setRecordingPrice('0');setRecordingUploadProgress(0);toast.success('Webinar recording published')}catch(e){toast.error(e instanceof Error?e.message:'Failed to upload recording')}finally{setWebinarBusy(false)}}} className="w-full py-3 rounded-xl bg-violet-600 text-white font-semibold disabled:opacity-50">{webinarBusy ? 'Uploading replay...' : 'Upload & publish replay'}</button>
+              <button disabled={webinarBusy||!recordingFile||!recordingTitle.trim()} onClick={async()=>{let uploadedWebinarRef: string | null = null; try{setWebinarBusy(true);setRecordingUploadProgress(0);let duration=recordingDuration; if(!duration){const seconds=await getVideoDurationSeconds(recordingFile!); if(seconds!=null) duration=formatDurationHuman(seconds)} if(!duration){throw new Error('Could not read the video duration. Please choose a valid video file and try again.')} uploadedWebinarRef=await uploadWebinarVideo(recordingFile!,recordingDate,p=>setRecordingUploadProgress(p)); const created=await createWebinarRecording({title:recordingTitle.trim(),description:recordingDescription.trim(),sessionDate:recordingDate,videoUrl:uploadedWebinarRef,duration,access:recordingAccess,price:recordingAccess==='free'?0:Math.max(0,Number(recordingPrice)||0)}); setWebinarRecordings(prev=>[created,...prev]);setRecordingTitle('');setRecordingDescription('');setRecordingFile(null);setRecordingDuration('');setRecordingAccess('free');setRecordingPrice('0');setRecordingUploadProgress(0);toast.success('Webinar recording published')}catch(e){if(uploadedWebinarRef && isBackblazeRef(uploadedWebinarRef)){await deleteBackblazeFile(uploadedWebinarRef).catch(()=>{})} toast.error(e instanceof Error?e.message:'Failed to upload recording')}finally{setWebinarBusy(false)}}} className="w-full py-3 rounded-xl bg-violet-600 text-white font-semibold disabled:opacity-50">{webinarBusy ? 'Uploading replay...' : 'Upload & publish replay'}</button>
             </div>
           </div>
         </div>

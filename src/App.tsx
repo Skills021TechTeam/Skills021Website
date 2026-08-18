@@ -24,6 +24,7 @@ import AdminDashboard from './pages/AdminDashboard'
 import { supabase, getUserProfile } from './lib/supabase'
 import { getEnrollmentsForUser } from './lib/videoEngagementService'
 import { useAuthStore, User } from './store/authStore'
+import WebinarVisitPopup from './components/WebinarVisitPopup'
 
 // Apply saved dark mode preference on load
 const applyTheme = () => {

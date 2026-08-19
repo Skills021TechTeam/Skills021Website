@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Map, ChevronRight, Clock, Eye, CheckCircle, Circle, ArrowRight, Zap } from 'lucide-react'
+import { Map, ChevronRight, Clock, Eye, CheckCircle, Circle, ArrowRight, Zap, Sparkles } from 'lucide-react'
 import { useContentStore } from '../store/contentStore'
+import PanelSpotlightCard from '../components/PanelSpotlightCard'
 
 const LEVEL_COLORS = {
   Foundation: { bg: 'bg-blue-50 dark:bg-blue-900/20', text: 'text-blue-600 dark:text-blue-400', border: 'border-blue-200 dark:border-blue-800', dot: 'bg-blue-500' },
@@ -144,20 +145,32 @@ export default function Roadmaps() {
 
   return (
     <div className="min-h-screen bg-brand-bg dark:bg-brand-dark-bg pt-16">
-      {/* Hero */}
-      <div className="bg-gradient-to-br from-[#0F0F1A] via-[#1A1040] to-[#0F1A0F] py-12 px-4">
-        <div className="max-w-5xl mx-auto text-center">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <span className="inline-flex items-center gap-2 px-4 py-1.5 text-xs font-bold text-green-400 bg-green-400/10 border border-green-400/30 rounded-full mb-4 uppercase tracking-widest">
-              <Map size={13} /> Career Roadmaps
+      {/* Hero — shared split layout */}
+      <div className="bg-gradient-to-b from-gray-50/80 to-white dark:from-brand-dark-card/50 dark:to-brand-dark-bg border-b border-gray-100 dark:border-brand-dark-border py-10 px-4 sm:py-14">
+        <div className="max-w-7xl mx-auto flex flex-col items-center lg:flex-row lg:gap-12">
+          <motion.div className="flex-1 w-full" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-teal-600 dark:text-teal-400 bg-teal-500/10 border border-teal-500/20 rounded-full mb-4 uppercase tracking-widest">
+              <Sparkles size={12} /> Structured Milestones
             </span>
-            <h1 className="text-3xl md:text-5xl font-bold text-white mb-4">
+            <h1 className="text-4xl md:text-6xl font-black text-brand-text dark:text-brand-dark-text mb-5 tracking-tight">
               Your Path to <span className="gradient-text">Success</span>
             </h1>
-            <p className="text-slate-400 max-w-xl mx-auto">
-              Visual, step-by-step roadmaps for every career goal. Track your progress and stay on course.
+            <p className="text-brand-muted dark:text-brand-dark-muted text-base md:text-lg max-w-xl leading-relaxed mb-6">
+              Visual, step-by-step roadmaps for engineering, data science, and competitive exams. Check off milestones as you build mastery.
             </p>
+            <div className="flex flex-wrap items-center gap-4 text-sm text-brand-muted dark:text-brand-dark-muted mb-6">
+              <span className="flex items-center gap-2"><Map size={14} />{published.length}+ Structured Blueprints</span>
+              <span className="flex items-center gap-2"><Eye size={14} />100K+ Blueprint Views</span>
+              <span className="flex items-center gap-2"><CheckCircle size={14} />100% Free & Interactive</span>
+            </div>
           </motion.div>
+          <aside className="hidden lg:block w-full max-w-md xl:max-w-lg flex-shrink-0 mt-8 lg:mt-0">
+            <PanelSpotlightCard
+              variant="roadmap"
+              stat={{ value: `${published.length}+`, label: 'Blueprints' }}
+              secondaryStat={{ value: '100+', label: 'Step Milestones' }}
+            />
+          </aside>
         </div>
       </div>
 

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { HelpCircle, Clock, Users, ChevronRight, CheckCircle, X, Trophy, RotateCcw, Award } from 'lucide-react'
 import { useContentStore, Quiz, QuizCategory } from '../store/contentStore'
+import PanelSpotlightCard from '../components/PanelSpotlightCard'
 import toast from 'react-hot-toast'
 
 const CATEGORIES: { label: QuizCategory; color: string; bg: string }[] = [
@@ -214,34 +215,32 @@ export default function Quizzes() {
 
   return (
     <div className="min-h-screen bg-brand-bg dark:bg-brand-dark-bg pt-16">
-      {/* Hero */}
-      <div className="bg-gradient-to-br from-[#0F0F1A] via-[#180F35] to-[#0F0F1A] py-12 px-4">
-        <div className="max-w-5xl mx-auto text-center">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <span className="inline-flex items-center gap-2 px-4 py-1.5 text-xs font-bold text-purple-400 bg-purple-400/10 border border-purple-400/30 rounded-full mb-4 uppercase tracking-widest">
-              <Trophy size={13} /> Quiz & Test Platform
+      {/* Hero — shared split layout */}
+      <div className="bg-gradient-to-b from-gray-50/80 to-white dark:from-brand-dark-card/50 dark:to-brand-dark-bg border-b border-gray-100 dark:border-brand-dark-border py-10 px-4 sm:py-14">
+        <div className="max-w-7xl mx-auto flex flex-col items-center lg:flex-row lg:gap-12">
+          <motion.div className="flex-1 w-full" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-full mb-4 uppercase tracking-widest">
+              <Trophy size={12} /> Interactive Mock Platform
             </span>
-            <h1 className="text-3xl md:text-5xl font-bold text-white mb-4">
+            <h1 className="text-4xl md:text-6xl font-black text-brand-text dark:text-brand-dark-text mb-5 tracking-tight">
               Test Your <span className="gradient-text">Knowledge</span>
             </h1>
-            <p className="text-slate-400 max-w-xl mx-auto">
-              Practice with {published.length}+ curated quizzes. Get instant feedback, leaderboards, and earn certificates.
+            <p className="text-brand-muted dark:text-brand-dark-muted text-base md:text-lg max-w-xl leading-relaxed mb-6">
+              Practice with {published.length}+ curated timed quizzes across DSA, JEE, NEET, and placement aptitude. Get instant answers, explanations, and benchmark your progress.
             </p>
+            <div className="flex flex-wrap items-center gap-4 text-sm text-brand-muted dark:text-brand-dark-muted mb-6">
+              <span className="flex items-center gap-2"><Trophy size={14} />{published.length}+ Timed Quizzes</span>
+              <span className="flex items-center gap-2"><Users size={14} />{(published.reduce((a, q) => a + q.participants, 0) / 1000).toFixed(0)}K+ Participants</span>
+              <span className="flex items-center gap-2"><CheckCircle size={14} />100% Free Practice</span>
+            </div>
           </motion.div>
-
-          {/* Stats */}
-          <div className="flex items-center justify-center gap-8 mt-8">
-            {[
-              { val: published.length + '+', label: 'Quizzes' },
-              { val: (published.reduce((a, q) => a + q.participants, 0) / 1000).toFixed(0) + 'K+', label: 'Participants' },
-              { val: '100%', label: 'Free Access' },
-            ].map(s => (
-              <div key={s.label} className="text-center">
-                <div className="text-2xl font-bold text-white">{s.val}</div>
-                <div className="text-xs text-slate-400">{s.label}</div>
-              </div>
-            ))}
-          </div>
+          <aside className="hidden lg:block w-full max-w-md xl:max-w-lg flex-shrink-0 mt-8 lg:mt-0">
+            <PanelSpotlightCard
+              variant="quiz"
+              stat={{ value: `${published.length}+`, label: 'Active Quizzes' }}
+              secondaryStat={{ value: `${(published.reduce((a, q) => a + q.participants, 0) / 1000).toFixed(0)}K+`, label: 'Participants' }}
+            />
+          </aside>
         </div>
       </div>
 

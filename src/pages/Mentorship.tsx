@@ -4,11 +4,12 @@ import {
   Users, Star, Clock, Briefcase, CheckCircle, Calendar, HeartHandshake,
   FileText, Link2, Video, Target, Lightbulb, BookOpen,
   ArrowRight, Phone, MessageCircle, Mail, MapPin, GraduationCap,
-  Send, ChevronRight, Zap, Check, Search, X, ExternalLink,
-  ChevronDown, IndianRupee, Info,
+  Send, ChevronRight, Shield, Zap, Check, Search, X, ExternalLink,
+  ChevronDown, IndianRupee, Info, Sparkles,
 } from 'lucide-react'
 import { fetchActiveMentors, createGuidanceRequest, type Mentor } from '../lib/mentorService'
 import toast from 'react-hot-toast'
+import PanelSpotlightCard from '../components/PanelSpotlightCard'
 
 
 // Guidance type definition
@@ -344,17 +345,41 @@ export default function Mentorship() {
   return (
     <div className="min-h-screen bg-white dark:bg-brand-dark-bg pt-16">
 
-      {/* ── Premium Mentorship Hero (PathFinder-inspired) ── */}
-      <section className="bg-gray-50 dark:bg-brand-dark-card border-b border-gray-100 dark:border-brand-dark-border pt-28 pb-12 px-4 overflow-hidden">
-        <div className="max-w-7xl mx-auto grid lg:grid-cols-[1.05fr_0.95fr] gap-8 items-center">
-          <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}>
-            <span className="inline-flex items-center gap-2 px-3 py-1 text-xs font-semibold text-brand-muted dark:text-brand-dark-muted border border-gray-200 dark:border-brand-dark-border rounded-full mb-5 uppercase tracking-widest">
-              <HeartHandshake size={12} className="text-primary-500" /> Mentorship
+      {/* ── Hero — shared split layout ── */}
+      <div className="bg-gradient-to-b from-gray-50/80 to-white dark:from-brand-dark-card/50 dark:to-brand-dark-bg border-b border-gray-100 dark:border-brand-dark-border py-10 px-4 sm:py-14">
+        <div className="max-w-7xl mx-auto flex flex-col items-center lg:flex-row lg:gap-12">
+          <motion.div className="flex-1 w-full" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full mb-4 uppercase tracking-widest">
+              <Sparkles size={12} /> 1-on-1 Guidance
             </span>
-            <h1 className="text-4xl md:text-6xl font-black text-brand-text dark:text-brand-dark-text tracking-tight mb-5">
-              Learn From Those Who've{' '}
-              <span className="gradient-text">Been There</span>
+            <h1 className="text-4xl md:text-6xl font-black text-brand-text dark:text-brand-dark-text mb-5 tracking-tight">
+              Get Personalized Guidance from <span className="gradient-text">Industry Experts</span>
             </h1>
+            <p className="text-brand-muted dark:text-brand-dark-muted text-base md:text-lg max-w-xl leading-relaxed mb-6">
+              Submit a free guidance request and our expert mentors will connect with you via call, WhatsApp, or email to accelerate your career.
+            </p>
+            <div className="flex flex-wrap items-center gap-4 text-sm text-brand-muted dark:text-brand-dark-muted mb-6">
+              <span className="flex items-center gap-2"><Shield size={14} />100% Free Sessions</span>
+              <span className="flex items-center gap-2"><Clock size={14} />Response in 24hrs</span>
+              {activeMentors.length > 0 && (
+                <span className="flex items-center gap-2"><Users size={14} />{activeMentors.length}+ Active Mentors</span>
+              )}
+            </div>
+            {activeMentors.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-w-xl">
+                {[
+                  { val: `${activeMentors.length}+`, label: 'Expert Mentors' },
+                  { val: `${activeMentors.reduce((a, m) => a + m.sessions, 0).toLocaleString()}+`, label: 'Sessions Done' },
+                  { val: (activeMentors.reduce((a, m) => a + m.rating, 0) / activeMentors.length).toFixed(1), label: 'Avg Rating' },
+                  { val: '100%', label: 'Free Forever' },
+                ].map((s) => (
+                  <div key={s.label} className="bg-white dark:bg-brand-dark-bg rounded-xl p-3 text-center border border-gray-100 dark:border-brand-dark-border">
+                    <div className="text-lg font-bold text-brand-text dark:text-brand-dark-text">{s.val}</div>
+                    <div className="text-[11px] text-brand-muted dark:text-brand-dark-muted mt-0.5">{s.label}</div>
+                  </div>
+                ))}
+              </div>
+            )}
             <p className="text-brand-muted dark:text-brand-dark-muted text-lg max-w-2xl mb-8 leading-relaxed">
               Get personalized guidance from experienced mentors, build the right skills, and move confidently toward your academic and career goals.
             </p>
@@ -394,6 +419,13 @@ export default function Mentorship() {
               </span>
             </div>
           </motion.div>
+          <aside className="hidden lg:block w-full max-w-md xl:max-w-lg flex-shrink-0 mt-8 lg:mt-0">
+            <PanelSpotlightCard
+              variant="mentor"
+              stat={{ value: `${activeMentors.length > 0 ? activeMentors.length : 15}+`, label: 'Expert Mentors' }}
+              secondaryStat={{ value: `${activeMentors.length > 0 ? activeMentors.reduce((a, m) => a + m.sessions, 0) : 1200}+`, label: 'Sessions Done' }}
+            />
+          </aside>
 
           {/* Right visual card */}
           <motion.div
@@ -469,11 +501,11 @@ export default function Mentorship() {
             </div>
           </motion.div>
         </div>
-      </section>
+      </div>
 
       {/* ── How It Works ── */}
-      <div className="bg-white dark:bg-brand-dark-bg border-b border-gray-100 dark:border-brand-dark-border py-6 px-4 sm:py-7">
-        <div className="w-full max-w-6xl mx-auto">
+      <div className="bg-white dark:bg-brand-dark-bg border-b border-gray-100 dark:border-brand-dark-border py-8 px-4">
+        <div className="max-w-4xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-widest text-brand-muted dark:text-brand-dark-muted mb-6">How It Works</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[

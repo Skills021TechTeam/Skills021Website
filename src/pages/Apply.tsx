@@ -9,6 +9,8 @@ import {
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 import { submitCareerApplication, uploadResume, ApplicationType } from '../lib/careerApplicationService'
+import PanelSpotlightCard from '../components/PanelSpotlightCard'
+import { Sparkles } from 'lucide-react'
 
 const DEPARTMENTS = [
   'Web Development', 'App Development', 'AI & Machine Learning', 'Data Science',
@@ -117,20 +119,32 @@ export default function Apply() {
 
   return (
     <div className="min-h-screen bg-brand-bg dark:bg-brand-dark-bg pt-16">
-      {/* Hero */}
-      <div className="bg-[#0A0A0A] py-14 px-4">
-        <div className="max-w-3xl mx-auto text-center">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <span className="inline-flex items-center gap-2 px-4 py-1.5 text-xs font-bold text-white bg-white/10 border border-white/30 rounded-full mb-5 uppercase tracking-widest">
-              <Briefcase size={13} /> Careers at Skill021
+      {/* Hero — shared split layout */}
+      <div className="bg-gradient-to-b from-gray-50/80 to-white dark:from-brand-dark-card/50 dark:to-brand-dark-bg border-b border-gray-100 dark:border-brand-dark-border py-10 px-4 sm:py-14">
+        <div className="max-w-7xl mx-auto flex flex-col items-center lg:flex-row lg:gap-12">
+          <motion.div className="flex-1 w-full" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-500/10 border border-blue-500/20 rounded-full mb-4 uppercase tracking-widest">
+              <Sparkles size={12} /> Join Skills021 Team
             </span>
-            <h1 className="text-3xl md:text-5xl font-bold text-white mb-4">
-              Work with Us
+            <h1 className="text-4xl md:text-6xl font-black text-brand-text dark:text-brand-dark-text mb-5 tracking-tight">
+              Work & <span className="gradient-text">Build With Us</span>
             </h1>
-            <p className="text-slate-400 max-w-xl mx-auto">
-              Apply for a job or internship at Skill021. Tell us a bit about yourself and we'll reach out if it's a match.
+            <p className="text-brand-muted dark:text-brand-dark-muted text-base md:text-lg max-w-xl leading-relaxed mb-6">
+              Apply for full-time jobs, teaching roles, and internships at Skills021. Work remotely with a mission-driven team empowering engineering students across the country.
             </p>
+            <div className="flex flex-wrap items-center gap-4 text-sm text-brand-muted dark:text-brand-dark-muted">
+              <span className="flex items-center gap-2"><Briefcase size={14} />10+ Open Departments</span>
+              <span className="flex items-center gap-2"><GraduationCap size={14} />Internships & Full-Time</span>
+              <span className="flex items-center gap-2"><CheckCircle size={14} />Fast-Track Review (48h)</span>
+            </div>
           </motion.div>
+          <aside className="hidden lg:block w-full max-w-md xl:max-w-lg flex-shrink-0 mt-8 lg:mt-0">
+            <PanelSpotlightCard
+              variant="apply"
+              stat={{ value: '10+', label: 'Departments' }}
+              secondaryStat={{ value: '48h', label: 'Review SLA' }}
+            />
+          </aside>
         </div>
       </div>
 

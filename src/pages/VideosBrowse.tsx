@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Search, Play, Calendar, Clock, ChevronDown, Filter, X
+  Search, Play, Calendar, Clock, ChevronDown, Filter, X, Sparkles, Video as VideoIcon
 } from 'lucide-react'
 import { useVideoStore, VideoCategory } from '../store/videoStore'
 import YouTubeVideoCard from '../components/YouTubeVideoCard'
+import PanelSpotlightCard from '../components/PanelSpotlightCard'
 
 const VIDEO_CATEGORIES: VideoCategory[] = [
   'DSA', 'JEE', 'NEET', 'AI/ML', 'Counseling', 'Career Guidance',
@@ -38,21 +39,36 @@ export default function VideosPage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-brand-dark-bg pt-16 pb-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Header — shared split layout */}
+      <div className="bg-gradient-to-b from-gray-50/80 to-white dark:from-brand-dark-card/50 dark:to-brand-dark-bg border-b border-gray-100 dark:border-brand-dark-border py-10 px-4 sm:py-14 mb-8">
+        <div className="max-w-7xl mx-auto flex flex-col items-center lg:flex-row lg:gap-12">
+          <motion.div className="flex-1 w-full" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-full mb-4 uppercase tracking-widest">
+              <Sparkles size={12} /> Video Vault & Masterclasses
+            </span>
+            <h1 className="text-4xl md:text-6xl font-black text-brand-text dark:text-brand-dark-text mb-5 tracking-tight">
+              Educational <span className="gradient-text">Video Library</span>
+            </h1>
+            <p className="text-brand-muted dark:text-brand-dark-muted text-base md:text-lg max-w-xl leading-relaxed mb-6">
+              Browse our complete library of {videos.length}+ high-definition video tutorials, problem walkthroughs, FAANG roadmaps, and college counseling sessions.
+            </p>
+            <div className="flex flex-wrap items-center gap-4 text-sm text-brand-muted dark:text-brand-dark-muted">
+              <span className="flex items-center gap-2"><Play size={14} className="text-rose-500" />{videos.length}+ Masterclasses</span>
+              <span className="flex items-center gap-2"><VideoIcon size={14} className="text-rose-500" />11 Topic Categories</span>
+              <span className="flex items-center gap-2"><Sparkles size={14} className="text-rose-500" />100% Free Access</span>
+            </div>
+          </motion.div>
+          <aside className="hidden lg:block w-full max-w-md xl:max-w-lg flex-shrink-0 mt-8 lg:mt-0">
+            <PanelSpotlightCard
+              variant="video"
+              stat={{ value: `${videos.length}+`, label: 'Video Guides' }}
+              secondaryStat={{ value: '11', label: 'Categories' }}
+            />
+          </aside>
+        </div>
+      </div>
 
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-12"
-        >
-          <h1 className="text-4xl md:text-5xl font-black text-brand-text dark:text-brand-dark-text mb-3">
-            All Educational Videos
-          </h1>
-          <p className="text-lg text-brand-muted dark:text-brand-dark-muted">
-            Browse our complete library of {videos.length}+ video tutorials, guidance sessions, and learning resources.
-          </p>
-        </motion.div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
         {/* Search & Filter Bar */}
         <motion.div

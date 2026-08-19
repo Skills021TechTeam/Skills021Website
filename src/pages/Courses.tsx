@@ -23,6 +23,7 @@ import EnrollModal from '../components/EnrollModal'
 import VideoPlayerModal from '../components/VideoPlayerModal'
 import CourseRatingMenu from '../components/CourseRatingMenu'
 import { getLiveWebinars, getWebinarRecordings, resolveWebinarRecordingVideo, type LiveWebinar, type WebinarRecording } from '../lib/webinarService'
+import PanelSpotlightCard from '../components/PanelSpotlightCard'
 
 const GROUPS: { label: CourseGroup }[] = [
   { label: 'Competitive Exams' },
@@ -652,94 +653,38 @@ export default function Courses() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-brand-dark-bg pt-16">
-      {/* Hero — top-left text + right dynamic animated card, copied from the main zip */}
-      <section className="bg-gray-50 dark:bg-brand-dark-card border-b border-gray-100 dark:border-brand-dark-border pt-8 pb-12 px-4 overflow-hidden sm:pt-10">
-        <div className="max-w-7xl mx-auto grid lg:grid-cols-[1.05fr_0.95fr] gap-8 items-center">
-          <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}>
-            <span className="inline-flex items-center gap-2 px-3 py-1 text-xs font-semibold text-brand-muted dark:text-brand-dark-muted border border-gray-200 dark:border-brand-dark-border rounded-full mb-5 uppercase tracking-widest">
-              <Sparkles size={12} className="text-primary-500" /> Skill Catalog
+      {/* Hero — shared split layout */}
+      <div className="bg-gradient-to-b from-gray-50/80 to-white dark:from-brand-dark-card/50 dark:to-brand-dark-bg border-b border-gray-100 dark:border-brand-dark-border py-10 px-4 sm:py-14">
+        <div className="max-w-7xl mx-auto flex flex-col items-center lg:flex-row lg:gap-12">
+          <motion.div className="flex-1 w-full" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-violet-600 dark:text-violet-400 bg-violet-500/10 border border-violet-500/20 rounded-full mb-4 tracking-widest uppercase">
+              <Sparkles size={12} /> Tech & College Courses
             </span>
-            <h1 className="text-4xl md:text-6xl font-black text-brand-text dark:text-brand-dark-text tracking-tight mb-5">
+            <h1 className="text-4xl md:text-6xl font-black text-brand-text dark:text-brand-dark-text mb-5 tracking-tight">
               Learn Without <span className="gradient-text">Limits</span>
             </h1>
-            <p className="text-brand-muted dark:text-brand-dark-muted text-lg max-w-2xl mb-8 leading-relaxed">
-              From Class 1 to placement — explore {published.length}+ expert-curated courses across all domains.
+            <p className="text-brand-muted dark:text-brand-dark-muted text-base md:text-lg max-w-xl leading-relaxed mb-7">
+              From foundational engineering to high-package tech placements — explore {published.length}+ expert-curated courses across DSA, Web, Mobile, AI & university syllabi.
             </p>
-
-            <div className="relative max-w-xl">
+            <div className="relative max-w-lg">
               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-muted" />
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search courses... (DSA, JEE, Web Dev, NEET...)"
-                className="input pl-12 pr-12 h-14 shadow-card"
+                placeholder="Search by topic, language, semester or college..."
+                className="input pl-12"
               />
             </div>
-
-            <div className="flex flex-wrap items-center gap-3 mt-6">
-              <button
-                onClick={() => {
-                  const el = document.getElementById('courses-list')
-                  if (el) el.scrollIntoView({ behavior: 'smooth' })
-                }}
-                className="btn-primary"
-              >
-                Browse Courses <ArrowRight size={16} />
-              </button>
-              <span className="text-sm text-brand-muted dark:text-brand-dark-muted">{GROUPS.length} learning tracks · {published.length} courses available</span>
-            </div>
           </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ delay: 0.12 }}
-            className="relative h-[360px] lg:h-[420px]"
-          >
-            <div className="absolute inset-0 rounded-[2rem] bg-white dark:bg-brand-dark-bg border border-gray-100 dark:border-brand-dark-border shadow-card-hover overflow-hidden">
-              <div className="absolute inset-0 dotted-grid opacity-80" />
-              <div className="absolute inset-x-6 top-8 h-20 rounded-2xl bg-[#0A0A0A] dark:bg-white shadow-card flex items-center px-5">
-                <div className="w-12 h-12 rounded-xl bg-primary-500 flex items-center justify-center text-white">
-                  <GraduationCap size={24} />
-                </div>
-                <div className="ml-4">
-                  <p className="text-xs font-bold uppercase tracking-widest text-white/60 dark:text-black/50">Learning progress</p>
-                  <p className="text-xl font-black text-white dark:text-black">{published.length}+ courses</p>
-                </div>
-              </div>
-
-              <motion.div
-                animate={{ y: [0, -10, 0] }}
-                transition={{ repeat: Infinity, duration: 5, ease: 'easeInOut' }}
-                className="absolute left-8 bottom-10 w-44 rounded-2xl bg-white dark:bg-brand-dark-card border border-gray-100 dark:border-brand-dark-border p-4 shadow-card-hover"
-              >
-                <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/30 text-amber-500 flex items-center justify-center mb-3">
-                  <Trophy size={20} />
-                </div>
-                <p className="text-sm font-bold text-brand-text dark:text-brand-dark-text">Top rated</p>
-                <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1">Expert-led learning</p>
-              </motion.div>
-
-              <motion.div
-                animate={{ y: [0, 12, 0] }}
-                transition={{ repeat: Infinity, duration: 6, ease: 'easeInOut' }}
-                className="absolute right-7 bottom-20 w-48 rounded-2xl bg-white dark:bg-brand-dark-card border border-gray-100 dark:border-brand-dark-border p-4 shadow-card-hover"
-              >
-                <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/30 text-blue-500 flex items-center justify-center mb-3">
-                  <TrendingUp size={20} />
-                </div>
-                <p className="text-sm font-bold text-brand-text dark:text-brand-dark-text">Trending now</p>
-                <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1">DSA, Web Dev, NEET</p>
-              </motion.div>
-
-              <div className="absolute left-1/2 top-[47%] -translate-x-1/2 -translate-y-1/2 w-24 h-24 rounded-3xl bg-gradient-to-br from-primary-500 to-teal-500 flex items-center justify-center text-white shadow-lg shadow-primary-500/30 -rotate-6">
-                <Zap size={38} />
-              </div>
-              <div className="absolute left-24 right-24 top-44 h-px bg-gradient-to-r from-transparent via-primary-500/40 to-transparent" />
-            </div>
-          </motion.div>
+          <aside className="hidden lg:block w-full max-w-md xl:max-w-lg flex-shrink-0 mt-8 lg:mt-0">
+            <PanelSpotlightCard
+              variant="course"
+              stat={{ value: `${published.length}+`, label: 'Active Courses' }}
+              secondaryStat={{ value: '4.9 ★', label: 'Student Rating' }}
+            />
+          </aside>
         </div>
-      </section>
+      </div>
 
       {/* Course / Webinar switcher */}
       <div className="max-w-7xl mx-auto px-4 pt-6">

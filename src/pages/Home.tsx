@@ -6,7 +6,6 @@ import { ArrowRight, X, Sparkles, Radio, PlayCircle, ExternalLink, CalendarDays,
 // New design components
 import BackgroundEffects from '../components/BackgroundEffects'
 import CursorGlow from '../components/CursorGlow'
-import HomeLoadingScreen from '../components/HomeLoadingScreen'
 import MagneticButton from '../components/MagneticButton'
 import LaptopIllustration from '../components/LaptopIllustration'
 import HomeCoursesSection from '../components/HomeCoursesSection'
@@ -38,7 +37,7 @@ function HeroSection() {
         <motion.div
           initial={{ opacity: 0, y: 20, filter: 'blur(8px)' }}
           animate={inView ? { opacity: 1, y: 0, filter: 'blur(0px)' } : {}}
-          transition={{ delay: 2.6, duration: 0.6 }}
+          transition={{ delay: 0.2, duration: 0.6 }}
           className="glass inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-medium text-brand-muted dark:text-brand-dark-muted"
         >
           <span className="relative flex h-2 w-2">
@@ -55,7 +54,7 @@ function HeroSection() {
               key={i}
               initial={{ opacity: 0, y: 40, filter: 'blur(10px)' }}
               animate={inView ? { opacity: 1, y: 0, filter: 'blur(0px)' } : {}}
-              transition={{ delay: 2.6 + i * 0.15, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ delay: 0.2 + i * 0.15, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
               className={`mr-3 inline-block ${w === 'Placed.' ? 'relative' : ''}`}
             >
               {w === 'Placed.' ? (
@@ -75,7 +74,7 @@ function HeroSection() {
                       fill="none"
                       initial={{ pathLength: 0 }}
                       animate={inView ? { pathLength: 1 } : {}}
-                      transition={{ delay: 3.5, duration: 1.2, ease: 'easeInOut' }}
+                      transition={{ delay: 1.1, duration: 1.2, ease: 'easeInOut' }}
                     />
                     <defs>
                       <linearGradient id="uGrad" x1="0" x2="1">
@@ -96,7 +95,7 @@ function HeroSection() {
         <motion.p
           initial={{ opacity: 0, y: 20 }}
           animate={inView ? { opacity: 1, y: 0 } : {}}
-          transition={{ delay: 3.4, duration: 0.7 }}
+          transition={{ delay: 1, duration: 0.7 }}
           className="mt-6 max-w-xl text-lg text-brand-muted dark:text-brand-dark-muted sm:text-xl"
         >
           Master in-demand tech skills through project-based cohorts. Ship real products,
@@ -108,7 +107,7 @@ function HeroSection() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={inView ? { opacity: 1, y: 0 } : {}}
-          transition={{ delay: 3.6, duration: 0.7 }}
+          transition={{ delay: 1.2, duration: 0.7 }}
           className="mt-8 flex flex-wrap items-center gap-4"
         >
           <Link to="/courses">
@@ -138,7 +137,7 @@ function HeroSection() {
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={inView ? { opacity: 1, scale: 1 } : {}}
-        transition={{ delay: 2.8, duration: 1, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ delay: 0.4, duration: 1, ease: [0.22, 1, 0.36, 1] }}
         className="mt-16 flex-1 xl:mt-0"
       >
         <LaptopIllustration />
@@ -392,9 +391,6 @@ export default function Home() {
 
   return (
     <div className="relative min-h-screen bg-white dark:bg-brand-dark-bg">
-      {/* Loading screen — home page only */}
-      <HomeLoadingScreen />
-
       {/* Fixed background visual effects */}
       <BackgroundEffects />
       <CursorGlow />

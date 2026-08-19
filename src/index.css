@@ -1682,247 +1682,19 @@
   bottom: 18px;
 }
 
-/* Mentorship: turn the hero into a deliberate editorial landing area. */
-.mentorship-hero-premium {
-  position: relative;
-  min-height: calc(100vh - 4rem);
-  overflow: hidden;
-  background: linear-gradient(135deg, #fbfcff 0%, #fff 52%, #f7f8ff 100%);
-}
-
-.dark .mentorship-hero-premium {
-  background: radial-gradient(circle at 78% 30%, rgba(99, 102, 241, .12), transparent 28%), #0b1220;
-}
-
-.mentorship-hero-premium::before {
-  content: '';
-  position: absolute;
-  width: 520px;
-  height: 520px;
-  border-radius: 50%;
-  right: -180px;
-  top: -170px;
-  background: radial-gradient(circle, rgba(99, 102, 241, .12), transparent 68%);
-  pointer-events: none;
-}
-
-.mentorship-hero-shell {
-  position: relative;
-  z-index: 1;
-  width: min(1480px, calc(100% - 40px));
-  min-height: calc(100vh - 4rem);
-  margin: auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(470px, .95fr);
-  gap: clamp(30px, 5vw, 86px);
-  align-items: center;
-  padding: 50px 0;
-}
-
-.mentorship-hero-copy {
-  max-width: 760px;
-}
-
-.mentorship-kicker {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: #6366f1;
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: .16em;
-  text-transform: uppercase;
-}
-
-.mentorship-kicker::before {
-  content: '';
-  width: 30px;
-  height: 2px;
-  border-radius: 2px;
-  background: linear-gradient(90deg, #6366f1, #06b6d4);
-}
-
-.mentorship-title {
-  margin: 17px 0 19px;
-  font-size: clamp(45px, 5.4vw, 78px);
-  line-height: .98;
-  letter-spacing: -.055em;
-  font-weight: 950;
-  color: #101827;
-}
-
-.dark .mentorship-title {
-  color: #f8fafc;
-}
-
-.mentorship-title span {
-  background: linear-gradient(110deg, #6366f1, #8b5cf6 48%, #06b6d4);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.mentorship-lead {
-  max-width: 650px;
-  font-size: 18px;
-  line-height: 1.7;
-  color: #64748b;
-}
-
-.dark .mentorship-lead {
-  color: #94a3b8;
-}
-
-.mentorship-benefits {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-top: 28px;
-  max-width: 760px;
-}
-
-.mentorship-benefit {
-  padding: 14px;
-  border: 1px solid #e9edf3;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, .78);
-  box-shadow: 0 15px 35px -28px rgba(15, 23, 42, .6);
-}
-
-.dark .mentorship-benefit {
-  background: rgba(15, 23, 42, .6);
-  border-color: #263244;
-}
-
-.mentorship-benefit-icon {
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 11px;
-  color: #6366f1;
-  background: linear-gradient(135deg, rgba(99, 102, 241, .13), rgba(6, 182, 212, .1));
-}
-
-.mentorship-benefit strong {
-  display: block;
-  margin-top: 9px;
-  font-size: 12px;
-  color: #111827;
-}
-
-.dark .mentorship-benefit strong {
-  color: #f8fafc;
-}
-
-.mentorship-benefit span {
-  display: block;
-  margin-top: 3px;
-  font-size: 10px;
-  line-height: 1.4;
-  color: #94a3b8;
-}
-
-.mentorship-proof {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px;
-  margin-top: 22px;
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.dark .mentorship-proof {
-  color: #94a3b8;
-}
-
-.mentorship-proof span {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.mentorship-hero-visual {
-  min-width: 0;
-  min-height: 520px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-}
-
-.mentorship-hero-visual .panel-float {
-  min-height: 500px;
-  padding-top: 28px;
-}
-
-.mentorship-hero-visual .panel-float-ring {
-  width: 350px;
-  height: 350px;
-  right: 3%;
-  top: 5%;
-}
-
-.mentorship-hero-visual .panel-float-orbit {
-  width: 322px;
-  height: 322px;
-  right: calc(3% + 14px);
-  top: 18px;
-}
-
-.mentorship-hero-visual .panel-float-core {
-  width: 100px;
-  height: 100px;
-  right: 55px;
-  top: 35px;
-  border-radius: 31px;
-}
-
-.mentorship-hero-visual .panel-float-copy {
-  max-width: 410px;
-  padding-right: 135px;
-}
-
-.mentorship-hero-visual .panel-float h3 {
-  font-size: clamp(30px, 3vw, 44px);
-}
-
-.mentorship-hero-visual .panel-float-items {
-  width: min(400px, 100%);
-  margin-top: 30px;
-}
-
-.mentorship-hero-visual .panel-float-chip {
-  min-height: 49px;
-  border-radius: 16px;
-}
-
-.mentorship-hero-visual .panel-float-stat {
-  bottom: 10px;
-}
-
-.panel-float-mentor {
-  --float-a: #6366f1;
-  --float-b: #06b6d4;
-}
 
 @media (max-width: 1100px) and (min-width: 769px) {
 
-  .pathfinder-hero-shell,
-  .mentorship-hero-shell {
+  .pathfinder-hero-shell {
     grid-template-columns: minmax(0, 1fr) minmax(380px, .9fr);
     gap: 30px;
   }
 
-  .pathfinder-title,
-  .mentorship-title {
+  .pathfinder-title {
     font-size: 52px;
   }
 
-  .pathfinder-hero-visual .panel-float,
-  .mentorship-hero-visual .panel-float {
+  .pathfinder-hero-visual .panel-float {
     transform: scale(.9);
     transform-origin: center;
     width: 111%;
@@ -1933,76 +1705,32 @@
 @media (max-width: 768px) {
 
   .pathfinder-hero,
-  .pathfinder-hero-shell,
-  .mentorship-hero-premium,
-  .mentorship-hero-shell {
+  .pathfinder-hero-shell {
     min-height: auto;
   }
 
-  .pathfinder-hero-shell,
-  .mentorship-hero-shell {
+  .pathfinder-hero-shell {
     width: min(100% - 28px, 680px);
     grid-template-columns: 1fr;
     padding: 46px 0;
   }
 
-  .pathfinder-title,
-  .mentorship-title {
+  .pathfinder-title {
     font-size: 46px;
   }
 
-  .pathfinder-hero-visual,
-  .mentorship-hero-visual {
+  .pathfinder-hero-visual {
     min-height: 400px;
   }
 
-  .pathfinder-hero-visual .panel-float,
-  .mentorship-hero-visual .panel-float {
+  .pathfinder-hero-visual .panel-float {
     min-height: 390px;
-  }
-
-  .mentorship-benefits {
-    grid-template-columns: 1fr;
   }
 
   .pathfinder-trust-row>div {
     min-width: 110px;
     padding-right: 14px;
     margin-right: 14px;
-  }
-}
-
-
-/* Final typography refinement: keep Mentorship confident, but lighter and more professional. */
-.mentorship-title {
-  font-size: clamp(38px, 4.3vw, 62px);
-  line-height: 1.04;
-  letter-spacing: -0.045em;
-  font-weight: 760;
-  max-width: 690px;
-  margin-bottom: 16px;
-}
-
-.mentorship-lead {
-  max-width: 610px;
-  font-size: 16px;
-  line-height: 1.65;
-}
-
-@media (max-width: 1024px) {
-  .mentorship-title {
-    font-size: clamp(34px, 6vw, 52px);
-  }
-}
-
-@media (max-width: 640px) {
-  .mentorship-title {
-    font-size: 36px;
-    line-height: 1.06;
-  }
-
-  .mentorship-lead {
-    font-size: 15px;
   }
 }
 

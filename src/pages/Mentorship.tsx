@@ -4,12 +4,12 @@ import {
   Users, Star, Clock, Briefcase, CheckCircle, Calendar, HeartHandshake,
   FileText, Link2, Video, Target, Lightbulb, BookOpen,
   ArrowRight, Phone, MessageCircle, Mail, MapPin, GraduationCap,
-  Send, ChevronRight, Shield, Zap, Check, Search, X, ExternalLink,
+  Send, ChevronRight, Zap, Check, Search, X, ExternalLink,
   ChevronDown, IndianRupee, Info,
 } from 'lucide-react'
 import { fetchActiveMentors, createGuidanceRequest, type Mentor } from '../lib/mentorService'
 import toast from 'react-hot-toast'
-import PanelSpotlightCard from '../components/PanelSpotlightCard'
+
 
 // Guidance type definition
 type GuidanceType = 'Career Guidance' | 'College Selection' | 'Branch Selection' | 'Placement Preparation' | 'Internship Guidance' | 'Higher Studies Guidance' | 'Resume Review' | 'LinkedIn Profile Review' | 'Mock Interview' | 'Skill Roadmap' | 'Startup Guidance' | 'Study Planning'
@@ -344,65 +344,130 @@ export default function Mentorship() {
   return (
     <div className="min-h-screen bg-white dark:bg-brand-dark-bg pt-16">
 
-      {/* ── Premium Mentorship Hero ── */}
-      <section className="mentorship-hero-premium">
-        <div className="mentorship-hero-shell">
-          <motion.div
-            className="mentorship-hero-copy"
-            initial={{ opacity: 0, x: -18 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.55 }}
-          >
-            <div className="mentorship-kicker">Mentorship that moves you forward</div>
-            <h1 className="mentorship-title">
-              Get the right guidance for your <span>next big step.</span>
+      {/* ── Premium Mentorship Hero (PathFinder-inspired) ── */}
+      <section className="bg-gray-50 dark:bg-brand-dark-card border-b border-gray-100 dark:border-brand-dark-border pt-28 pb-12 px-4 overflow-hidden">
+        <div className="max-w-7xl mx-auto grid lg:grid-cols-[1.05fr_0.95fr] gap-8 items-center">
+          <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}>
+            <span className="inline-flex items-center gap-2 px-3 py-1 text-xs font-semibold text-brand-muted dark:text-brand-dark-muted border border-gray-200 dark:border-brand-dark-border rounded-full mb-5 uppercase tracking-widest">
+              <HeartHandshake size={12} className="text-primary-500" /> Mentorship
+            </span>
+            <h1 className="text-4xl md:text-6xl font-black text-brand-text dark:text-brand-dark-text tracking-tight mb-5">
+              Learn From Those Who've{' '}
+              <span className="gradient-text">Been There</span>
             </h1>
-            <p className="mentorship-lead">
-              Connect with industry professionals for practical, focused guidance — from choosing a career to preparing for placements, interviews, internships, and higher studies.
+            <p className="text-brand-muted dark:text-brand-dark-muted text-lg max-w-2xl mb-8 leading-relaxed">
+              Get personalized guidance from experienced mentors, build the right skills, and move confidently toward your academic and career goals.
             </p>
 
-            <div className="mentorship-benefits">
-              {[
-                { icon: Briefcase, title: 'Career clarity', text: 'Turn confusion into a practical next step.' },
-                { icon: FileText, title: 'Profile feedback', text: 'Improve your resume and professional profile.' },
-                { icon: Video, title: 'Interview practice', text: 'Prepare with focused, real-world guidance.' },
-              ].map(({ icon: Icon, title, text }) => (
-                <div className="mentorship-benefit" key={title}>
-                  <div className="mentorship-benefit-icon"><Icon size={17} /></div>
-                  <strong>{title}</strong>
-                  <span>{text}</span>
-                </div>
-              ))}
+            {/* Search bar */}
+            <div className="relative max-w-xl">
+              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-muted" />
+              <input
+                value={mentorSearch}
+                onChange={(e) => setMentorSearch(e.target.value)}
+                placeholder="Search mentors, skills, or career goals…"
+                className="input pl-12 pr-12 h-14 shadow-card"
+              />
+              {mentorSearch && (
+                <button
+                  onClick={() => setMentorSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg text-brand-muted hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-colors"
+                  aria-label="Clear search"
+                >
+                  <X size={15} />
+                </button>
+              )}
             </div>
 
-            <div className="mentorship-proof">
-              <span><Shield size={14} /> 100% free</span>
-              <span><Clock size={14} /> Response within 24 hours</span>
-              <span><Users size={14} /> {activeMentors.length || 0}+ mentors available</span>
+            <div className="flex flex-wrap items-center gap-3 mt-6">
+              <button
+                onClick={() => {
+                  const formSection = document.getElementById('request-form')
+                  formSection?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }}
+                className="btn-primary"
+              >
+                Find Your Mentor <ArrowRight size={16} />
+              </button>
+              <span className="text-sm text-brand-muted dark:text-brand-dark-muted">
+                {activeMentors.length || 50}+ mentors available
+              </span>
             </div>
           </motion.div>
 
-          <motion.aside
-            className="mentorship-hero-visual"
-            initial={{ opacity: 0, x: 20, scale: 0.98 }}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
-            transition={{ duration: 0.65, delay: 0.08 }}
+          {/* Right visual card */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ delay: 0.12 }}
+            className="relative h-[360px] lg:h-[420px]"
           >
-            <PanelSpotlightCard
-              variant="mentor"
-              icon={Users}
-              eyebrow="Mentorship Overview"
-              title="Find guidance that fits you"
-              description="Tell us what you need, discover available mentors, and send one focused request. No complicated process — just useful guidance."
-              stat={{ value: `${activeMentors.length}+`, label: 'expert mentors' }}
-              items={[
-                { icon: Users, label: 'Active mentors', value: `${activeMentors.length}` },
-                { icon: HeartHandshake, label: 'Free guidance requests', value: 'Open' },
-                { icon: CheckCircle, label: 'Response target', value: '24h' },
-                { icon: Target, label: 'Guidance areas', value: '12+' },
-              ]}
-            />
-          </motion.aside>
+            <div className="absolute inset-0 rounded-[2rem] bg-white dark:bg-brand-dark-bg border border-gray-100 dark:border-brand-dark-border shadow-card-hover overflow-hidden">
+              {/* Dotted grid background */}
+              <div className="absolute inset-0 dotted-grid opacity-80" />
+
+              {/* Top dark header card */}
+              <div className="absolute inset-x-6 top-8 h-20 rounded-2xl bg-[#0A0A0A] dark:bg-white shadow-card flex items-center px-5">
+                <div className="w-12 h-12 rounded-xl bg-primary-500 flex items-center justify-center text-white">
+                  <HeartHandshake size={24} />
+                </div>
+                <div className="ml-4 flex-1">
+                  <p className="text-xs font-bold uppercase tracking-widest text-white/60 dark:text-black/50">Mentorship Match</p>
+                  <p className="text-xl font-black text-white dark:text-black">Your Mentor Match 92%</p>
+                </div>
+                <span className="flex-shrink-0 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 dark:text-emerald-600 text-[10px] font-bold uppercase tracking-wider">
+                  Best Match
+                </span>
+              </div>
+
+              {/* Floating card: Your Goal */}
+              <motion.div
+                animate={{ y: [0, -10, 0] }}
+                transition={{ repeat: Infinity, duration: 5, ease: 'easeInOut' }}
+                className="absolute left-8 bottom-10 w-44 rounded-2xl bg-white dark:bg-brand-dark-card border border-gray-100 dark:border-brand-dark-border p-4 shadow-card-hover"
+              >
+                <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/30 text-blue-500 flex items-center justify-center mb-3">
+                  <Target size={20} />
+                </div>
+                <p className="text-sm font-bold text-brand-text dark:text-brand-dark-text">Your Goal</p>
+                <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1">Become a Software Engineer</p>
+              </motion.div>
+
+              {/* Floating card: Mentor Expertise */}
+              <motion.div
+                animate={{ y: [0, 8, 0] }}
+                transition={{ repeat: Infinity, duration: 6.5, ease: 'easeInOut' }}
+                className="absolute right-7 top-[46%] w-52 rounded-2xl bg-white dark:bg-brand-dark-card border border-gray-100 dark:border-brand-dark-border p-4 shadow-card-hover"
+              >
+                <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/30 text-purple-500 flex items-center justify-center mb-3">
+                  <Lightbulb size={20} />
+                </div>
+                <p className="text-sm font-bold text-brand-text dark:text-brand-dark-text">Mentor Expertise</p>
+                <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1">DSA • Web Development • Career</p>
+              </motion.div>
+
+              {/* Floating card: Next Step */}
+              <motion.div
+                animate={{ y: [0, 12, 0] }}
+                transition={{ repeat: Infinity, duration: 6, ease: 'easeInOut' }}
+                className="absolute right-7 bottom-20 w-48 rounded-2xl bg-white dark:bg-brand-dark-card border border-gray-100 dark:border-brand-dark-border p-4 shadow-card-hover"
+              >
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 text-emerald-500 flex items-center justify-center mb-3">
+                  <GraduationCap size={20} />
+                </div>
+                <p className="text-sm font-bold text-brand-text dark:text-brand-dark-text">Next Step</p>
+                <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1">Book your first mentorship session</p>
+              </motion.div>
+
+              {/* Central mentorship icon */}
+              <div className="absolute left-1/2 top-[47%] -translate-x-1/2 -translate-y-1/2 w-24 h-24 rounded-3xl bg-gradient-to-br from-primary-500 to-teal-500 flex items-center justify-center text-white shadow-lg shadow-primary-500/30 rotate-6">
+                <Users size={38} />
+              </div>
+
+              {/* Connecting gradient line */}
+              <div className="absolute left-24 right-24 top-44 h-px bg-gradient-to-r from-transparent via-primary-500/40 to-transparent" />
+            </div>
+          </motion.div>
         </div>
       </section>
 

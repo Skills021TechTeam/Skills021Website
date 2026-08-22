@@ -54,7 +54,7 @@ function extractYouTubeVideoId(url: string): string {
 
 // ─── Helper: Get YouTube Thumbnail URL ──────────────────────────────────────
 function getYouTubeThumbnail(videoId: string): string {
-  return `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
+  return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
 }
 
 // ─── Seed Data ──────────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ const seedVideos: YouTubeVideo[] = [
     title: 'Complete DSA Mastery - Arrays & Strings',
     description: 'In this video, we cover the fundamentals of arrays and strings - two of the most important topics in DSA interviews.',
     category: 'DSA',
-    thumbnail: 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
+    thumbnail: 'https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
     uploadDate: '2026-05-15',
     duration: '45:30',
     featured: true,
@@ -81,7 +81,7 @@ const seedVideos: YouTubeVideo[] = [
     title: 'JEE Mains 2026 - Physics Chapterwise Revision',
     description: 'Complete revision of Physics chapters with important formulas and numerical solutions for JEE Mains 2026.',
     category: 'JEE',
-    thumbnail: 'https://img.youtube.com/vi/jNQXAC9IVRw/maxresdefault.jpg',
+    thumbnail: 'https://img.youtube.com/vi/jNQXAC9IVRw/hqdefault.jpg',
     uploadDate: '2026-05-10',
     duration: '52:15',
     featured: true,
@@ -96,7 +96,7 @@ const seedVideos: YouTubeVideo[] = [
     title: 'NEET Biology - Human Body Systems Explained',
     description: 'Detailed explanation of all human body systems with diagrams and mnemonics for NEET preparation.',
     category: 'NEET',
-    thumbnail: 'https://img.youtube.com/vi/9bZkp7q19f0/maxresdefault.jpg',
+    thumbnail: 'https://img.youtube.com/vi/9bZkp7q19f0/hqdefault.jpg',
     uploadDate: '2026-05-08',
     duration: '38:45',
     featured: true,
@@ -106,12 +106,12 @@ const seedVideos: YouTubeVideo[] = [
   },
   {
     id: 'v4',
-    youtubeUrl: 'https://www.youtube.com/watch?v=pTFZFxM0crU',
-    videoId: 'pTFZFxM0crU',
+    youtubeUrl: 'https://www.youtube.com/watch?v=kJQP7kiw5Fk',
+    videoId: 'kJQP7kiw5Fk',
     title: 'AI/ML Fundamentals - Linear Regression Explained',
     description: 'Learn linear regression from scratch with Python implementation and real-world applications.',
     category: 'AI/ML',
-    thumbnail: 'https://img.youtube.com/vi/pTFZFxM0crU/maxresdefault.jpg',
+    thumbnail: 'https://img.youtube.com/vi/kJQP7kiw5Fk/hqdefault.jpg',
     uploadDate: '2026-05-05',
     duration: '41:20',
     featured: false,
@@ -126,7 +126,7 @@ const seedVideos: YouTubeVideo[] = [
     title: 'College Counseling - Choosing Right Stream & Institute',
     description: 'Expert counseling on how to choose the right stream (Engineering, Medical, Commerce) and institute based on your scores.',
     category: 'Counseling',
-    thumbnail: 'https://img.youtube.com/vi/OPf0YbXqDm0/maxresdefault.jpg',
+    thumbnail: 'https://img.youtube.com/vi/OPf0YbXqDm0/hqdefault.jpg',
     uploadDate: '2026-05-01',
     duration: '33:10',
     featured: true,
@@ -141,7 +141,7 @@ const seedVideos: YouTubeVideo[] = [
     title: 'Career Guidance - Roadmap to FAANG Companies',
     description: 'Complete roadmap to get hired by top FAANG companies with salary negotiation tips.',
     category: 'Career Guidance',
-    thumbnail: 'https://img.youtube.com/vi/vIQQR_yq-8I/maxresdefault.jpg',
+    thumbnail: 'https://img.youtube.com/vi/vIQQR_yq-8I/hqdefault.jpg',
     uploadDate: '2026-04-28',
     duration: '27:50',
     featured: false,
@@ -151,12 +151,12 @@ const seedVideos: YouTubeVideo[] = [
   },
   {
     id: 'v7',
-    youtubeUrl: 'https://www.youtube.com/watch?v=xfBWVwuCBH8',
-    videoId: 'xfBWVwuCBH8',
+    youtubeUrl: 'https://www.youtube.com/watch?v=Ke90Tje7VS0',
+    videoId: 'Ke90Tje7VS0',
     title: 'Interview Prep - System Design for Beginners',
     description: 'Introduction to system design concepts crucial for senior engineer interviews.',
     category: 'Interview Prep',
-    thumbnail: 'https://img.youtube.com/vi/xfBWVwuCBH8/maxresdefault.jpg',
+    thumbnail: 'https://img.youtube.com/vi/Ke90Tje7VS0/hqdefault.jpg',
     uploadDate: '2026-04-25',
     duration: '56:30',
     featured: false,
@@ -166,12 +166,12 @@ const seedVideos: YouTubeVideo[] = [
   },
   {
     id: 'v8',
-    youtubeUrl: 'https://www.youtube.com/watch?v=V9FXc_2BGpk',
-    videoId: 'V9FXc_2BGpk',
+    youtubeUrl: 'https://www.youtube.com/watch?v=bMknfKXIFA8',
+    videoId: 'bMknfKXIFA8',
     title: 'Web Development - React Hooks Deep Dive',
     description: 'Master React Hooks with practical examples and best practices.',
     category: 'Web Development',
-    thumbnail: 'https://img.youtube.com/vi/V9FXc_2BGpk/maxresdefault.jpg',
+    thumbnail: 'https://img.youtube.com/vi/bMknfKXIFA8/hqdefault.jpg',
     uploadDate: '2026-04-20',
     duration: '48:15',
     featured: false,

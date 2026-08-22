@@ -38,6 +38,7 @@ import {
   type PaymentSettings,
   type Enrollment,
 } from '../lib/videoEngagementService'
+import { getResumeSignedUrl } from '../lib/careerApplicationService'
 
 // Heuristic check: does this video file actually contain an audio track?
 // Loads the file into an off-DOM <video>, briefly plays it (muted so the
@@ -471,23 +472,26 @@ const inputCls = "w-full px-4 py-2.5 rounded-xl border border-brand-border dark:
 // option had already been chosen). Clicking a different subject here always
 // replaces the current selection immediately.
 // ─── Resume Preview Modal ───────────────────────────────────────────────────
-// Opens a resume in-place instead of triggering a browser download. PDFs are
-// rendered directly in an <iframe> (the browser's built-in PDF viewer, which
-// never downloads on its own). Word docs (.doc/.docx) can't be rendered
-// natively by any browser, so those are rendered through Google's public
-// document-viewer embed instead — the file itself still never gets
-// downloaded, it's just displayed as an image/preview inside the iframe. An
-// explicit "Download" button is still offered for when the admin actually
-// wants the file saved locally.
+// Opens a resume in-place instead of triggering a browser download. PDFs
 function ResumePreviewModal({ url, name, onClose }: { url: string; name: string; onClose: () => void }) {
-  const ext = url.split('?')[0].split('.').pop()?.toLowerCase() || ''
+  const [resolvedUrl, setResolvedUrl] = useState(url)
+
+  useEffect(() => {
+    let active = true
+    getResumeSignedUrl(url).then((signed) => {
+      if (active && signed) setResolvedUrl(signed)
+    })
+    return () => { active = false }
+  }, [url])
+
+  const ext = (resolvedUrl || url).split('?')[0].split('.').pop()?.toLowerCase() || ''
   const isPdf = ext === 'pdf'
   const isOfficeDoc = ext === 'doc' || ext === 'docx'
   const viewerSrc = isPdf
-    ? url
+    ? resolvedUrl
     : isOfficeDoc
-      ? `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`
-      : url
+      ? `https://docs.google.com/viewer?url=${encodeURIComponent(resolvedUrl)}&embedded=true`
+      : resolvedUrl
 
   return (
     <motion.div
@@ -508,15 +512,17 @@ function ResumePreviewModal({ url, name, onClose }: { url: string; name: string;
           <p className="text-sm font-semibold text-brand-text dark:text-brand-dark-text truncate pr-4">{name}'s Resume</p>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <a
-              href={url}
+              href={resolvedUrl}
               download
+              target="_blank"
+              rel="noreferrer"
               className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted dark:text-brand-dark-muted transition-colors"
               title="Download"
             >
               <Download size={16} />
             </a>
             <a
-              href={url}
+              href={resolvedUrl}
               target="_blank"
               rel="noreferrer"
               className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted dark:text-brand-dark-muted transition-colors"

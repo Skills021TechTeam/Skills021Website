@@ -400,7 +400,7 @@ export default function Home() {
         <WebinarSection />
         <HeroSection />
         <HomeCoursesSection />
-        <HomeHackathonsSection />
+           {/* <HomeHackathonsSection /> */}
         <VideoSection onVideoPlay={setSelectedVideo} />
         <FooterCTABanner />
       </main>

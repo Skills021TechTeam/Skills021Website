@@ -494,10 +494,23 @@ export default function Navbar() {
                   Logout
                 </button>
                 <div className="w-px h-5 bg-gray-200 dark:bg-white/10" />
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/10">
-                  <UserCircle2 size={16} className="text-primary-500" />
-                  <span className="text-[13px] font-semibold text-[#0A0A0A] dark:text-white max-w-[100px] truncate">{user.name.split(' ')[0]}</span>
-                </div>
+                <Link
+                  to="/dashboard"
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 transition-all"
+                >
+                  {user.avatarUrl ? (
+                    <img
+                      src={user.avatarUrl}
+                      alt={user.name}
+                      className="w-5 h-5 rounded-full object-cover ring-1 ring-primary-500"
+                    />
+                  ) : (
+                    <UserCircle2 size={16} className="text-primary-500" />
+                  )}
+                  <span className="text-[13px] font-semibold text-[#0A0A0A] dark:text-white max-w-[100px] truncate">
+                    {user.name.split(' ')[0]}
+                  </span>
+                </Link>
               </>
             ) : (
               <>
@@ -626,8 +639,16 @@ export default function Navbar() {
                       to={user.role === 'admin' ? '/admin' : '/dashboard'}
                       className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5"
                     >
-                      <LayoutDashboard size={15} className="text-primary-500" />
-                      Dashboard
+                      {user.avatarUrl ? (
+                        <img
+                          src={user.avatarUrl}
+                          alt={user.name}
+                          className="w-5 h-5 rounded-full object-cover ring-1 ring-primary-500"
+                        />
+                      ) : (
+                        <LayoutDashboard size={15} className="text-primary-500" />
+                      )}
+                      Dashboard ({user.name.split(' ')[0]})
                     </Link>
                     <button
                       onClick={() => { logout(); setMobileOpen(false) }}

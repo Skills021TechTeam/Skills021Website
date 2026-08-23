@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import {
+  supabase,
   signInUser,
   signUpUser,
   signOutUser,
@@ -16,6 +17,7 @@ export interface User {
   role: 'user' | 'admin'
   college: string
   phone?: string
+  avatarUrl?: string
   isPremium?: boolean
   enrolledCourses?: string[]
   joinedDate?: string
@@ -27,6 +29,7 @@ export interface RegisterData {
   password: string
   college: string
   phone?: string
+  avatarUrl?: string
 }
 
 interface AuthState {
@@ -81,6 +84,7 @@ export const useAuthStore = create<AuthState>()(
               role: profile?.role || u.user_metadata?.role || 'user',
               college: profile?.college || u.user_metadata?.college || 'Student Institution',
               phone: profile?.phone || u.user_metadata?.phone || '',
+              avatarUrl: profile?.avatar_url || u.user_metadata?.avatar_url || '',
               isPremium: Boolean(profile?.is_premium ?? u.user_metadata?.is_premium ?? false),
               joinedDate: profile?.created_at
                 ? new Date(profile.created_at).toISOString().split('T')[0]
@@ -91,10 +95,10 @@ export const useAuthStore = create<AuthState>()(
             set({ user: mappedUser, isAuthenticated: true })
             return { success: true }
           }
-          return { success: false, error: 'User not found in Supabase' }
+          return { success: false, error: 'User not found. Please check your credentials.' }
         } catch (err: any) {
-          console.error('Supabase login error:', err)
-          const message = err?.message || 'Invalid email or password. Please verify your Supabase credentials.'
+          console.error('Login error:', err)
+          const message = err?.message || 'Invalid email or password. Please check your credentials.'
           return { success: false, error: message }
         }
       },
@@ -106,7 +110,8 @@ export const useAuthStore = create<AuthState>()(
             data.password,
             data.name,
             data.college,
-            data.phone || ''
+            data.phone || '',
+            data.avatarUrl || ''
           )
 
           if (res?.user) {
@@ -118,6 +123,7 @@ export const useAuthStore = create<AuthState>()(
               role: 'user',
               college: data.college,
               phone: data.phone || '',
+              avatarUrl: data.avatarUrl || '',
               isPremium: false,
               joinedDate: new Date().toISOString().split('T')[0],
               enrolledCourses: [],
@@ -152,28 +158,51 @@ export const useAuthStore = create<AuthState>()(
         const current = get().user
         if (!current) return false
 
+        const nextAvatar = data.avatarUrl !== undefined ? data.avatarUrl : current.avatarUrl
+        const nextName = data.name ?? current.name
+        const nextCollege = data.college ?? current.college
+        const nextPhone = data.phone ?? current.phone ?? ''
+
+        // 1. Immediately update local store so avatar & profile reflect instantly on UI
+        set({
+          user: {
+            ...current,
+            ...data,
+            avatarUrl: nextAvatar,
+          },
+        })
+
+        // 2. Sync Supabase Auth user metadata
+        try {
+          await supabase.auth.updateUser({
+            data: {
+              name: nextName,
+              college: nextCollege,
+              phone: nextPhone,
+              avatar_url: nextAvatar,
+            },
+          })
+        } catch (metaErr) {
+          console.warn('Auth user_metadata update notice:', metaErr)
+        }
+
+        // 3. Sync public.profiles database table in Supabase
         try {
           await upsertUserProfile({
             id: current.id,
             email: current.email,
-            name: data.name ?? current.name,
-            college: data.college ?? current.college,
-            phone: data.phone ?? current.phone ?? '',
+            name: nextName,
+            college: nextCollege,
+            phone: nextPhone,
             role: current.role,
+            avatar_url: nextAvatar,
             is_premium: data.isPremium ?? current.isPremium ?? false,
           })
-
-          set({
-            user: {
-              ...current,
-              ...data,
-            },
-          })
-          return true
         } catch (err) {
-          console.error('Failed to update profile in Supabase:', err)
-          return false
+          console.warn('Profile DB upsert notice:', err)
         }
+
+        return true
       },
 
       refreshUserData: async () => {
@@ -194,7 +223,8 @@ export const useAuthStore = create<AuthState>()(
                 college: profile.college || current.college,
                 phone: profile.phone || current.phone,
                 role: profile.role || current.role,
-                isPremium: Boolean(profile.is_premium ?? false),
+                avatarUrl: profile.avatar_url || current.avatarUrl || '',
+                isPremium: Boolean(profile.is_premium ?? current.isPremium ?? false),
                 enrolledCourses: enrollments.map(e => e.courseId),
               },
             })

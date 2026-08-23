@@ -59,7 +59,7 @@ export default function Login() {
         navigate(targetPath + targetSearch, { replace: true })
       }
     } else {
-      toast.error(result.error || 'Invalid email or password. Only registered Supabase users can sign in.')
+      toast.error(result.error || 'Invalid email or password. Only registered users can sign in.')
     }
   }
 
@@ -86,7 +86,7 @@ export default function Login() {
               <span className="text-2xl font-bold text-primary-500">Skills021</span>
             </Link>
             <h1 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">Welcome back</h1>
-            <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-1">Sign in with your verified Supabase account</p>
+            <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-1">Sign in with your verified account</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>

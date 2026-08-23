@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import {
   LayoutDashboard, BookOpen, Settings,
   Clock, CheckCircle, TrendingUp, Play, Save,
-  User, Phone, School, Lock, AlertCircle, CreditCard, ShieldCheck, Loader2, Sparkles, Copy
+  User, Phone, School, Lock, AlertCircle, CreditCard, ShieldCheck, Loader2, Sparkles, Copy, Camera, Image as ImageIcon
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { fetchPublishedSiteCourses } from '../lib/courseService'
@@ -12,6 +12,7 @@ import { getEnrollmentsForUser, Enrollment } from '../lib/videoEngagementService
 import { updateUserAuthPassword } from '../lib/supabase'
 import VideoPlayerModal from '../components/VideoPlayerModal'
 import EnrollModal from '../components/EnrollModal'
+import AvatarPickerModal from '../components/AvatarPickerModal'
 import toast from 'react-hot-toast'
 
 type DashboardTab = 'overview' | 'courses' | 'transactions' | 'profile'
@@ -23,6 +24,42 @@ const sidebarItems = [
   { id: 'profile' as DashboardTab, label: 'Profile Settings', icon: Settings },
 ]
 
+function UserAvatarDisplay({
+  avatarUrl,
+  name,
+}: {
+  avatarUrl?: string
+  name?: string
+}) {
+  const [imgError, setImgError] = useState(false)
+
+  useEffect(() => {
+    setImgError(false)
+  }, [avatarUrl])
+
+  const getInitials = (n: string) =>
+    (n || 'U')
+      .split(' ')
+      .map((p) => p[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2)
+
+  if (avatarUrl && !imgError) {
+    return (
+      <img
+        key={avatarUrl}
+        src={avatarUrl}
+        alt={name || 'User Avatar'}
+        className="w-full h-full object-cover"
+        onError={() => setImgError(true)}
+      />
+    )
+  }
+
+  return <span>{getInitials(name || 'U')}</span>
+}
+
 export default function UserDashboard() {
   const { user, updateProfileInSupabase } = useAuthStore()
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview')
@@ -31,6 +68,7 @@ export default function UserDashboard() {
   const [loading, setLoading] = useState(true)
   const [activePlayCourse, setActivePlayCourse] = useState<Course | null>(null)
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+  const [showAvatarModal, setShowAvatarModal] = useState(false)
 
   const [profileForm, setProfileForm] = useState({
     name: user?.name || '',
@@ -120,6 +158,10 @@ export default function UserDashboard() {
   const freeEnrollments = enrollments.filter((e) => e.status === 'free')
   const totalAmountPaid = paidEnrollments.reduce((sum, e) => sum + (e.amount || 0), 0)
 
+  const handleSaveAvatar = async (newAvatarUrl: string): Promise<boolean> => {
+    return await updateProfileInSupabase({ avatarUrl: newAvatarUrl })
+  }
+
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault()
     setSavingProfile(true)
@@ -130,9 +172,9 @@ export default function UserDashboard() {
     })
     setSavingProfile(false)
     if (success) {
-      toast.success('Profile details updated in Supabase! 🎉')
+      toast.success('Profile details updated successfully! 🎉')
     } else {
-      toast.error('Failed to update profile in Supabase')
+      toast.error('Failed to update profile. Please try again.')
     }
   }
 
@@ -155,7 +197,7 @@ export default function UserDashboard() {
     try {
       await updateUserAuthPassword(profileForm.password)
       setProfileForm((p) => ({ ...p, password: '', confirmPassword: '' }))
-      toast.success('Password updated successfully in Supabase! 🔐')
+      toast.success('Password updated successfully! 🔐')
     } catch (err: any) {
       toast.error(err?.message || 'Failed to update password')
     } finally {
@@ -168,7 +210,7 @@ export default function UserDashboard() {
       return (
         <div className="flex flex-col items-center justify-center py-24">
           <Loader2 size={36} className="animate-spin text-primary-500 mb-3" />
-          <p className="text-sm text-brand-muted dark:text-brand-dark-muted">Loading your learning records from Supabase...</p>
+          <p className="text-sm text-brand-muted dark:text-brand-dark-muted">Loading your learning records...</p>
         </div>
       )
     }
@@ -183,7 +225,7 @@ export default function UserDashboard() {
                   Welcome back, {user?.name?.split(' ')[0]}! 👋
                 </h2>
                 <p className="text-brand-muted dark:text-brand-dark-muted mt-1 text-sm">
-                  Logged in with Supabase ID: <span className="font-mono text-xs opacity-75">{user?.id}</span>
+                  Student ID: <span className="font-mono text-xs opacity-75">{user?.id}</span>
                 </p>
               </div>
 
@@ -334,7 +376,7 @@ export default function UserDashboard() {
               <div>
                 <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">My Enrolled Courses</h2>
                 <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">
-                  All courses saved to your Supabase account
+                  All courses saved to your account
                 </p>
               </div>
               <a
@@ -410,7 +452,7 @@ export default function UserDashboard() {
             <div>
               <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">Paid Course Enrollments & Receipts</h2>
               <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">
-                Complete record of your paid course transactions stored in Supabase
+                Complete record of your paid course transactions
               </p>
             </div>
 
@@ -529,15 +571,74 @@ export default function UserDashboard() {
             <div>
               <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">Profile Settings</h2>
               <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">
-                Manage your Verified User profile & password
+                Manage your profile picture, personal information & password
               </p>
+            </div>
+
+            {/* Profile Avatar Card */}
+            <div className="card p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+                <div className="flex items-center gap-4">
+                  <div
+                    className="relative group cursor-pointer"
+                    onClick={() => setShowAvatarModal(true)}
+                    title="Click to change profile picture"
+                  >
+                    <div className="w-20 h-20 rounded-2xl ring-4 ring-primary-500/20 dark:ring-primary-400/20 overflow-hidden shadow-lg bg-gradient-to-br from-primary-500 to-indigo-600 flex items-center justify-center text-white text-2xl font-bold transition-transform group-hover:scale-105">
+                      <UserAvatarDisplay avatarUrl={user?.avatarUrl} name={user?.name} />
+                    </div>
+                    <div className="absolute inset-0 bg-black/40 rounded-2xl flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white">
+                      <Camera size={20} />
+                      <span className="text-[10px] font-bold mt-0.5">Change</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-base text-brand-text dark:text-brand-dark-text">
+                        Profile Avatar & Picture
+                      </h3>
+                      <span className="badge text-[10px] px-2 py-0.5 bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400 font-semibold">
+                        Active Profile
+                      </span>
+                    </div>
+                    <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1">
+                      {user?.avatarUrl
+                        ? 'Custom photo / pre-made graphic active on your account'
+                        : 'Using default initials monogram badge'}
+                    </p>
+                    <div className="flex items-center gap-2.5 mt-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowAvatarModal(true)}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-primary-500 hover:bg-primary-600 text-white text-xs font-semibold shadow-sm transition-colors"
+                      >
+                        <Sparkles size={13} />
+                        {user?.avatarUrl ? 'Change Avatar / Photo' : 'Choose Photo or Graphic'}
+                      </button>
+                      {user?.avatarUrl && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const res = await updateProfileInSupabase({ avatarUrl: '' })
+                            if (res) toast.success('Profile avatar reset successfully!')
+                          }}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-red-200 dark:border-red-900/40 text-xs font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
+                        >
+                          Reset to Initials
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Personal Details Form */}
             <form onSubmit={handleSaveProfile} className="space-y-5">
               <div className="card p-6 space-y-5">
                 <h3 className="font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-2">
-                  <User size={18} className="text-primary-500" /> Personal Information (Saved in Supabase)
+                  <User size={18} className="text-primary-500" /> Personal Information
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -557,7 +658,7 @@ export default function UserDashboard() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">
-                      Email address (Supabase Auth ID)
+                      Email address
                     </label>
                     <div className="relative">
                       <AlertCircle size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
@@ -612,7 +713,7 @@ export default function UserDashboard() {
                     ) : (
                       <Save size={15} />
                     )}
-                    {savingProfile ? 'Saving in Supabase...' : 'Save Profile Changes'}
+                    {savingProfile ? 'Saving...' : 'Save Profile Changes'}
                   </motion.button>
                 </div>
               </div>
@@ -622,7 +723,7 @@ export default function UserDashboard() {
             <form onSubmit={handleChangePassword} className="space-y-4">
               <div className="card p-6 space-y-4">
                 <h3 className="font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-2">
-                  <Lock size={18} className="text-primary-500" /> Update Supabase Password
+                  <Lock size={18} className="text-primary-500" /> Update Password
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -669,7 +770,7 @@ export default function UserDashboard() {
                     ) : (
                       <Lock size={15} />
                     )}
-                    {savingPassword ? 'Updating Password...' : 'Update Password in Supabase'}
+                    {savingPassword ? 'Updating Password...' : 'Update Password'}
                   </motion.button>
                 </div>
               </div>
@@ -691,11 +792,40 @@ export default function UserDashboard() {
             <div className="card p-5 sticky top-24">
               {/* User Avatar */}
               <div className="flex flex-col items-center text-center mb-6 pb-6 border-b border-brand-border dark:border-brand-dark-border">
-                <div className="w-16 h-16 rounded-full bg-primary-500 flex items-center justify-center text-white text-xl font-bold mb-3 shadow-md">
-                  {getInitials(user?.name || 'U')}
+                <div
+                  className="relative group cursor-pointer mb-3"
+                  onClick={() => setShowAvatarModal(true)}
+                  title="Click to customize avatar"
+                >
+                  <div className="w-18 h-18 rounded-full ring-4 ring-primary-500/20 dark:ring-primary-400/20 overflow-hidden shadow-md bg-gradient-to-br from-primary-500 to-indigo-600 flex items-center justify-center text-white text-xl font-bold transition-transform group-hover:scale-105">
+                    <UserAvatarDisplay avatarUrl={user?.avatarUrl} name={user?.name} />
+                  </div>
+                  <div className="absolute inset-0 bg-black/40 rounded-full flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white">
+                    <Camera size={18} />
+                    <span className="text-[9px] font-bold mt-0.5">Edit</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setShowAvatarModal(true)
+                    }}
+                    className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary-500 text-white flex items-center justify-center shadow-md border-2 border-white dark:border-brand-dark-card hover:bg-primary-600 transition-colors"
+                    title="Change profile picture"
+                  >
+                    <Camera size={11} />
+                  </button>
                 </div>
+
                 <h3 className="font-bold text-brand-text dark:text-brand-dark-text">{user?.name}</h3>
                 <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-0.5">{user?.email}</p>
+                <button
+                  type="button"
+                  onClick={() => setShowAvatarModal(true)}
+                  className="mt-2 text-[11px] font-semibold text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1"
+                >
+                  <Sparkles size={11} /> Change Avatar
+                </button>
                 <span className="mt-2 badge bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400 text-xs">
                   {user?.college || 'Student'}
                 </span>
@@ -775,6 +905,17 @@ export default function UserDashboard() {
             loadData()
             setShowUpgradeModal(false)
           }}
+        />
+      )}
+
+      {showAvatarModal && (
+        <AvatarPickerModal
+          isOpen={showAvatarModal}
+          onClose={() => setShowAvatarModal(false)}
+          currentAvatarUrl={user?.avatarUrl}
+          userName={user?.name || 'Student'}
+          userId={user?.id || ''}
+          onSaveAvatar={handleSaveAvatar}
         />
       )}
     </div>

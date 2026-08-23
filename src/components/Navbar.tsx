@@ -33,33 +33,11 @@ const NAV_ITEMS = [
     mega: {
       columns: [
         {
-          title: 'Foundation Programs',
-          icon: BookOpen,
-          items: [
-            { name: 'Class 1–5', path: '/courses?group=Foundation+Programs&sub=Class+1-5' },
-            { name: 'Class 6–8', path: '/courses?group=Foundation+Programs&sub=Class+6-8' },
-            { name: 'Class 9–10', path: '/courses?group=Foundation+Programs&sub=Class+9-10' },
-            { name: 'Class 11–12', path: '/courses?group=Foundation+Programs&sub=Class+11-12' },
-          ],
-        },
-        {
-          title: 'Competitive Exams',
-          icon: Target,
-          items: [
-            { name: 'JEE Preparation', path: '/courses?group=Competitive+Exams&sub=JEE+Preparation' },
-            { name: 'NEET Preparation', path: '/courses?group=Competitive+Exams&sub=NEET+Preparation' },
-            { name: 'CUET Preparation', path: '/courses?group=Competitive+Exams&sub=CUET+Preparation' },
-            { name: 'Olympiads', path: '/courses?group=Competitive+Exams&sub=Olympiads' },
-            { name: 'NTSE', path: '/courses?group=Competitive+Exams&sub=NTSE' },
-          ],
-        },
-        {
           title: 'College & Tech',
           icon: Code2,
           items: [
             { name: 'DSA', path: '/courses?group=College+%26+Tech+Courses&sub=DSA' },
             { name: 'IPU Courses', path: '/courses?group=College+%26+Tech+Courses&sub=IPU+Courses' },
-            { name: 'AKTU Courses', path: '/courses?group=College+%26+Tech+Courses&sub=AKTU+Courses' },
             { name: 'Web Development', path: '/courses?group=College+%26+Tech+Courses&sub=Web+Development' },
             { name: 'App Development', path: '/courses?group=College+%26+Tech+Courses&sub=App+Development' },
             { name: 'AI & Machine Learning', path: '/courses?group=College+%26+Tech+Courses&sub=AI+%26+Machine+Learning' },

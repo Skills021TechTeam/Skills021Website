@@ -389,7 +389,7 @@ async function getDownloadUrl(
       body: JSON.stringify({
         bucketId: auth.bucketId,
         fileNamePrefix: fileName,
-        validDurationInSeconds: 3600,
+        validDurationInSeconds: 86400, // 24 hours validity
       }),
     },
   )

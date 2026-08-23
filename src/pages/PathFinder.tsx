@@ -165,7 +165,7 @@ export default function PathFinder() {
         setSelectedCareer(null)
       }
     } catch (err) {
-      console.error('Supabase fetch error details in PathFinder page:', err)
+      console.error('fetch error details in PathFinder page:', err)
       setError(err instanceof Error ? err.message : 'An unexpected error occurred while loading data.')
     } finally {
       setIsLoading(false)
@@ -339,11 +339,10 @@ export default function PathFinder() {
                     <button
                       key={type}
                       onClick={() => setExamTypes((current) => current.includes(type) ? current.filter((item) => item !== type) : [...current, type])}
-                      className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
-                        examTypes.includes(type)
-                          ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black'
-                          : 'bg-gray-50 dark:bg-white/5 text-brand-muted dark:text-brand-dark-muted'
-                      }`}
+                      className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${examTypes.includes(type)
+                        ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black'
+                        : 'bg-gray-50 dark:bg-white/5 text-brand-muted dark:text-brand-dark-muted'
+                        }`}
                     >
                       {type}
                     </button>
@@ -354,11 +353,10 @@ export default function PathFinder() {
                     <button
                       key={status}
                       onClick={() => setStatuses((current) => current.includes(status) ? current.filter((item) => item !== status) : [...current, status])}
-                      className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
-                        statuses.includes(status)
-                          ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black'
-                          : 'bg-gray-50 dark:bg-white/5 text-brand-muted dark:text-brand-dark-muted'
-                      }`}
+                      className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${statuses.includes(status)
+                        ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black'
+                        : 'bg-gray-50 dark:bg-white/5 text-brand-muted dark:text-brand-dark-muted'
+                        }`}
                     >
                       {status}
                     </button>

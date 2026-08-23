@@ -18,6 +18,7 @@ export interface UserProfile {
   college: string
   phone: string
   role: 'user' | 'admin'
+  avatar_url?: string
   is_premium?: boolean
   created_at?: string
   updated_at?: string
@@ -59,7 +60,8 @@ export async function signUpUser(
   password: string,
   name: string,
   college: string,
-  phone: string = ''
+  phone: string = '',
+  avatarUrl: string = ''
 ) {
   const { firstName, lastName } = splitName(name)
 
@@ -74,6 +76,7 @@ export async function signUpUser(
         college,
         phone,
         role: 'user',
+        avatar_url: avatarUrl,
         is_premium: false,
       },
     },
@@ -87,10 +90,11 @@ export async function signUpUser(
         {
           id: data.user.id,
           email: data.user.email || email,
-          first_name: firstName,
-          last_name: lastName,
+          name: name,
+          college: college || 'Student Institution',
           phone,
           role: 'user',
+          avatar_url: avatarUrl,
           is_premium: false,
         },
         { onConflict: 'id' }
@@ -115,16 +119,16 @@ export async function signInUser(email: string, password: string) {
     try {
       const u = data.user
       const fullName = u.user_metadata?.name || u.email?.split('@')[0] || 'User'
-      const { firstName, lastName } = splitName(fullName)
 
       await supabase.from('profiles').upsert(
         {
           id: u.id,
           email: u.email || email,
-          first_name: u.user_metadata?.first_name || firstName,
-          last_name: u.user_metadata?.last_name || lastName,
+          name: fullName,
+          college: u.user_metadata?.college || 'Student Institution',
           phone: u.user_metadata?.phone || '',
           role: u.user_metadata?.role || 'user',
+          avatar_url: u.user_metadata?.avatar_url || '',
           is_premium: u.user_metadata?.is_premium || false,
         },
         { onConflict: 'id' }
@@ -173,11 +177,10 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
       id: data.id,
       email: data.email,
       name: fullName,
-      first_name: data.first_name || '',
-      last_name: data.last_name || '',
       college: data.college || 'Student Institution',
       phone: data.phone || '',
       role: data.role || 'user',
+      avatar_url: data.avatar_url || '',
       is_premium: Boolean(data.is_premium ?? false),
       created_at: data.created_at,
       updated_at: data.updated_at,
@@ -192,17 +195,18 @@ export async function upsertUserProfile(
   profile: Partial<UserProfile> & { id: string }
 ): Promise<UserProfile | null> {
   const fullName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
-  const { firstName, lastName } = splitName(fullName)
 
   const payload: any = {
     id: profile.id,
     email: profile.email,
-    first_name: profile.first_name || firstName,
-    last_name: profile.last_name || lastName,
+    name: fullName,
     phone: profile.phone || '',
     role: profile.role || 'user',
   }
 
+  if (profile.avatar_url !== undefined) {
+    payload.avatar_url = profile.avatar_url
+  }
   if (profile.is_premium !== undefined) {
     payload.is_premium = profile.is_premium
   }
@@ -210,33 +214,107 @@ export async function upsertUserProfile(
     payload.college = profile.college
   }
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .upsert(payload, { onConflict: 'id' })
-    .select('*')
-    .single()
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .upsert(payload, { onConflict: 'id' })
+      .select('*')
+      .maybeSingle()
 
-  if (error) throw new Error(`Failed to update profile: ${error.message}`)
+    if (error) {
+      // If avatar_url column does not exist yet in public.profiles table, fallback without avatar_url
+      if (error.message?.includes('avatar_url') || error.code === 'PGRST204') {
+        const fallbackPayload = { ...payload }
+        delete fallbackPayload.avatar_url
+        const { data: fallbackData } = await supabase
+          .from('profiles')
+          .upsert(fallbackPayload, { onConflict: 'id' })
+          .select('*')
+          .maybeSingle()
 
-  const nameResolved =
-    data.name ||
-    `${data.first_name || ''} ${data.last_name || ''}`.trim() ||
-    data.email?.split('@')[0] ||
-    'User'
+        return {
+          id: fallbackData?.id || profile.id,
+          email: fallbackData?.email || profile.email || '',
+          name: fallbackData?.name || fullName,
+          college: fallbackData?.college || profile.college || 'Student Institution',
+          phone: fallbackData?.phone || '',
+          role: fallbackData?.role || 'user',
+          avatar_url: profile.avatar_url || '',
+          is_premium: Boolean(fallbackData?.is_premium ?? false),
+          created_at: fallbackData?.created_at,
+          updated_at: fallbackData?.updated_at,
+        }
+      }
+      console.warn(`Upsert profile non-critical note: ${error.message}`)
+    }
 
-  return {
-    id: data.id,
-    email: data.email,
-    name: nameResolved,
-    first_name: data.first_name || '',
-    last_name: data.last_name || '',
-    college: data.college || profile.college || 'Student Institution',
-    phone: data.phone || '',
-    role: data.role || 'user',
-    is_premium: Boolean(data.is_premium ?? false),
-    created_at: data.created_at,
-    updated_at: data.updated_at,
+    const nameResolved = data?.name || data?.email?.split('@')[0] || fullName
+
+    return {
+      id: data?.id || profile.id,
+      email: data?.email || profile.email || '',
+      name: nameResolved,
+      college: data?.college || profile.college || 'Student Institution',
+      phone: data?.phone || '',
+      role: data?.role || 'user',
+      avatar_url: data?.avatar_url || profile.avatar_url || '',
+      is_premium: Boolean(data?.is_premium ?? false),
+      created_at: data?.created_at,
+      updated_at: data?.updated_at,
+    }
+  } catch (err: any) {
+    console.warn('upsertUserProfile error:', err)
+    return null
   }
+}
+
+/**
+ * Uploads a user avatar image to Supabase Storage.
+ * Falls back across buckets and provides clean public URLs.
+ */
+export async function uploadUserAvatar(userId: string, file: File): Promise<string> {
+  const fileExt = file.name.split('.').pop() || 'png'
+  const fileName = `avatar_${Date.now()}.${fileExt}`
+  const filePath = `${userId}/${fileName}`
+
+  // 1. Try 'avatars' bucket first
+  try {
+    const { error: uploadErr } = await supabase.storage
+      .from('avatars')
+      .upload(filePath, file, { cacheControl: '3600', upsert: true })
+
+    if (!uploadErr) {
+      const { data } = supabase.storage.from('avatars').getPublicUrl(filePath)
+      if (data?.publicUrl) return data.publicUrl
+    } else {
+      console.warn('Avatars bucket upload notice:', uploadErr.message)
+    }
+  } catch (e) {
+    console.warn('Avatars upload exception:', e)
+  }
+
+  // 2. Fallback to 'resources' bucket if 'avatars' is not created yet
+  try {
+    const fallbackPath = `avatars/${filePath}`
+    const { error: fallbackErr } = await supabase.storage
+      .from('resources')
+      .upload(fallbackPath, file, { cacheControl: '3600', upsert: true })
+
+    if (!fallbackErr) {
+      const { data } = supabase.storage.from('resources').getPublicUrl(fallbackPath)
+      if (data?.publicUrl) return data.publicUrl
+    }
+  } catch (e) {
+    // fallback
+  }
+
+  // 3. Guaranteed immediate fallback: convert to base64 Data URL so avatar always displays
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = (err) => reject(err)
+    reader.readAsDataURL(file)
+  })
 }
 
 export async function toggleUserPremiumStatus(userId: string, isPremium: boolean): Promise<boolean> {

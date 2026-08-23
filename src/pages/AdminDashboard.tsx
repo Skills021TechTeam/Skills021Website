@@ -583,11 +583,10 @@ function NotesSubjectPicker({
       <button
         type="button"
         onClick={() => { setOpen(o => !o); setQuery('') }}
-        className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border text-sm text-left transition-all ${
-          open
-            ? 'border-primary-500 ring-2 ring-primary-500 bg-white dark:bg-brand-dark-bg'
-            : 'border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg hover:border-primary-300'
-        }`}
+        className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border text-sm text-left transition-all ${open
+          ? 'border-primary-500 ring-2 ring-primary-500 bg-white dark:bg-brand-dark-bg'
+          : 'border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg hover:border-primary-300'
+          }`}
       >
         <span className={value ? 'text-brand-text dark:text-brand-dark-text font-medium' : 'text-brand-muted dark:text-brand-dark-muted'}>
           {value || 'Auto-match by course title'}
@@ -643,9 +642,8 @@ function NotesSubjectPicker({
                   key={subject}
                   type="button"
                   onClick={() => select(subject)}
-                  className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors hover:bg-gray-100 dark:hover:bg-white/10 ${
-                    value === subject ? 'text-primary-500 font-semibold bg-primary-50 dark:bg-primary-950/20' : 'text-brand-text dark:text-brand-dark-text'
-                  }`}
+                  className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors hover:bg-gray-100 dark:hover:bg-white/10 ${value === subject ? 'text-primary-500 font-semibold bg-primary-50 dark:bg-primary-950/20' : 'text-brand-text dark:text-brand-dark-text'
+                    }`}
                 >
                   <Check size={12} className={value === subject ? 'opacity-100' : 'opacity-0'} />
                   {subject}
@@ -1247,12 +1245,12 @@ export default function AdminDashboard() {
       return
     }
     setRecordingDurationLoading(true)
-    ;(async () => {
-      const seconds = await getVideoDurationSeconds(recordingFile)
-      if (!active) return
-      setRecordingDuration(seconds != null ? formatDurationHuman(seconds) : '')
-      setRecordingDurationLoading(false)
-    })()
+      ; (async () => {
+        const seconds = await getVideoDurationSeconds(recordingFile)
+        if (!active) return
+        setRecordingDuration(seconds != null ? formatDurationHuman(seconds) : '')
+        setRecordingDurationLoading(false)
+      })()
     return () => { active = false }
   }, [recordingFile])
 
@@ -1389,8 +1387,8 @@ export default function AdminDashboard() {
       const data = await fetchAllUsersWithEnrollments()
       setDbUsers(data)
     } catch (err) {
-      console.error('Failed to load users from Supabase:', err)
-      toast.error(err instanceof Error ? err.message : 'Failed to load users from Supabase')
+      console.error('Failed to load users', err)
+      toast.error(err instanceof Error ? err.message : 'Failed to load users')
     } finally {
       setUsersLoading(false)
     }
@@ -1509,7 +1507,7 @@ export default function AdminDashboard() {
     try {
       setCareerPaths(await getCareerPaths())
     } catch (err) {
-      console.error('Failed to load career paths from Supabase:', err)
+      console.error('Failed to load career paths', err)
       toast.error(err instanceof Error ? err.message : 'Failed to load career paths')
     } finally {
       setPathfinderLoading(false)
@@ -2137,7 +2135,7 @@ export default function AdminDashboard() {
       { label: 'Quizzes', val: content.quizzes.length, icon: HelpCircle, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-900/20' },
       { label: 'Roadmaps', val: content.roadmaps.length, icon: Map, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
       { label: 'Active Mentors', val: dbMentors.filter(m => m.status === 'Active').length, icon: Users, color: 'text-indigo-500', bg: 'bg-indigo-50 dark:bg-indigo-900/20' },
-      { label: 'Total Supabase Users', val: dbUsers.length, icon: Users, color: 'text-rose-500', bg: 'bg-rose-50 dark:bg-rose-900/20' },
+      { label: 'Total Users', val: dbUsers.length, icon: Users, color: 'text-rose-500', bg: 'bg-rose-50 dark:bg-rose-900/20' },
       { label: 'Paid Course Students', val: dbUsers.filter(u => u.hasPaidCourses).length, icon: CreditCard, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
       { label: 'New Guidance Requests', val: dbGuidanceRequests.filter(r => r.status === 'New').length, icon: Users, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
       { label: 'New Join Us Applications', val: careerApplications.filter(a => a.status === 'New').length, icon: Briefcase, color: 'text-orange-500', bg: 'bg-orange-50 dark:bg-orange-900/20' },
@@ -2247,56 +2245,56 @@ export default function AdminDashboard() {
             <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Loading courses...</p>
           </div>
         ) : (
-        <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-white/5">
-                <tr>{['Title', 'Group', 'Subcategory', 'Price', 'Video', 'Enrolled', 'Status', 'Actions'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
-                ))}</tr>
-              </thead>
-              <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
-                {filtered.map(c => (
-                  <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
-                    <td className="px-4 py-3 font-medium text-brand-text dark:text-brand-dark-text max-w-[180px] truncate">{c.title}</td>
-                    <td className="px-4 py-3 text-xs text-brand-muted dark:text-brand-dark-muted whitespace-nowrap">{c.group}</td>
-                    <td className="px-4 py-3"><span className="badge bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 text-xs">{c.subcategory}</span></td>
-                    <td className="px-4 py-3 font-medium">{c.price === 'FREE' ? <span className="text-green-500">FREE</span> : `₹${c.price}`}</td>
-                    <td className="px-4 py-3">
-                      {c.videoUrl ? (
-                        <span className="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-600 font-semibold px-2 py-0.5 rounded-md">Uploaded</span>
-                      ) : (
-                        <span className="text-[10px] bg-gray-100 dark:bg-white/10 text-brand-muted font-semibold px-2 py-0.5 rounded-md">None</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted">{(c.enrolled ?? 0).toLocaleString()}</td>
-                    <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={async () => {
-                            try {
-                              const updated = await toggleSiteCourseStatus(c.id, c.status)
-                              setDbCourses(prev => prev.map(x => x.id === c.id ? updated : x))
-                              toast.success(`Course ${updated.status === 'Published' ? 'published' : 'unpublished'}`)
-                            } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to toggle status') }
-                          }}
-                          title={c.status === 'Published' ? 'Unpublish' : 'Publish'}
-                          className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted dark:text-brand-dark-muted transition-colors"
-                        >{c.status === 'Published' ? <EyeOff size={14} /> : <Eye size={14} />}</button>
-                        <button onClick={() => openEdit({ ...c, _type: 'course' })} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500"><Edit2 size={14} /></button>
-                        <button onClick={() => setDeleteId({ id: c.id, title: c.title, type: 'course' })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 size={14} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && !coursesLoading && (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-brand-muted text-sm">No courses found.</td></tr>
-                )}
-              </tbody>
-            </table>
+          <div className="card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-white/5">
+                  <tr>{['Title', 'Group', 'Subcategory', 'Price', 'Video', 'Enrolled', 'Status', 'Actions'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  ))}</tr>
+                </thead>
+                <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
+                  {filtered.map(c => (
+                    <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                      <td className="px-4 py-3 font-medium text-brand-text dark:text-brand-dark-text max-w-[180px] truncate">{c.title}</td>
+                      <td className="px-4 py-3 text-xs text-brand-muted dark:text-brand-dark-muted whitespace-nowrap">{c.group}</td>
+                      <td className="px-4 py-3"><span className="badge bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 text-xs">{c.subcategory}</span></td>
+                      <td className="px-4 py-3 font-medium">{c.price === 'FREE' ? <span className="text-green-500">FREE</span> : `₹${c.price}`}</td>
+                      <td className="px-4 py-3">
+                        {c.videoUrl ? (
+                          <span className="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-600 font-semibold px-2 py-0.5 rounded-md">Uploaded</span>
+                        ) : (
+                          <span className="text-[10px] bg-gray-100 dark:bg-white/10 text-brand-muted font-semibold px-2 py-0.5 rounded-md">None</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted">{(c.enrolled ?? 0).toLocaleString()}</td>
+                      <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={async () => {
+                              try {
+                                const updated = await toggleSiteCourseStatus(c.id, c.status)
+                                setDbCourses(prev => prev.map(x => x.id === c.id ? updated : x))
+                                toast.success(`Course ${updated.status === 'Published' ? 'published' : 'unpublished'}`)
+                              } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to toggle status') }
+                            }}
+                            title={c.status === 'Published' ? 'Unpublish' : 'Publish'}
+                            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted dark:text-brand-dark-muted transition-colors"
+                          >{c.status === 'Published' ? <EyeOff size={14} /> : <Eye size={14} />}</button>
+                          <button onClick={() => openEdit({ ...c, _type: 'course' })} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500"><Edit2 size={14} /></button>
+                          <button onClick={() => setDeleteId({ id: c.id, title: c.title, type: 'course' })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 size={14} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {filtered.length === 0 && !coursesLoading && (
+                    <tr><td colSpan={8} className="px-4 py-8 text-center text-brand-muted text-sm">No courses found.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
         )}
       </div>
     )
@@ -2929,7 +2927,7 @@ export default function AdminDashboard() {
           setSelectedUserDetail(prev => prev ? { ...prev, is_premium: newStatus } : null)
         }
       } else {
-        toast.error('Failed to update premium membership in Supabase')
+        toast.error('Failed to update premium membership')
       }
     }
 
@@ -2939,7 +2937,7 @@ export default function AdminDashboard() {
           <div>
             <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">Manage Users & Enrollments</h2>
             <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">
-              Live user profiles, premium memberships & course purchase records synced with Supabase
+              Live user profiles, premium memberships & course purchase records synced
             </p>
           </div>
 
@@ -2995,11 +2993,10 @@ export default function AdminDashboard() {
               <button
                 key={f.id}
                 onClick={() => setUserFilter(f.id as any)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  userFilter === f.id
-                    ? 'bg-primary-500 text-white shadow-sm'
-                    : 'bg-gray-100 dark:bg-white/5 text-brand-muted hover:bg-gray-200 dark:hover:bg-white/10'
-                }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${userFilter === f.id
+                  ? 'bg-primary-500 text-white shadow-sm'
+                  : 'bg-gray-100 dark:bg-white/5 text-brand-muted hover:bg-gray-200 dark:hover:bg-white/10'
+                  }`}
               >
                 {f.label}
               </button>
@@ -3028,7 +3025,7 @@ export default function AdminDashboard() {
                   <tr>
                     <td colSpan={8} className="px-4 py-12 text-center text-brand-muted text-sm">
                       <Loader2 size={24} className="animate-spin mx-auto text-primary-500 mb-2" />
-                      Loading users from Supabase...
+                      Loading users...
                     </td>
                   </tr>
                 ) : (
@@ -3060,11 +3057,10 @@ export default function AdminDashboard() {
                       {/* Role */}
                       <td className="px-4 py-3">
                         <span
-                          className={`badge text-xs ${
-                            u.role === 'admin'
-                              ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 font-semibold'
-                              : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300'
-                          }`}
+                          className={`badge text-xs ${u.role === 'admin'
+                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 font-semibold'
+                            : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300'
+                            }`}
                         >
                           {u.role}
                         </span>
@@ -3089,11 +3085,10 @@ export default function AdminDashboard() {
                           <div>
                             <button
                               onClick={() => handleTogglePremium(u)}
-                              className={`text-[10px] font-semibold underline transition-colors ${
-                                u.is_premium
-                                  ? 'text-red-500 hover:text-red-600'
-                                  : 'text-primary-600 dark:text-primary-400 hover:text-primary-700'
-                              }`}
+                              className={`text-[10px] font-semibold underline transition-colors ${u.is_premium
+                                ? 'text-red-500 hover:text-red-600'
+                                : 'text-primary-600 dark:text-primary-400 hover:text-primary-700'
+                                }`}
                             >
                               {u.is_premium ? 'Revoke Premium' : '+ Grant All-Access'}
                             </button>
@@ -3234,7 +3229,7 @@ export default function AdminDashboard() {
                 <div className="p-6 overflow-y-auto flex-1 space-y-4">
                   <h4 className="font-bold text-sm text-brand-text dark:text-brand-dark-text flex items-center justify-between">
                     <span>Courses Taken ({selectedUserDetail.enrollments.length})</span>
-                    <span className="text-xs font-normal text-brand-muted">Recorded in Supabase</span>
+                    <span className="text-xs font-normal text-brand-muted">Active Record</span>
                   </h4>
 
                   {selectedUserDetail.enrollments.length === 0 ? (
@@ -3253,11 +3248,10 @@ export default function AdminDashboard() {
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2 mb-1">
                                 <span
-                                  className={`badge text-[10px] font-bold ${
-                                    isPaid
-                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-                                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                                  }`}
+                                  className={`badge text-[10px] font-bold ${isPaid
+                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                    : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                                    }`}
                                 >
                                   {isPaid ? `PAID (₹${enr.amount})` : 'FREE COURSE'}
                                 </span>
@@ -3286,11 +3280,11 @@ export default function AdminDashboard() {
                                     setSelectedUserDetail((prev) =>
                                       prev
                                         ? {
-                                            ...prev,
-                                            enrollments: prev.enrollments.filter((e) => e.id !== enr.id),
-                                            paidCoursesCount: Math.max(0, prev.paidCoursesCount - (isPaid ? 1 : 0)),
-                                            totalCoursesCount: Math.max(0, prev.totalCoursesCount - 1),
-                                          }
+                                          ...prev,
+                                          enrollments: prev.enrollments.filter((e) => e.id !== enr.id),
+                                          paidCoursesCount: Math.max(0, prev.paidCoursesCount - (isPaid ? 1 : 0)),
+                                          totalCoursesCount: Math.max(0, prev.totalCoursesCount - 1),
+                                        }
                                         : null
                                     )
                                   } catch (err: any) {
@@ -3339,7 +3333,7 @@ export default function AdminDashboard() {
         const updated = await updatePaymentSettings(draftPaymentSettings)
         setPaymentSettings(updated)
         setDraftPaymentSettings(updated)
-        toast.success('UPI ID & QR Code settings saved to Supabase! 🎉')
+        toast.success('UPI ID & QR Code settings saved successfully! 🎉')
       } catch (err: any) {
         toast.error(err.message || 'Failed to save payment settings')
       } finally {
@@ -3625,11 +3619,10 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowQrSettingsPanel((prev) => !prev)}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all ${
-                showQrSettingsPanel
-                  ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black border-transparent shadow-xs'
-                  : 'border-brand-border dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5'
-              }`}
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all ${showQrSettingsPanel
+                ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black border-transparent shadow-xs'
+                : 'border-brand-border dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5'
+                }`}
             >
               <QrCode size={14} /> {showQrSettingsPanel ? 'Hide UPI & QR Settings' : 'Configure UPI & QR Code'}
             </button>
@@ -3706,11 +3699,10 @@ export default function AdminDashboard() {
               <button
                 key={f.id}
                 onClick={() => setPaymentFilter(f.id as any)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  paymentFilter === f.id
-                    ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black shadow-xs'
-                    : 'bg-gray-100 dark:bg-white/5 text-brand-muted hover:bg-gray-200 dark:hover:bg-white/10'
-                }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${paymentFilter === f.id
+                  ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black shadow-xs'
+                  : 'bg-gray-100 dark:bg-white/5 text-brand-muted hover:bg-gray-200 dark:hover:bg-white/10'
+                  }`}
               >
                 {f.label}
               </button>
@@ -3768,11 +3760,10 @@ export default function AdminDashboard() {
                       <td className="px-4 py-3.5">
                         <div className="space-y-1">
                           <span
-                            className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider ${
-                              req.itemType === 'premium_membership'
-                                ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/40'
-                                : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300'
-                            }`}
+                            className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider ${req.itemType === 'premium_membership'
+                              ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/40'
+                              : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300'
+                              }`}
                           >
                             {req.itemType === 'premium_membership' ? '⭐ PREMIUM PASS' : 'COURSE PURCHASE'}
                           </span>
@@ -4537,11 +4528,10 @@ export default function AdminDashboard() {
                             <select
                               value={h.status}
                               onChange={e => handleUpdateStatus(h, e.target.value as any)}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${
-                                h.status === 'ongoing' ? 'bg-emerald-500 text-white border-emerald-600' :
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${h.status === 'ongoing' ? 'bg-emerald-500 text-white border-emerald-600' :
                                 h.status === 'upcoming' ? 'bg-blue-500 text-white border-blue-600' :
-                                'bg-gray-500 text-white border-gray-600'
-                              }`}
+                                  'bg-gray-500 text-white border-gray-600'
+                                }`}
                               title="Set hackathon status (ONGOING is Active)"
                             >
                               <option value="upcoming" className="bg-white text-gray-900 dark:bg-gray-800 dark:text-white">UPCOMING</option>
@@ -4552,9 +4542,8 @@ export default function AdminDashboard() {
                           <td className="px-4 py-3">
                             <button
                               onClick={() => handleToggleRegistration(h)}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
-                                h.isRegistrationOpen ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
-                              }`}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${h.isRegistrationOpen ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
+                                }`}
                             >
                               {h.isRegistrationOpen ? 'OPEN' : 'CLOSED'}
                             </button>
@@ -4637,30 +4626,29 @@ export default function AdminDashboard() {
                               )}
                             </div>
                           </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => handleSelectHackathonForTeams(h)}
-                              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                                h.status === 'ongoing'
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => handleSelectHackathonForTeams(h)}
+                                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${h.status === 'ongoing'
                                   ? 'bg-primary-500 text-white hover:bg-primary-600 shadow-xs'
                                   : 'bg-gray-200 dark:bg-white/10 text-gray-500 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-white/20'
-                              }`}
-                              title={h.status === 'ongoing' ? 'Manage Teams' : 'Hackathon must be ONGOING to manage teams'}
-                            >
-                              Manage Teams {h.status !== 'ongoing' && '(Locked)'}
-                            </button>
-                            <button onClick={() => openEditHackathonModal(h)} className="p-1.5 rounded-lg hover:bg-primary-50 text-primary-500">
-                              <Edit2 size={14} />
-                            </button>
-                            <button onClick={() => openDeleteModal(h)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500" title="Delete Hackathon">
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
+                                  }`}
+                                title={h.status === 'ongoing' ? 'Manage Teams' : 'Hackathon must be ONGOING to manage teams'}
+                              >
+                                Manage Teams {h.status !== 'ongoing' && '(Locked)'}
+                              </button>
+                              <button onClick={() => openEditHackathonModal(h)} className="p-1.5 rounded-lg hover:bg-primary-50 text-primary-500">
+                                <Edit2 size={14} />
+                              </button>
+                              <button onClick={() => openDeleteModal(h)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500" title="Delete Hackathon">
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
                     {filtered.length === 0 && (
                       <tr><td colSpan={7} className="px-4 py-8 text-center text-brand-muted text-sm">No hackathons found.</td></tr>
                     )}
@@ -4679,9 +4667,8 @@ export default function AdminDashboard() {
                       <span className="text-xs font-bold text-primary-500 uppercase tracking-widest">SELECTED HACKATHON</span>
                       <h3 className="text-xl font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-2">
                         {selectedAdminHackathon.title}
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
-                          isHackathonActive ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30'
-                        }`}>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${isHackathonActive ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                          }`}>
                           {selectedAdminHackathon.status}
                         </span>
                       </h3>
@@ -4743,11 +4730,10 @@ export default function AdminDashboard() {
                                             key={mIdx}
                                             disabled={!isHackathonActive}
                                             onClick={() => handleToggleMemberAttendance(team, mIdx)}
-                                            className={`px-2 py-1 rounded text-[11px] font-medium border ${
-                                              m.present
-                                                ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-bold'
-                                                : 'bg-gray-100 dark:bg-white/5 text-gray-400 border-transparent'
-                                            } ${!isHackathonActive ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            className={`px-2 py-1 rounded text-[11px] font-medium border ${m.present
+                                              ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-bold'
+                                              : 'bg-gray-100 dark:bg-white/5 text-gray-400 border-transparent'
+                                              } ${!isHackathonActive ? 'opacity-60 cursor-not-allowed' : ''}`}
                                           >
                                             {m.name.split(' ')[0]} {m.present ? '✓' : '✗'}
                                           </button>
@@ -4768,9 +4754,8 @@ export default function AdminDashboard() {
                                         <button
                                           disabled={!isHackathonActive}
                                           onClick={() => handleToggleQualification(team.id, selectedAdminHackathon.currentRound, isQualified)}
-                                          className={`px-3 py-1 rounded-lg text-xs font-bold ${
-                                            isQualified ? 'bg-emerald-500 text-white' : 'bg-red-500/20 text-red-500 border border-red-500/30'
-                                          } ${!isHackathonActive ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                          className={`px-3 py-1 rounded-lg text-xs font-bold ${isQualified ? 'bg-emerald-500 text-white' : 'bg-red-500/20 text-red-500 border border-red-500/30'
+                                            } ${!isHackathonActive ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         >
                                           {isQualified ? 'QUALIFIED' : 'NOT QUALIFIED'}
                                         </button>
@@ -4788,9 +4773,8 @@ export default function AdminDashboard() {
                                               const val = e.target.value ? Number(e.target.value) as 1 | 2 | 3 : null
                                               handleSetPodiumPosition(team.id, val)
                                             }}
-                                            className={`px-2 py-1 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-xs font-semibold ${
-                                              !isHackathonActive ? 'opacity-60 cursor-not-allowed' : ''
-                                            }`}
+                                            className={`px-2 py-1 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-xs font-semibold ${!isHackathonActive ? 'opacity-60 cursor-not-allowed' : ''
+                                              }`}
                                           >
                                             <option value="">None</option>
                                             <option value="1">🥇 1st Place</option>
@@ -5650,7 +5634,7 @@ export default function AdminDashboard() {
             savedCourseId = String(updated.id)
             setDbCourses(prev => prev.map(c => c.id === editItem.id ? updated : c))
             if ((updated as unknown as { _subjectLinkFailed?: boolean })._subjectLinkFailed) {
-              toast.error('Course saved, but the College/Course/Branch/Semester/Subject link did NOT save — it won\u2019t show up under the Courses page academic filter yet. Reload the Supabase schema cache, then edit and save this course again.', { duration: 8000 })
+              toast.error('Course saved, but the College/Course/Branch/Semester/Subject link did NOT save — it won\u2019t show up under the Courses page academic filter yet. Reload the schema cache, then edit and save this course again.', { duration: 8000 })
             } else {
               toast.success('Course updated!')
             }
@@ -5659,7 +5643,7 @@ export default function AdminDashboard() {
             savedCourseId = String(created.id)
             setDbCourses(prev => [created, ...prev])
             if ((created as unknown as { _subjectLinkFailed?: boolean })._subjectLinkFailed) {
-              toast.error('Course saved, but the College/Course/Branch/Semester/Subject link did NOT save — it won\u2019t show up under the Courses page academic filter yet. Reload the Supabase schema cache, then edit and save this course again.', { duration: 8000 })
+              toast.error('Course saved, but the College/Course/Branch/Semester/Subject link did NOT save — it won\u2019t show up under the Courses page academic filter yet. Reload the schema cache, then edit and save this course again.', { duration: 8000 })
             } else {
               toast.success('Course added!')
             }
@@ -5687,10 +5671,10 @@ export default function AdminDashboard() {
           closeModal()
         } catch (err) {
           if (newlyUploadedVideoUrl && isBackblazeRef(newlyUploadedVideoUrl)) {
-            await deleteCourseFile(newlyUploadedVideoUrl).catch(() => {})
+            await deleteCourseFile(newlyUploadedVideoUrl).catch(() => { })
           }
           if (newlyUploadedThumbnailUrl) {
-            await deleteCourseFile(newlyUploadedThumbnailUrl).catch(() => {})
+            await deleteCourseFile(newlyUploadedThumbnailUrl).catch(() => { })
           }
           toast.error(err instanceof Error ? err.message : 'Failed to save course')
         } finally {
@@ -5870,75 +5854,75 @@ export default function AdminDashboard() {
                   )}
                 </label>
                 <div className="border border-brand-border dark:border-brand-dark-border rounded-xl p-3 space-y-3 bg-gray-50 dark:bg-brand-dark-bg">
-                    {timestampsLoading ? (
-                      <div className="flex items-center justify-center py-3"><Loader2 size={16} className="animate-spin text-brand-muted" /></div>
-                    ) : courseTimestamps.length === 0 ? (
-                      <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted">No chapters yet. Add the first one below.</p>
-                    ) : (
-                      <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
-                        {courseTimestamps.map(t => (
-                          <div key={t.id ?? `pending-${t.sortOrder}-${t.timeSeconds}-${t.label}`} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border text-xs">
-                            <span className="font-mono font-semibold text-primary-500 flex-shrink-0">{formatSeconds(t.timeSeconds)}</span>
-                            <span className="flex-1 truncate text-brand-text dark:text-brand-dark-text">{t.label}</span>
-                            <button
-                              type="button"
-                              disabled={deletingTimestampId === t.id}
-                              onClick={async () => {
-                                if (!t.id) {
-                                  setCourseTimestamps(prev => prev.filter(x => x !== t))
-                                  return
-                                }
-                                setDeletingTimestampId(t.id)
-                                try {
-                                  await deleteTimestampApi(t.id)
-                                  setCourseTimestamps(prev => prev.filter(x => x.id !== t.id))
-                                  toast.success('Chapter removed')
-                                } catch (err) {
-                                  toast.error(err instanceof Error ? err.message : 'Failed to remove chapter')
-                                } finally {
-                                  setDeletingTimestampId(null)
-                                }
-                              }}
-                              className="p-1 text-red-400 hover:text-red-600 flex-shrink-0 disabled:opacity-50"
-                            >
-                              {deletingTimestampId === t.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2">
-                      <div className="relative w-24 flex-shrink-0">
-                        <Clock size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-brand-muted" />
-                        <input
-                          value={newTimestampTime}
-                          onChange={e => setNewTimestampTime(e.target.value)}
-                          placeholder="0.05 / 0:05"
-                          className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card text-xs text-brand-text dark:text-brand-dark-text"
-                        />
-                      </div>
-                      <input
-                        value={newTimestampLabel}
-                        onChange={e => setNewTimestampLabel(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && !timestampSaving && handleAddChapter()}
-                        placeholder="Chapter label, e.g. Introduction"
-                        className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card text-xs text-brand-text dark:text-brand-dark-text"
-                      />
-                      <button
-                        type="button"
-                        disabled={timestampSaving || !newTimestampTime || !newTimestampLabel.trim()}
-                        onClick={handleAddChapter}
-                        className="flex-shrink-0 p-1.5 rounded-lg bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-50"
-                      >
-                        {timestampSaving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-                      </button>
+                  {timestampsLoading ? (
+                    <div className="flex items-center justify-center py-3"><Loader2 size={16} className="animate-spin text-brand-muted" /></div>
+                  ) : courseTimestamps.length === 0 ? (
+                    <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted">No chapters yet. Add the first one below.</p>
+                  ) : (
+                    <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                      {courseTimestamps.map(t => (
+                        <div key={t.id ?? `pending-${t.sortOrder}-${t.timeSeconds}-${t.label}`} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border text-xs">
+                          <span className="font-mono font-semibold text-primary-500 flex-shrink-0">{formatSeconds(t.timeSeconds)}</span>
+                          <span className="flex-1 truncate text-brand-text dark:text-brand-dark-text">{t.label}</span>
+                          <button
+                            type="button"
+                            disabled={deletingTimestampId === t.id}
+                            onClick={async () => {
+                              if (!t.id) {
+                                setCourseTimestamps(prev => prev.filter(x => x !== t))
+                                return
+                              }
+                              setDeletingTimestampId(t.id)
+                              try {
+                                await deleteTimestampApi(t.id)
+                                setCourseTimestamps(prev => prev.filter(x => x.id !== t.id))
+                                toast.success('Chapter removed')
+                              } catch (err) {
+                                toast.error(err instanceof Error ? err.message : 'Failed to remove chapter')
+                              } finally {
+                                setDeletingTimestampId(null)
+                              }
+                            }}
+                            className="p-1 text-red-400 hover:text-red-600 flex-shrink-0 disabled:opacity-50"
+                          >
+                            {deletingTimestampId === t.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                    <p className="text-[10px] text-brand-muted dark:text-brand-dark-muted">
-                      {courseVideoDurationSeconds != null
-                        ? `Enter 0.05 for 5 sec, 0.06 for 6 sec, 0.07 for 7 sec, or use 0:05 / 00:05. Video length: ${formatSeconds(courseVideoDurationSeconds)}.`
-                        : 'Enter 0.05 for 5 seconds, 0:05, or 00:05 for timestamp positions.'}
-                    </p>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <div className="relative w-24 flex-shrink-0">
+                      <Clock size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-brand-muted" />
+                      <input
+                        value={newTimestampTime}
+                        onChange={e => setNewTimestampTime(e.target.value)}
+                        placeholder="0.05 / 0:05"
+                        className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card text-xs text-brand-text dark:text-brand-dark-text"
+                      />
+                    </div>
+                    <input
+                      value={newTimestampLabel}
+                      onChange={e => setNewTimestampLabel(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && !timestampSaving && handleAddChapter()}
+                      placeholder="Chapter label, e.g. Introduction"
+                      className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card text-xs text-brand-text dark:text-brand-dark-text"
+                    />
+                    <button
+                      type="button"
+                      disabled={timestampSaving || !newTimestampTime || !newTimestampLabel.trim()}
+                      onClick={handleAddChapter}
+                      className="flex-shrink-0 p-1.5 rounded-lg bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-50"
+                    >
+                      {timestampSaving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                    </button>
                   </div>
+                  <p className="text-[10px] text-brand-muted dark:text-brand-dark-muted">
+                    {courseVideoDurationSeconds != null
+                      ? `Enter 0.05 for 5 sec, 0.06 for 6 sec, 0.07 for 7 sec, or use 0:05 / 00:05. Video length: ${formatSeconds(courseVideoDurationSeconds)}.`
+                      : 'Enter 0.05 for 5 seconds, 0:05, or 00:05 for timestamp positions.'}
+                  </p>
+                </div>
               </div>
 
               {/* Thumbnail Upload */}
@@ -6103,7 +6087,7 @@ export default function AdminDashboard() {
               photoUrl = await uploadMentorPhoto(mentorPhotoFile, path)
               setMentorPhotoUploadStatus('success')
               if (editItem.id && mentorExistingPhotoUrl) {
-                await deleteMentorPhoto(mentorExistingPhotoUrl).catch(() => {})
+                await deleteMentorPhoto(mentorExistingPhotoUrl).catch(() => { })
               }
             } catch (err) {
               setMentorPhotoUploadStatus('error')
@@ -6403,18 +6387,18 @@ export default function AdminDashboard() {
     setLiveJoinUrl(webinar.joinUrl)
     setLiveAccess(webinar.access)
     setLivePrice(String(webinar.price ?? 0))
-    setStartDate(`${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}`)
+    setStartDate(`${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`)
     setStartHour(String(startHour12))
-    setStartMinute(String(start.getMinutes()).padStart(2,'0'))
+    setStartMinute(String(start.getMinutes()).padStart(2, '0'))
     setStartPeriod(startPeriod)
 
     if (webinar.endsAt) {
       const end = new Date(webinar.endsAt)
       const endHour24 = end.getHours()
       setHasEndTime(true)
-      setEndDate(`${end.getFullYear()}-${String(end.getMonth()+1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}`)
+      setEndDate(`${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`)
       setEndHour(String(endHour24 % 12 || 12))
-      setEndMinute(String(end.getMinutes()).padStart(2,'0'))
+      setEndMinute(String(end.getMinutes()).padStart(2, '0'))
       setEndPeriod(endHour24 >= 12 ? 'PM' : 'AM')
     } else {
       setHasEndTime(false)
@@ -6445,24 +6429,24 @@ export default function AdminDashboard() {
         <SectionHeader title="Manage Webinars" count={webinarRecordings.length} />
         <div className="grid lg:grid-cols-2 gap-6">
           <div className="card p-6">
-            <div className="flex items-center gap-2 mb-5"><Radio size={18} className="text-red-500"/><h3 className="font-bold text-lg">Schedule live webinar</h3></div>
+            <div className="flex items-center gap-2 mb-5"><Radio size={18} className="text-red-500" /><h3 className="font-bold text-lg">Schedule live webinar</h3></div>
             <div className="space-y-4">
-              <Field label="Title *"><input value={liveTitle} onChange={e=>setLiveTitle(e.target.value)} className={inputCls} placeholder="Career Q&A — Placement Strategy"/></Field>
-              <Field label="Description"><textarea value={liveDescription} onChange={e=>setLiveDescription(e.target.value)} className={inputCls+' resize-none'} rows={3}/></Field>
+              <Field label="Title *"><input value={liveTitle} onChange={e => setLiveTitle(e.target.value)} className={inputCls} placeholder="Career Q&A — Placement Strategy" /></Field>
+              <Field label="Description"><textarea value={liveDescription} onChange={e => setLiveDescription(e.target.value)} className={inputCls + ' resize-none'} rows={3} /></Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Platform"><select value={liveProvider} onChange={e=>setLiveProvider(e.target.value as WebinarProvider)} className={inputCls}><option>Google Meet</option><option>Zoom</option></select></Field>
-                <Field label="Join URL *"><input value={liveJoinUrl} onChange={e=>setLiveJoinUrl(e.target.value)} className={inputCls} placeholder="https://meet.google.com/..."/></Field>
+                <Field label="Platform"><select value={liveProvider} onChange={e => setLiveProvider(e.target.value as WebinarProvider)} className={inputCls}><option>Google Meet</option><option>Zoom</option></select></Field>
+                <Field label="Join URL *"><input value={liveJoinUrl} onChange={e => setLiveJoinUrl(e.target.value)} className={inputCls} placeholder="https://meet.google.com/..." /></Field>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Field label="Access">
-                  <select value={liveAccess} onChange={e=>setLiveAccess(e.target.value as WebinarAccess)} className={inputCls}>
+                  <select value={liveAccess} onChange={e => setLiveAccess(e.target.value as WebinarAccess)} className={inputCls}>
                     <option value="free">Free for everyone</option>
                     <option value="paid">Paid for everyone</option>
                     <option value="enrolled_free">Free for enrolled students, paid for others</option>
                   </select>
                 </Field>
                 <Field label="Price (₹)">
-                  <input type="number" min="0" step="1" value={livePrice} disabled={liveAccess === 'free'} onChange={e=>setLivePrice(e.target.value)} className={inputCls} placeholder="499" />
+                  <input type="number" min="0" step="1" value={livePrice} disabled={liveAccess === 'free'} onChange={e => setLivePrice(e.target.value)} className={inputCls} placeholder="499" />
                 </Field>
               </div>
               {liveAccess === 'enrolled_free' && <p className="text-xs text-violet-600 dark:text-violet-300 -mt-2">Students with any active course enrollment get this webinar free. Everyone else sees the paid price.</p>}
@@ -6479,59 +6463,59 @@ export default function AdminDashboard() {
                 {hasEndTime && webinarTimeField('End time', endDate, setEndDate, endHour, setEndHour, endMinute, setEndMinute, endPeriod, setEndPeriod, true)}
               </div>
               <div className="flex gap-3">
-                <button disabled={webinarBusy} onClick={async()=>{
+                <button disabled={webinarBusy} onClick={async () => {
                   const startValue = buildWebinarDateTime(startDate, startHour, startMinute, startPeriod)
                   const endValue = hasEndTime ? buildWebinarDateTime(endDate, endHour, endMinute, endPeriod) : ''
-                  if(!liveTitle||!liveJoinUrl||!startValue){toast.error('Fill all required webinar fields');return}
-                  if(hasEndTime && !endValue){toast.error('Complete the optional end time or turn it off');return}
-                  if(hasEndTime && new Date(endValue).getTime() <= new Date(startValue).getTime()){toast.error('End time must be after the start time');return}
-                  try{
+                  if (!liveTitle || !liveJoinUrl || !startValue) { toast.error('Fill all required webinar fields'); return }
+                  if (hasEndTime && !endValue) { toast.error('Complete the optional end time or turn it off'); return }
+                  if (hasEndTime && new Date(endValue).getTime() <= new Date(startValue).getTime()) { toast.error('End time must be after the start time'); return }
+                  try {
                     setWebinarBusy(true)
-                    const payload={title:liveTitle,description:liveDescription,provider:liveProvider,joinUrl:liveJoinUrl,startsAt:new Date(startValue).toISOString(),endsAt:endValue ? new Date(endValue).toISOString() : null,access:liveAccess,price:liveAccess==='free'?0:Math.max(0,Number(livePrice)||0)}
-                    const created=await createLiveWebinar(payload)
-                    setLiveWebinars(prev=>[...prev,created])
+                    const payload = { title: liveTitle, description: liveDescription, provider: liveProvider, joinUrl: liveJoinUrl, startsAt: new Date(startValue).toISOString(), endsAt: endValue ? new Date(endValue).toISOString() : null, access: liveAccess, price: liveAccess === 'free' ? 0 : Math.max(0, Number(livePrice) || 0) }
+                    const created = await createLiveWebinar(payload)
+                    setLiveWebinars(prev => [...prev, created])
                     toast.success('Live webinar scheduled')
                     resetWebinarForm()
-                  }catch(e){toast.error(e instanceof Error?e.message:'Failed to save webinar')}finally{setWebinarBusy(false)}
+                  } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to save webinar') } finally { setWebinarBusy(false) }
                 }} className="w-full py-3 rounded-xl bg-primary-500 text-white font-semibold">Schedule webinar</button>
               </div>
             </div>
           </div>
 
           <div className="card p-6">
-            <div className="flex items-center gap-2 mb-5"><Video size={18} className="text-violet-500"/><h3 className="font-bold text-lg">Store webinar recording</h3></div>
+            <div className="flex items-center gap-2 mb-5"><Video size={18} className="text-violet-500" /><h3 className="font-bold text-lg">Store webinar recording</h3></div>
             <div className="space-y-4">
-              <Field label="Recording title *"><input value={recordingTitle} onChange={e=>setRecordingTitle(e.target.value)} className={inputCls}/></Field>
-              <Field label="Description"><textarea value={recordingDescription} onChange={e=>setRecordingDescription(e.target.value)} className={inputCls+' resize-none'} rows={3}/></Field>
-              <div className="grid grid-cols-2 gap-3"><Field label="Session date"><input type="date" value={recordingDate} onChange={e=>setRecordingDate(e.target.value)} className={inputCls}/></Field><Field label="Video duration (automatic)"><input value={recordingDurationLoading ? 'Detecting duration...' : recordingDuration} readOnly className={inputCls + ' bg-gray-50 dark:bg-white/5 cursor-not-allowed'} placeholder="Select a video first"/></Field></div>
+              <Field label="Recording title *"><input value={recordingTitle} onChange={e => setRecordingTitle(e.target.value)} className={inputCls} /></Field>
+              <Field label="Description"><textarea value={recordingDescription} onChange={e => setRecordingDescription(e.target.value)} className={inputCls + ' resize-none'} rows={3} /></Field>
+              <div className="grid grid-cols-2 gap-3"><Field label="Session date"><input type="date" value={recordingDate} onChange={e => setRecordingDate(e.target.value)} className={inputCls} /></Field><Field label="Video duration (automatic)"><input value={recordingDurationLoading ? 'Detecting duration...' : recordingDuration} readOnly className={inputCls + ' bg-gray-50 dark:bg-white/5 cursor-not-allowed'} placeholder="Select a video first" /></Field></div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Field label="Replay access">
-                  <select value={recordingAccess} onChange={e=>setRecordingAccess(e.target.value as WebinarAccess)} className={inputCls}>
+                  <select value={recordingAccess} onChange={e => setRecordingAccess(e.target.value as WebinarAccess)} className={inputCls}>
                     <option value="free">Free for everyone</option>
                     <option value="paid">Paid for everyone</option>
                     <option value="enrolled_free">Free for enrolled students, paid for others</option>
                   </select>
                 </Field>
                 <Field label="Price (₹)">
-                  <input type="number" min="0" step="1" value={recordingPrice} disabled={recordingAccess !== 'paid' && recordingAccess !== 'enrolled_free'} onChange={e=>setRecordingPrice(e.target.value)} className={inputCls} placeholder="299" />
+                  <input type="number" min="0" step="1" value={recordingPrice} disabled={recordingAccess !== 'paid' && recordingAccess !== 'enrolled_free'} onChange={e => setRecordingPrice(e.target.value)} className={inputCls} placeholder="299" />
                 </Field>
               </div>
               {recordingAccess === 'enrolled_free' && <p className="text-xs text-violet-600 dark:text-violet-300 -mt-2">Any active course-enrolled student gets the replay free; everyone else sees the paid price.</p>}
-              <Field label="Video file *"><input type="file" accept="video/*" onChange={e=>setRecordingFile(e.target.files?.[0]??null)} className={inputCls}/></Field>
-              {recordingFile && <div className="rounded-xl border border-brand-border dark:border-brand-dark-border p-3 bg-gray-50 dark:bg-white/5"><div className="flex items-center justify-between text-xs mb-1.5"><span className="font-semibold text-brand-text dark:text-brand-dark-text truncate mr-3">{recordingFile.name}</span><span className="text-brand-muted">{(recordingFile.size/1024/1024).toFixed(2)} MB</span></div><div className="h-1.5 rounded-full bg-gray-200 dark:bg-white/10 overflow-hidden"><motion.div className="h-full bg-violet-600 rounded-full" animate={{width:`${recordingUploadProgress}%`}} /></div>{webinarBusy && <p className="mt-1.5 text-[10px] font-semibold text-brand-muted">Uploading {recordingUploadProgress}%...</p>}</div>}
-              <button disabled={webinarBusy||!recordingFile||!recordingTitle.trim()} onClick={async()=>{let uploadedWebinarRef: string | null = null; try{setWebinarBusy(true);setRecordingUploadProgress(0);let duration=recordingDuration; if(!duration){const seconds=await getVideoDurationSeconds(recordingFile!); if(seconds!=null) duration=formatDurationHuman(seconds)} if(!duration){throw new Error('Could not read the video duration. Please choose a valid video file and try again.')} uploadedWebinarRef=await uploadWebinarVideo(recordingFile!,recordingDate,p=>setRecordingUploadProgress(p)); const created=await createWebinarRecording({title:recordingTitle.trim(),description:recordingDescription.trim(),sessionDate:recordingDate,videoUrl:uploadedWebinarRef,duration,access:recordingAccess,price:recordingAccess==='free'?0:Math.max(0,Number(recordingPrice)||0)}); setWebinarRecordings(prev=>[created,...prev]);setRecordingTitle('');setRecordingDescription('');setRecordingFile(null);setRecordingDuration('');setRecordingAccess('free');setRecordingPrice('0');setRecordingUploadProgress(0);toast.success('Webinar recording published')}catch(e){if(uploadedWebinarRef && isBackblazeRef(uploadedWebinarRef)){await deleteBackblazeFile(uploadedWebinarRef).catch(()=>{})} toast.error(e instanceof Error?e.message:'Failed to upload recording')}finally{setWebinarBusy(false)}}} className="w-full py-3 rounded-xl bg-violet-600 text-white font-semibold disabled:opacity-50">{webinarBusy ? 'Uploading replay...' : 'Upload & publish replay'}</button>
+              <Field label="Video file *"><input type="file" accept="video/*" onChange={e => setRecordingFile(e.target.files?.[0] ?? null)} className={inputCls} /></Field>
+              {recordingFile && <div className="rounded-xl border border-brand-border dark:border-brand-dark-border p-3 bg-gray-50 dark:bg-white/5"><div className="flex items-center justify-between text-xs mb-1.5"><span className="font-semibold text-brand-text dark:text-brand-dark-text truncate mr-3">{recordingFile.name}</span><span className="text-brand-muted">{(recordingFile.size / 1024 / 1024).toFixed(2)} MB</span></div><div className="h-1.5 rounded-full bg-gray-200 dark:bg-white/10 overflow-hidden"><motion.div className="h-full bg-violet-600 rounded-full" animate={{ width: `${recordingUploadProgress}%` }} /></div>{webinarBusy && <p className="mt-1.5 text-[10px] font-semibold text-brand-muted">Uploading {recordingUploadProgress}%...</p>}</div>}
+              <button disabled={webinarBusy || !recordingFile || !recordingTitle.trim()} onClick={async () => { let uploadedWebinarRef: string | null = null; try { setWebinarBusy(true); setRecordingUploadProgress(0); let duration = recordingDuration; if (!duration) { const seconds = await getVideoDurationSeconds(recordingFile!); if (seconds != null) duration = formatDurationHuman(seconds) } if (!duration) { throw new Error('Could not read the video duration. Please choose a valid video file and try again.') } uploadedWebinarRef = await uploadWebinarVideo(recordingFile!, recordingDate, p => setRecordingUploadProgress(p)); const created = await createWebinarRecording({ title: recordingTitle.trim(), description: recordingDescription.trim(), sessionDate: recordingDate, videoUrl: uploadedWebinarRef, duration, access: recordingAccess, price: recordingAccess === 'free' ? 0 : Math.max(0, Number(recordingPrice) || 0) }); setWebinarRecordings(prev => [created, ...prev]); setRecordingTitle(''); setRecordingDescription(''); setRecordingFile(null); setRecordingDuration(''); setRecordingAccess('free'); setRecordingPrice('0'); setRecordingUploadProgress(0); toast.success('Webinar recording published') } catch (e) { if (uploadedWebinarRef && isBackblazeRef(uploadedWebinarRef)) { await deleteBackblazeFile(uploadedWebinarRef).catch(() => { }) } toast.error(e instanceof Error ? e.message : 'Failed to upload recording') } finally { setWebinarBusy(false) } }} className="w-full py-3 rounded-xl bg-violet-600 text-white font-semibold disabled:opacity-50">{webinarBusy ? 'Uploading replay...' : 'Upload & publish replay'}</button>
             </div>
           </div>
         </div>
 
         <div className="card overflow-hidden">
           <div className="p-5 border-b border-brand-border dark:border-brand-dark-border"><h3 className="font-bold">Scheduled sessions</h3></div>
-          {liveWebinars.length===0 ? <p className="p-6 text-sm text-brand-muted">No live sessions scheduled.</p> : <div className="divide-y divide-brand-border dark:divide-brand-dark-border">{liveWebinars.map(w=>{const ongoing=new Date(w.startsAt)<=new Date()&&(!w.endsAt||new Date(w.endsAt)>new Date());return <div key={w.id} className="p-4 flex items-center justify-between gap-4"><div><div className="flex items-center gap-2"><span className="font-semibold">{w.title}</span>{ongoing&&<StatusBadge status="Ongoing"/>}</div><p className="text-xs text-brand-muted mt-1">{w.provider} · {new Date(w.startsAt).toLocaleString()} · {w.access === 'free' ? 'Free' : w.access === 'enrolled_free' ? `Enrolled free · ₹${w.price}` : `Paid · ₹${w.price}`}</p></div><div className="flex items-center gap-2">{new Date(w.startsAt).getTime() > Date.now() && <button onClick={()=>loadWebinarIntoForm(w)} className="p-2 text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg" title="Edit upcoming webinar"><Edit2 size={15}/></button>}<a href={w.joinUrl} target="_blank" rel="noreferrer" className="p-2 text-primary-500"><ExternalLink size={15}/></a><button onClick={async()=>{try{await deleteLiveWebinar(w.id);setLiveWebinars(prev=>prev.filter(x=>x.id!==w.id));toast.success('Webinar deleted')}catch(e){toast.error(e instanceof Error?e.message:'Delete failed')}}} className="p-2 text-red-500"><Trash2 size={15}/></button></div></div>})}</div>}
+          {liveWebinars.length === 0 ? <p className="p-6 text-sm text-brand-muted">No live sessions scheduled.</p> : <div className="divide-y divide-brand-border dark:divide-brand-dark-border">{liveWebinars.map(w => { const ongoing = new Date(w.startsAt) <= new Date() && (!w.endsAt || new Date(w.endsAt) > new Date()); return <div key={w.id} className="p-4 flex items-center justify-between gap-4"><div><div className="flex items-center gap-2"><span className="font-semibold">{w.title}</span>{ongoing && <StatusBadge status="Ongoing" />}</div><p className="text-xs text-brand-muted mt-1">{w.provider} · {new Date(w.startsAt).toLocaleString()} · {w.access === 'free' ? 'Free' : w.access === 'enrolled_free' ? `Enrolled free · ₹${w.price}` : `Paid · ₹${w.price}`}</p></div><div className="flex items-center gap-2">{new Date(w.startsAt).getTime() > Date.now() && <button onClick={() => loadWebinarIntoForm(w)} className="p-2 text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg" title="Edit upcoming webinar"><Edit2 size={15} /></button>}<a href={w.joinUrl} target="_blank" rel="noreferrer" className="p-2 text-primary-500"><ExternalLink size={15} /></a><button onClick={async () => { try { await deleteLiveWebinar(w.id); setLiveWebinars(prev => prev.filter(x => x.id !== w.id)); toast.success('Webinar deleted') } catch (e) { toast.error(e instanceof Error ? e.message : 'Delete failed') } }} className="p-2 text-red-500"><Trash2 size={15} /></button></div></div> })}</div>}
         </div>
 
         <div className="card overflow-hidden">
           <div className="p-5 border-b border-brand-border dark:border-brand-dark-border"><h3 className="font-bold">Published replays</h3></div>
-          {webinarRecordings.length===0?<p className="p-6 text-sm text-brand-muted">No recordings yet.</p>:<div className="divide-y divide-brand-border dark:divide-brand-dark-border">{webinarRecordings.map(w=><div key={w.id} className="p-4 flex items-center justify-between gap-4"><div className="min-w-0"><p className="font-semibold truncate">{w.title}</p><p className="text-xs text-brand-muted mt-1">{w.sessionDate} · {w.duration||'Duration not set'} · {w.access === 'free' ? 'Free' : w.access === 'enrolled_free' ? `Enrolled free · ₹${w.price}` : `Paid · ₹${w.price}`}</p></div><div className="flex items-center gap-3 shrink-0">{w.videoUrl&&<a href={w.videoUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-violet-600">Watch</a>}<button onClick={async()=>{if(!window.confirm(`Delete replay \"${w.title}\"? This removes the stored video and database entry.`))return;try{setWebinarBusy(true);await deleteWebinarRecording(w);setWebinarRecordings(prev=>prev.filter(x=>x.id!==w.id));toast.success('Webinar recording deleted')}catch(e){toast.error(e instanceof Error?e.message:'Delete failed')}finally{setWebinarBusy(false)}}} className="p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" title="Delete replay"><Trash2 size={15}/></button></div></div>)}</div>}
+          {webinarRecordings.length === 0 ? <p className="p-6 text-sm text-brand-muted">No recordings yet.</p> : <div className="divide-y divide-brand-border dark:divide-brand-dark-border">{webinarRecordings.map(w => <div key={w.id} className="p-4 flex items-center justify-between gap-4"><div className="min-w-0"><p className="font-semibold truncate">{w.title}</p><p className="text-xs text-brand-muted mt-1">{w.sessionDate} · {w.duration || 'Duration not set'} · {w.access === 'free' ? 'Free' : w.access === 'enrolled_free' ? `Enrolled free · ₹${w.price}` : `Paid · ₹${w.price}`}</p></div><div className="flex items-center gap-3 shrink-0">{w.videoUrl && <a href={w.videoUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-violet-600">Watch</a>}<button onClick={async () => { if (!window.confirm(`Delete replay \"${w.title}\"? This removes the stored video and database entry.`)) return; try { setWebinarBusy(true); await deleteWebinarRecording(w); setWebinarRecordings(prev => prev.filter(x => x.id !== w.id)); toast.success('Webinar recording deleted') } catch (e) { toast.error(e instanceof Error ? e.message : 'Delete failed') } finally { setWebinarBusy(false) } }} className="p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" title="Delete replay"><Trash2 size={15} /></button></div></div>)}</div>}
         </div>
       </div>
     )
@@ -6683,123 +6667,123 @@ export default function AdminDashboard() {
 
               {/* Form */}
               <div className="space-y-4">
-                  <Field label="Title *"><input value={liveTitle} onChange={e=>setLiveTitle(e.target.value)} className={inputCls} placeholder="Career Q&A — Placement Strategy" /></Field>
-                  <Field label="Description"><textarea value={liveDescription} onChange={e=>setLiveDescription(e.target.value)} className={inputCls+' resize-none'} rows={4} placeholder="Tell students what they will learn..." /></Field>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Field label="Platform"><select value={liveProvider} onChange={e=>setLiveProvider(e.target.value as WebinarProvider)} className={inputCls}><option>Google Meet</option><option>Zoom</option></select></Field>
-                    <Field label="Join URL *"><input value={liveJoinUrl} onChange={e=>setLiveJoinUrl(e.target.value)} className={inputCls} placeholder="https://meet.google.com/..." /></Field>
+                <Field label="Title *"><input value={liveTitle} onChange={e => setLiveTitle(e.target.value)} className={inputCls} placeholder="Career Q&A — Placement Strategy" /></Field>
+                <Field label="Description"><textarea value={liveDescription} onChange={e => setLiveDescription(e.target.value)} className={inputCls + ' resize-none'} rows={4} placeholder="Tell students what they will learn..." /></Field>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Field label="Platform"><select value={liveProvider} onChange={e => setLiveProvider(e.target.value as WebinarProvider)} className={inputCls}><option>Google Meet</option><option>Zoom</option></select></Field>
+                  <Field label="Join URL *"><input value={liveJoinUrl} onChange={e => setLiveJoinUrl(e.target.value)} className={inputCls} placeholder="https://meet.google.com/..." /></Field>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Field label="Access">
+                    <select value={liveAccess} onChange={e => setLiveAccess(e.target.value as WebinarAccess)} className={inputCls}>
+                      <option value="free">Free for everyone</option>
+                      <option value="paid">Paid for everyone</option>
+                      <option value="enrolled_free">Free for enrolled students, paid for others</option>
+                    </select>
+                  </Field>
+                  <Field label="Price (₹)">
+                    <input type="number" min="0" step="1" value={livePrice} disabled={liveAccess !== 'paid' && liveAccess !== 'enrolled_free'} onChange={e => setLivePrice(e.target.value)} className={inputCls} placeholder="499" />
+                  </Field>
+                </div>
+                {liveAccess === 'enrolled_free' && <p className="text-xs text-violet-600 dark:text-violet-300 -mt-2">Students with any active course enrollment get this webinar free. Everyone else sees the paid price.</p>}
+                <div className="space-y-3">
+                  {webinarTimeField('Start time *', startDate, setStartDate, startHour, setStartHour, startMinute, setStartMinute, startPeriod, setStartPeriod)}
+                  <div className="rounded-xl border border-brand-border dark:border-brand-dark-border px-3 py-3">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input type="checkbox" checked={hasEndTime} onChange={e => { const checked = e.target.checked; setHasEndTime(checked); if (checked) { setEndDate(endDate || startDate); setEndHour(endHour || startHour || '12'); setEndMinute(endMinute || '00'); setEndPeriod(endHour ? endPeriod : startPeriod) } }} className="h-4 w-4 rounded" />
+                      <span className="text-sm font-semibold text-brand-text dark:text-brand-dark-text">Add an end time</span>
+                      <span className="text-xs font-medium text-brand-muted">Optional</span>
+                    </label>
+                    {!hasEndTime && <p className="text-xs text-brand-muted mt-2 ml-7">Leave this off if you want to end the webinar manually.</p>}
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Field label="Access">
-                      <select value={liveAccess} onChange={e=>setLiveAccess(e.target.value as WebinarAccess)} className={inputCls}>
-                        <option value="free">Free for everyone</option>
-                        <option value="paid">Paid for everyone</option>
-                        <option value="enrolled_free">Free for enrolled students, paid for others</option>
-                      </select>
-                    </Field>
-                    <Field label="Price (₹)">
-                      <input type="number" min="0" step="1" value={livePrice} disabled={liveAccess !== 'paid' && liveAccess !== 'enrolled_free'} onChange={e=>setLivePrice(e.target.value)} className={inputCls} placeholder="499" />
-                    </Field>
-                  </div>
-                  {liveAccess === 'enrolled_free' && <p className="text-xs text-violet-600 dark:text-violet-300 -mt-2">Students with any active course enrollment get this webinar free. Everyone else sees the paid price.</p>}
-                  <div className="space-y-3">
-                    {webinarTimeField('Start time *', startDate, setStartDate, startHour, setStartHour, startMinute, setStartMinute, startPeriod, setStartPeriod)}
-                    <div className="rounded-xl border border-brand-border dark:border-brand-dark-border px-3 py-3">
-                      <label className="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" checked={hasEndTime} onChange={e=>{const checked=e.target.checked;setHasEndTime(checked);if(checked){setEndDate(endDate||startDate);setEndHour(endHour||startHour||'12');setEndMinute(endMinute||'00');setEndPeriod(endHour?endPeriod:startPeriod)}}} className="h-4 w-4 rounded" />
-                        <span className="text-sm font-semibold text-brand-text dark:text-brand-dark-text">Add an end time</span>
-                        <span className="text-xs font-medium text-brand-muted">Optional</span>
-                      </label>
-                      {!hasEndTime && <p className="text-xs text-brand-muted mt-2 ml-7">Leave this off if you want to end the webinar manually.</p>}
-                    </div>
-                    {hasEndTime && webinarTimeField('End time', endDate, setEndDate, endHour, setEndHour, endMinute, setEndMinute, endPeriod, setEndPeriod, true)}
-                  </div>
+                  {hasEndTime && webinarTimeField('End time', endDate, setEndDate, endHour, setEndHour, endMinute, setEndMinute, endPeriod, setEndPeriod, true)}
+                </div>
 
-                  {/* Video card — same upload function (file picker, audio check, duration
+                {/* Video card — same upload function (file picker, audio check, duration
                       check, progress bar) as the Courses panel's video card. */}
-                  <div className="space-y-2">
-                    <label className="block text-sm font-semibold text-brand-text dark:text-brand-dark-text">Webinar Video (optional)</label>
-                    <div className="border-2 border-dashed border-brand-border dark:border-brand-dark-border rounded-xl p-5 text-center bg-gray-50 dark:bg-brand-dark-bg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors relative group">
-                      <input
-                        type="file"
-                        accept="video/*"
-                        onChange={e => {
-                          const file = e.target.files?.[0]
-                          if (file) {
-                            setWebinarEditVideoFile(file)
-                            setWebinarEditVideoUploadStatus('idle')
-                            setWebinarEditVideoUploadProgress(0)
-                            setWebinarEditVideoAudioCheck('checking')
-                            checkVideoHasAudio(file).then(result => {
-                              setWebinarEditVideoAudioCheck(result === 'yes' ? 'has-audio' : result === 'no' ? 'no-audio' : null)
-                            })
-                            setWebinarEditVideoDurationSeconds(null)
-                            getVideoDurationSeconds(file).then(setWebinarEditVideoDurationSeconds)
-                          }
-                        }}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                      />
-                      <div className="flex flex-col items-center justify-center space-y-2">
-                        <Video className="text-brand-muted dark:text-brand-dark-muted group-hover:scale-105 transition-transform" size={24} />
-                        <p className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
-                          {webinarEditVideoFile ? 'Change Selected Video' : 'Choose Video File'}
-                        </p>
-                        <p className="text-[10px] text-brand-muted">MP4, WebM, MOV — keeps original audio track</p>
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-brand-text dark:text-brand-dark-text">Webinar Video (optional)</label>
+                  <div className="border-2 border-dashed border-brand-border dark:border-brand-dark-border rounded-xl p-5 text-center bg-gray-50 dark:bg-brand-dark-bg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors relative group">
+                    <input
+                      type="file"
+                      accept="video/*"
+                      onChange={e => {
+                        const file = e.target.files?.[0]
+                        if (file) {
+                          setWebinarEditVideoFile(file)
+                          setWebinarEditVideoUploadStatus('idle')
+                          setWebinarEditVideoUploadProgress(0)
+                          setWebinarEditVideoAudioCheck('checking')
+                          checkVideoHasAudio(file).then(result => {
+                            setWebinarEditVideoAudioCheck(result === 'yes' ? 'has-audio' : result === 'no' ? 'no-audio' : null)
+                          })
+                          setWebinarEditVideoDurationSeconds(null)
+                          getVideoDurationSeconds(file).then(setWebinarEditVideoDurationSeconds)
+                        }
+                      }}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                    />
+                    <div className="flex flex-col items-center justify-center space-y-2">
+                      <Video className="text-brand-muted dark:text-brand-dark-muted group-hover:scale-105 transition-transform" size={24} />
+                      <p className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
+                        {webinarEditVideoFile ? 'Change Selected Video' : 'Choose Video File'}
+                      </p>
+                      <p className="text-[10px] text-brand-muted">MP4, WebM, MOV — keeps original audio track</p>
+                    </div>
+                  </div>
+                  {webinarEditVideoAudioCheck === 'checking' && (
+                    <p className="text-xs text-brand-muted dark:text-brand-dark-muted flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> Checking video for an audio track...</p>
+                  )}
+                  {webinarEditVideoAudioCheck === 'no-audio' && (
+                    <p className="text-xs text-amber-600 font-semibold flex items-start gap-1.5">
+                      <span>⚠</span>
+                      <span>Couldn't detect sound in this video in a quick browser check. If you're confident the file has audio, it's likely fine — just verify sound plays after uploading.</span>
+                    </p>
+                  )}
+                  {webinarEditVideoAudioCheck === 'has-audio' && (
+                    <p className="text-xs text-green-600 font-semibold flex items-center gap-1.5"><span>✔</span> Audio track detected — this video has sound.</p>
+                  )}
+                  {webinarEditVideoFile && (
+                    <div className="p-3 bg-gray-50 dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border rounded-xl flex items-center justify-between text-xs text-brand-text dark:text-brand-dark-text">
+                      <div className="flex items-center gap-2 truncate max-w-[70%]">
+                        <span className="text-green-500 font-bold">✔</span>
+                        <div className="truncate text-left">
+                          <p className="font-semibold truncate">{webinarEditVideoFile.name}</p>
+                          <p className="text-[10px] text-brand-muted">{(webinarEditVideoFile.size / 1024 / 1024).toFixed(2)} MB{webinarEditVideoDurationSeconds != null ? ` · ${formatSeconds(webinarEditVideoDurationSeconds)}` : ''}</p>
+                        </div>
                       </div>
                     </div>
-                    {webinarEditVideoAudioCheck === 'checking' && (
-                      <p className="text-xs text-brand-muted dark:text-brand-dark-muted flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> Checking video for an audio track...</p>
-                    )}
-                    {webinarEditVideoAudioCheck === 'no-audio' && (
-                      <p className="text-xs text-amber-600 font-semibold flex items-start gap-1.5">
-                        <span>⚠</span>
-                        <span>Couldn't detect sound in this video in a quick browser check. If you're confident the file has audio, it's likely fine — just verify sound plays after uploading.</span>
-                      </p>
-                    )}
-                    {webinarEditVideoAudioCheck === 'has-audio' && (
-                      <p className="text-xs text-green-600 font-semibold flex items-center gap-1.5"><span>✔</span> Audio track detected — this video has sound.</p>
-                    )}
-                    {webinarEditVideoFile && (
-                      <div className="p-3 bg-gray-50 dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border rounded-xl flex items-center justify-between text-xs text-brand-text dark:text-brand-dark-text">
-                        <div className="flex items-center gap-2 truncate max-w-[70%]">
-                          <span className="text-green-500 font-bold">✔</span>
-                          <div className="truncate text-left">
-                            <p className="font-semibold truncate">{webinarEditVideoFile.name}</p>
-                            <p className="text-[10px] text-brand-muted">{(webinarEditVideoFile.size / 1024 / 1024).toFixed(2)} MB{webinarEditVideoDurationSeconds != null ? ` · ${formatSeconds(webinarEditVideoDurationSeconds)}` : ''}</p>
-                          </div>
-                        </div>
+                  )}
+                  {webinarEditVideoUploadStatus === 'uploading' && (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-brand-muted uppercase">
+                        <span>Uploading Video...</span><span>{webinarEditVideoUploadProgress}%</span>
                       </div>
-                    )}
-                    {webinarEditVideoUploadStatus === 'uploading' && (
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-[10px] font-bold text-brand-muted uppercase">
-                          <span>Uploading Video...</span><span>{webinarEditVideoUploadProgress}%</span>
-                        </div>
-                        <div className="w-full bg-gray-200 dark:bg-white/10 rounded-full h-1.5 overflow-hidden">
-                          <motion.div initial={{ width: 0 }} animate={{ width: `${webinarEditVideoUploadProgress}%` }} transition={{ duration: 0.1 }} className="bg-primary-500 h-full rounded-full" />
-                        </div>
+                      <div className="w-full bg-gray-200 dark:bg-white/10 rounded-full h-1.5 overflow-hidden">
+                        <motion.div initial={{ width: 0 }} animate={{ width: `${webinarEditVideoUploadProgress}%` }} transition={{ duration: 0.1 }} className="bg-primary-500 h-full rounded-full" />
                       </div>
-                    )}
-                    {webinarEditVideoUploadStatus === 'success' && <p className="text-xs text-green-600 font-semibold flex items-center gap-1.5"><span>✔</span> Video uploaded successfully!</p>}
-                    {webinarEditVideoUploadStatus === 'error' && <p className="text-xs text-red-600 font-semibold flex items-center gap-1.5"><span>❌</span> Video upload failed. Please try again.</p>}
-                  </div>
+                    </div>
+                  )}
+                  {webinarEditVideoUploadStatus === 'success' && <p className="text-xs text-green-600 font-semibold flex items-center gap-1.5"><span>✔</span> Video uploaded successfully!</p>}
+                  {webinarEditVideoUploadStatus === 'error' && <p className="text-xs text-red-600 font-semibold flex items-center gap-1.5"><span>❌</span> Video upload failed. Please try again.</p>}
+                </div>
               </div>
 
               <div className="flex gap-3 mt-6">
                 <button type="button" onClick={resetWebinarForm} disabled={webinarBusy} className="flex-1 py-3 rounded-xl border border-brand-border dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text text-sm font-semibold hover:bg-gray-50 dark:hover:bg-white/5">Cancel</button>
-                <button type="button" disabled={webinarBusy} onClick={async()=>{
-                  const startValue=buildWebinarDateTime(startDate,startHour,startMinute,startPeriod)
-                  const endValue=hasEndTime?buildWebinarDateTime(endDate,endHour,endMinute,endPeriod):''
-                  if(!liveTitle.trim()||!liveJoinUrl.trim()||!startValue){toast.error('Fill all required webinar fields');return}
-                  if(hasEndTime&&!endValue){toast.error('Complete the optional end time or turn it off');return}
-                  if(hasEndTime&&new Date(endValue).getTime()<=new Date(startValue).getTime()){toast.error('End time must be after the start time');return}
-                  try{
+                <button type="button" disabled={webinarBusy} onClick={async () => {
+                  const startValue = buildWebinarDateTime(startDate, startHour, startMinute, startPeriod)
+                  const endValue = hasEndTime ? buildWebinarDateTime(endDate, endHour, endMinute, endPeriod) : ''
+                  if (!liveTitle.trim() || !liveJoinUrl.trim() || !startValue) { toast.error('Fill all required webinar fields'); return }
+                  if (hasEndTime && !endValue) { toast.error('Complete the optional end time or turn it off'); return }
+                  if (hasEndTime && new Date(endValue).getTime() <= new Date(startValue).getTime()) { toast.error('End time must be after the start time'); return }
+                  try {
                     setWebinarBusy(true)
-                    const updated=await updateLiveWebinar(editingWebinarId,{title:liveTitle.trim(),description:liveDescription,provider:liveProvider,joinUrl:liveJoinUrl.trim(),startsAt:new Date(startValue).toISOString(),endsAt:endValue?new Date(endValue).toISOString():null,access:liveAccess,price:liveAccess==='free'?0:Math.max(0,Number(livePrice)||0)})
-                    setLiveWebinars(prev=>prev.map(w=>w.id===updated.id?updated:w))
+                    const updated = await updateLiveWebinar(editingWebinarId, { title: liveTitle.trim(), description: liveDescription, provider: liveProvider, joinUrl: liveJoinUrl.trim(), startsAt: new Date(startValue).toISOString(), endsAt: endValue ? new Date(endValue).toISOString() : null, access: liveAccess, price: liveAccess === 'free' ? 0 : Math.max(0, Number(livePrice) || 0) })
+                    setLiveWebinars(prev => prev.map(w => w.id === updated.id ? updated : w))
                     toast.success('Webinar updated successfully')
                     resetWebinarForm()
-                  }catch(e){toast.error(e instanceof Error?e.message:'Failed to update webinar')}finally{setWebinarBusy(false)}
+                  } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to update webinar') } finally { setWebinarBusy(false) }
                 }} className="flex-1 py-3 rounded-xl bg-primary-500 text-white text-sm font-semibold hover:bg-primary-600 disabled:opacity-50">Save changes</button>
               </div>
             </motion.div>

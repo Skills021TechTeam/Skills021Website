@@ -75,7 +75,7 @@ export default function Register() {
     setLoading(false)
 
     if (result.success) {
-      toast.success('Account created and saved in Supabase! Welcome to Skills021 🎉', { duration: 3500 })
+      toast.success('Account created successfully! Welcome to Skills021 🎉', { duration: 3500 })
       navigate('/dashboard')
     } else {
       const errorMsg = result.error || 'Registration failed or account with this email already exists.'
@@ -102,7 +102,7 @@ export default function Register() {
               <span className="text-2xl font-bold text-primary-500">Skills021</span>
             </Link>
             <h1 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">Create your account</h1>
-            <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-1">Join 12,000+ students on Supabase</p>
+            <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-1">Join 12,000+ students on Skills021</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>

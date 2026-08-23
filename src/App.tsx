@@ -108,6 +108,8 @@ export default function App() {
           role: profile?.role || u.user_metadata?.role || 'user',
           college: profile?.college || u.user_metadata?.college || 'Student Institution',
           phone: profile?.phone || u.user_metadata?.phone || '',
+          avatarUrl: profile?.avatar_url || u.user_metadata?.avatar_url || '',
+          isPremium: Boolean(profile?.is_premium ?? u.user_metadata?.is_premium ?? false),
           joinedDate: profile?.created_at
             ? new Date(profile.created_at).toISOString().split('T')[0]
             : new Date(u.created_at).toISOString().split('T')[0],
@@ -122,6 +124,8 @@ export default function App() {
           role: u.user_metadata?.role || 'user',
           college: u.user_metadata?.college || 'Student Institution',
           phone: u.user_metadata?.phone || '',
+          avatarUrl: u.user_metadata?.avatar_url || '',
+          isPremium: Boolean(u.user_metadata?.is_premium ?? false),
           joinedDate: new Date(u.created_at).toISOString().split('T')[0],
           enrolledCourses: [],
         }

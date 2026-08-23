@@ -31,7 +31,7 @@ export default function AdminLogin() {
     // Brief transition delay
     await new Promise(r => setTimeout(r, 600))
 
-    const success = adminLogin(adminId, adminPassword)
+    const success = await adminLogin(adminId, adminPassword)
     setLoading(false)
 
     if (success) {

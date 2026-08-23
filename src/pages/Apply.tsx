@@ -84,7 +84,8 @@ export default function Apply() {
       if (resumeFile) {
         setUploadingResume(true)
         const cleanName = resumeFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
-        const path = `${Date.now()}_${cleanName}`
+        const userId = user?.id || 'guest'
+        const path = `${userId}/${Date.now()}_${cleanName}`
         resumeUrl = await uploadResume(resumeFile, path)
         setUploadingResume(false)
       }

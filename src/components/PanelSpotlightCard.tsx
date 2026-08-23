@@ -155,7 +155,7 @@ const SCENE_CONFIGS: Record<SpotlightVariant, SceneConfig> = {
     centerIcon: HeartHandshake,
     badges: [
       { icon: HeartHandshake, label: '1:1 Career Guidance', sub: 'Personalized Strategy', tone: 'emerald', position: 'top-2 -left-4', delay: 0.2 },
-      { icon: Users, label: 'Top Industry Mentors', sub: 'Software Engineers', tone: 'teal', position: 'top-8 -right-4', delay: 0.35 },
+      { icon: Users, label: 'Top Industry Mentors', sub: 'Software Engineers', tone: 'cyan', position: 'top-8 -right-4', delay: 0.35 },
       { icon: Target, label: 'Mock Interviews', sub: 'System Design & HR', tone: 'violet', position: 'bottom-6 -left-4', delay: 0.5 },
       { icon: Zap, label: '24h Response SLA', sub: '100% Free Sessions', tone: 'amber', position: 'bottom-2 -right-4', delay: 0.65 },
     ],
@@ -196,7 +196,7 @@ const SCENE_CONFIGS: Record<SpotlightVariant, SceneConfig> = {
     centerSub: 'Zero to Placement Ready',
     centerIcon: Map,
     badges: [
-      { icon: Map, label: 'Phase-by-Phase Timeline', sub: 'Foundations to Pro', tone: 'teal', position: 'top-2 -left-4', delay: 0.2 },
+      { icon: Map, label: 'Phase-by-Phase Timeline', sub: 'Foundations to Pro', tone: 'cyan', position: 'top-2 -left-4', delay: 0.2 },
       { icon: Target, label: 'Track Your Progress', sub: 'Browser Auto-Save', tone: 'emerald', position: 'top-8 -right-4', delay: 0.35 },
       { icon: BookOpen, label: 'Linked Study Materials', sub: 'Curated Docs & Code', tone: 'blue', position: 'bottom-6 -left-4', delay: 0.5 },
       { icon: Sparkles, label: 'Placement Blueprints', sub: 'High ROI Skills', tone: 'violet', position: 'bottom-2 -right-4', delay: 0.65 },

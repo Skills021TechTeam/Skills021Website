@@ -44,8 +44,8 @@ interface AuthState {
   // Dedicated Admin Portal Auth
   isAdminAuthenticated: boolean
   adminUser: { id: string; email: string; name: string } | null
-  adminLogin: (adminId: string, adminPassword: string) => boolean
-  adminLogout: () => void
+  adminLogin: (adminId: string, adminPassword: string) => Promise<boolean>
+  adminLogout: () => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -139,13 +139,13 @@ export const useAuthStore = create<AuthState>()(
         } catch (err) {
           console.error('Logout error:', err)
         } finally {
-          set({ user: null, isAuthenticated: false })
+          set({ user: null, isAuthenticated: false, isAdminAuthenticated: false, adminUser: null })
         }
       },
 
       logout: () => {
         signOutUser().catch(() => {})
-        set({ user: null, isAuthenticated: false })
+        set({ user: null, isAuthenticated: false, isAdminAuthenticated: false, adminUser: null })
       },
 
       updateProfileInSupabase: async (data: Partial<User>): Promise<boolean> => {
@@ -205,7 +205,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       // Dedicated Admin Portal Actions
-      adminLogin: (adminId: string, adminPassword: string): boolean => {
+      adminLogin: async (adminId: string, adminPassword: string): Promise<boolean> => {
         const validId = (import.meta.env.VITE_ADMIN_ID as string) || 'admin@skills021.com'
         const validPass = (import.meta.env.VITE_ADMIN_PASSWORD as string) || 'admin123'
 
@@ -217,18 +217,39 @@ export const useAuthStore = create<AuthState>()(
         const isPassValid = adminPassword === validPass || adminPassword === 'admin123'
 
         if (isIdValid && isPassValid) {
+          const adminEmail = 'admin@skills021.com'
+          let adminUid = 'admin-1'
+
+          // Authenticate in Supabase Auth so RLS policies identify session as Admin
+          try {
+            const res = await signInUser(adminEmail, adminPassword)
+            if (res?.user) {
+              adminUid = res.user.id
+            }
+          } catch (authErr) {
+            // If the user doesn't exist in Supabase Auth yet, attempt auto-signup
+            try {
+              const res = await signUpUser(adminEmail, adminPassword, 'System Administrator', 'Skills021 Central HQ')
+              if (res?.user) {
+                adminUid = res.user.id
+              }
+            } catch (signupErr) {
+              console.warn('Could not initialize Supabase Auth admin user:', signupErr)
+            }
+          }
+
           const adminObj = {
-            id: 'admin-1',
-            email: 'admin@skills021.com',
+            id: adminUid,
+            email: adminEmail,
             name: 'System Administrator',
           }
           set({
             isAdminAuthenticated: true,
             adminUser: adminObj,
             user: {
-              id: 'admin-1',
+              id: adminUid,
               name: 'System Administrator',
-              email: 'admin@skills021.com',
+              email: adminEmail,
               role: 'admin',
               college: 'Skills021 Central HQ',
             },
@@ -239,8 +260,14 @@ export const useAuthStore = create<AuthState>()(
         return false
       },
 
-      adminLogout: () => {
-        set({ isAdminAuthenticated: false, adminUser: null })
+      adminLogout: async () => {
+        try {
+          await signOutUser()
+        } catch (err) {
+          console.error('Admin logout error:', err)
+        } finally {
+          set({ isAdminAuthenticated: false, adminUser: null, user: null, isAuthenticated: false })
+        }
       },
     }),
     {

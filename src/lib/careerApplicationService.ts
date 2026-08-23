@@ -109,6 +109,36 @@ export async function uploadResume(file: File, path: string): Promise<string> {
   return data.publicUrl
 }
 
+// ─── Storage: Generate Signed URL for Private Resume Preview/Download ────────
+export async function getResumeSignedUrl(pathOrUrl: string, expiresIn = 3600): Promise<string> {
+  if (!pathOrUrl) return ''
+  if (pathOrUrl.startsWith('blob:') || pathOrUrl.startsWith('data:') || pathOrUrl.includes('token=')) {
+    return pathOrUrl
+  }
+
+  let objectPath = pathOrUrl
+  const match = pathOrUrl.match(/\/storage\/v1\/object\/(?:public|sign)\/resumes\/(.+)$/)
+  if (match && match[1]) {
+    objectPath = decodeURIComponent(match[1].split('?')[0])
+  } else if (pathOrUrl.startsWith('resumes/')) {
+    objectPath = pathOrUrl.slice('resumes/'.length)
+  }
+
+  try {
+    const { data, error } = await supabase.storage
+      .from('resumes')
+      .createSignedUrl(objectPath, expiresIn)
+
+    if (error || !data?.signedUrl) {
+      return pathOrUrl
+    }
+    return data.signedUrl
+  } catch (err) {
+    console.warn('Could not generate signed resume URL:', err)
+    return pathOrUrl
+  }
+}
+
 // ─── Fetch All Applications (Admin) ─────────────────────────────────────────
 export async function fetchAllCareerApplications(): Promise<CareerApplication[]> {
   const { data, error } = await supabase

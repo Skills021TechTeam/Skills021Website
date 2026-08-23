@@ -35,7 +35,7 @@ export default function Login() {
     setLoading(true)
 
     // Check if input matches admin login credentials
-    const adminSuccess = useAuthStore.getState().adminLogin(email, password)
+    const adminSuccess = await useAuthStore.getState().adminLogin(email, password)
     if (adminSuccess) {
       setLoading(false)
       toast.success('Admin Sign In Successful! 🎉')

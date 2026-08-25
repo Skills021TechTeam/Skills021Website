@@ -32,3 +32,11 @@ supabase/.temp/
 *.njsproj
 *.sln
 *.sw?
+supabase/migrations/20260812_hackathons.sql
+supabase/migrations/20260816_admin_upi_and_qr_settings.sql
+supabase/migrations/20260816_fix_all_rls_and_grants.sql
+supabase/migrations/20260816_payment_verification_and_approvals.sql
+supabase/migrations/20260816_premium_membership.sql
+supabase/migrations/20260816_user_profiles_and_paid_courses.sql
+supabase/migrations/20260819_user_profile_avatar.sql
+gsm.ino

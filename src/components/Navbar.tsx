@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Menu, X, Sun, Moon, ChevronDown,
@@ -8,6 +8,8 @@ import {
   FileQuestion, ArrowRight, Home, LogIn, LogOut, UserCircle2, LayoutDashboard, Compass, Trophy, Shield, Briefcase
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
+import LogoutConfirmModal from './LogoutConfirmModal'
+import toast from 'react-hot-toast'
 
 // ─── Dropdown variants ────────────────────────────────────────────────────────
 const dropdownVariants: any = {
@@ -294,10 +296,29 @@ export default function Navbar() {
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null)
   const [mobileExpanded, setMobileExpanded] = useState<string | null>(null)
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('skills021_theme') === 'dark')
-  const { user, isAuthenticated, logout, isAdminAuthenticated, adminLogout, logoutUser } = useAuthStore()
+  const { user, isAuthenticated, logout, isAdminAuthenticated, adminLogout, logoutUser, adminUser } = useAuthStore()
+  const [showLogoutModal, setShowLogoutModal] = useState(false)
+  const [logoutIsAdmin, setLogoutIsAdmin] = useState(false)
+  const navigate = useNavigate()
   const location = useLocation()
   const navRef = useRef<HTMLDivElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleConfirmLogout = async () => {
+    setShowLogoutModal(false)
+    try {
+      if (logoutIsAdmin) {
+        await adminLogout()
+        toast.success('Admin session ended')
+        navigate('/admin/login', { replace: true })
+      } else {
+        await logoutUser()
+        toast.success('Logged out successfully')
+      }
+    } catch {
+      logout()
+    }
+  }
 
   // Scroll detection
   useEffect(() => {
@@ -345,6 +366,11 @@ export default function Navbar() {
   // Show all items in desktop nav
   const primaryItems = NAV_ITEMS.slice(0, 7)
   const secondaryItems = NAV_ITEMS.slice(7)
+
+  // Dedicated standalone login portal
+  if (location.pathname === '/admin/login') {
+    return null
+  }
 
   return (
     <nav
@@ -469,8 +495,8 @@ export default function Navbar() {
                 </Link>
                 <div className="w-px h-5 bg-gray-200 dark:bg-white/10" />
                 <button
-                  onClick={() => { adminLogout(); logoutUser(); logout(); }}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium text-gray-500 dark:text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all"
+                  onClick={() => { setLogoutIsAdmin(true); setShowLogoutModal(true); }}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium text-gray-500 dark:text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all cursor-pointer"
                 >
                   <LogOut size={14} />
                   Logout Admin
@@ -487,8 +513,8 @@ export default function Navbar() {
                 </Link>
                 <div className="w-px h-5 bg-gray-200 dark:bg-white/10" />
                 <button
-                  onClick={() => logoutUser()}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium text-gray-500 dark:text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all"
+                  onClick={() => { setLogoutIsAdmin(false); setShowLogoutModal(true); }}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium text-gray-500 dark:text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all cursor-pointer"
                 >
                   <LogOut size={14} />
                   Logout
@@ -651,8 +677,8 @@ export default function Navbar() {
                       Dashboard ({user.name.split(' ')[0]})
                     </Link>
                     <button
-                      onClick={() => { logout(); setMobileOpen(false) }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10"
+                      onClick={() => { setLogoutIsAdmin(false); setShowLogoutModal(true); setMobileOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 cursor-pointer"
                     >
                       <LogOut size={15} />
                       Logout ({user.name.split(' ')[0]})
@@ -679,6 +705,15 @@ export default function Navbar() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Logout Confirmation Modal */}
+      <LogoutConfirmModal
+        isOpen={showLogoutModal}
+        isAdmin={logoutIsAdmin}
+        userNameOrEmail={logoutIsAdmin ? (adminUser?.email || 'admin@skills021.com') : (user?.email || user?.name)}
+        onConfirm={handleConfirmLogout}
+        onCancel={() => setShowLogoutModal(false)}
+      />
     </nav>
   )
 }

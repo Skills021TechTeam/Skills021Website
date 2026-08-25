@@ -91,8 +91,9 @@ function AnimatedRoutes() {
 
 export default function App() {
   const setUser = useAuthStore(s => s.setUser)
+  const hydrateFromSession = useAuthStore(s => s.hydrateFromSession)
+  const logout = useAuthStore(s => s.logout)
 
-  // Listen to Supabase Auth State changes & sync full profile + real enrollments
   useEffect(() => {
     const syncUserFromSupabase = async (u: any) => {
       try {
@@ -133,28 +134,23 @@ export default function App() {
       }
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        syncUserFromSupabase(session.user)
-      }
-    })
+    // On mount: verify the actual Supabase session and reconcile persisted state.
+    // This clears stale localStorage auth if the session expired or was revoked.
+    hydrateFromSession()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || (!session && event !== 'INITIAL_SESSION')) {
+        // Clear ALL auth state — including admin flags — on real sign-out
+        logout()
+      } else if (session?.user) {
         syncUserFromSupabase(session.user)
-      } else {
-        // If user logged out of Supabase
-        const currentIsAdmin = useAuthStore.getState().isAdminAuthenticated
-        if (!currentIsAdmin) {
-          setUser(null)
-        }
       }
     })
 
     return () => {
       subscription.unsubscribe()
     }
-  }, [setUser])
+  }, [setUser, hydrateFromSession, logout])
 
   return (
     <BrowserRouter>

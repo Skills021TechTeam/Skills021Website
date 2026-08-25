@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { Mail, Lock, Zap, Eye, EyeOff, AlertCircle } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Mail, Lock, Zap, Eye, EyeOff, AlertCircle, Timer } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
+import { resetPasswordForEmail } from '../lib/supabase'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -11,21 +12,54 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({})
+  const [attemptsLeft, setAttemptsLeft] = useState<number | null>(null)
+  const [lockoutSeconds, setLockoutSeconds] = useState(0)
+  const [forgotLoading, setForgotLoading] = useState(false)
+  const lockoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
   const { loginWithSupabase } = useAuthStore()
   const navigate = useNavigate()
   const location = useLocation()
+
+  // Countdown timer for lockout
+  useEffect(() => {
+    if (lockoutSeconds <= 0) {
+      if (lockoutTimerRef.current) {
+        clearInterval(lockoutTimerRef.current)
+        lockoutTimerRef.current = null
+      }
+      return
+    }
+    lockoutTimerRef.current = setInterval(() => {
+      setLockoutSeconds(prev => {
+        if (prev <= 1) {
+          clearInterval(lockoutTimerRef.current!)
+          lockoutTimerRef.current = null
+          setErrors({})
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => {
+      if (lockoutTimerRef.current) clearInterval(lockoutTimerRef.current)
+    }
+  }, [lockoutSeconds])
+
+  const isLocked = lockoutSeconds > 0
 
   const validate = () => {
     const errs: { email?: string; password?: string } = {}
     if (!email) errs.email = 'Email is required'
     else if (!/\S+@\S+\.\S+/.test(email)) errs.email = 'Enter a valid email address'
     if (!password) errs.password = 'Password is required'
-    else if (password.length < 6) errs.password = 'Password must be at least 6 characters'
     return errs
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isLocked) return
+
     const errs = validate()
     if (Object.keys(errs).length > 0) {
       setErrors(errs)
@@ -34,16 +68,15 @@ export default function Login() {
     setErrors({})
     setLoading(true)
 
-    // Check if input matches admin login credentials
-    const adminSuccess = await useAuthStore.getState().adminLogin(email, password)
-    if (adminSuccess) {
+    // Check if input matches admin credentials
+    const adminResult = await useAuthStore.getState().adminLogin(email.trim(), password)
+    if (adminResult.success) {
       setLoading(false)
-      toast.success('Admin Sign In Successful! 🎉')
+      toast.success('Admin Sign In Successful! 🎉', { duration: 2000 })
       navigate('/admin')
       return
     }
 
-    // Authenticate exclusively through Supabase
     const result = await loginWithSupabase(email.trim(), password)
     setLoading(false)
 
@@ -59,7 +92,38 @@ export default function Login() {
         navigate(targetPath + targetSearch, { replace: true })
       }
     } else {
-      toast.error(result.error || 'Invalid email or password. Only registered users can sign in.')
+      const rl = result.rateLimitInfo
+      if (rl?.blocked && rl.remainingMs > 0) {
+        const secs = Math.ceil(rl.remainingMs / 1000)
+        setLockoutSeconds(secs)
+        setErrors({ email: `Too many failed attempts. Try again in ${secs}s.` })
+        toast.error('Account temporarily locked due to too many failed attempts')
+      } else {
+        const left = rl?.attemptsLeft ?? null
+        setAttemptsLeft(left)
+        setErrors({ password: result.error || 'Invalid email or password.' })
+        if (left !== null && left <= 2 && left > 0) {
+          toast.error(`${left} attempt${left === 1 ? '' : 's'} remaining before lockout`)
+        } else {
+          toast.error(result.error || 'Invalid email or password.')
+        }
+      }
+    }
+  }
+
+  const handleForgotPassword = async () => {
+    if (!email || !/\S+@\S+\.\S+/.test(email)) {
+      setErrors({ email: 'Enter your email address above first, then click Forgot password.' })
+      return
+    }
+    setForgotLoading(true)
+    try {
+      await resetPasswordForEmail(email.trim())
+      toast.success('Password reset email sent! Check your inbox.', { duration: 5000 })
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to send reset email. Try again.')
+    } finally {
+      setForgotLoading(false)
     }
   }
 
@@ -90,6 +154,36 @@ export default function Login() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+            {/* Lockout timer banner */}
+            <AnimatePresence>
+              {isLocked && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-600 dark:text-amber-400 flex items-center gap-2 font-medium"
+                >
+                  <Timer size={14} className="shrink-0" />
+                  <span>Account temporarily locked. Try again in <span className="font-mono font-bold">{lockoutSeconds}s</span>.</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Attempt indicator */}
+            {attemptsLeft !== null && attemptsLeft <= 4 && !isLocked && attemptsLeft > 0 && (
+              <div className="flex gap-1.5 items-center">
+                {Array.from({ length: 7 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={`h-1 flex-1 rounded-full transition-all duration-300 ${
+                      i < 7 - attemptsLeft ? 'bg-red-400' : 'bg-gray-200 dark:bg-slate-700'
+                    }`}
+                  />
+                ))}
+                <span className="text-[10px] text-brand-muted shrink-0 ml-1">{attemptsLeft} left</span>
+              </div>
+            )}
+
             {/* Email */}
             <div>
               <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">
@@ -103,7 +197,9 @@ export default function Login() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className={`w-full pl-10 pr-4 py-3 rounded-xl border text-sm bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${errors.email ? 'border-red-400' : 'border-brand-border dark:border-brand-dark-border'
+                  disabled={isLocked}
+                  autoComplete="username"
+                  className={`w-full pl-10 pr-4 py-3 rounded-xl border text-sm bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all disabled:opacity-50 ${errors.email ? 'border-red-400' : 'border-brand-border dark:border-brand-dark-border'
                     }`}
                 />
               </div>
@@ -120,8 +216,13 @@ export default function Login() {
                 <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text">
                   Password
                 </label>
-                <button type="button" onClick={() => toast.success('Password reset support will be available soon.')} className="dynamic-button text-xs text-primary-500 hover:underline rounded-md px-1">
-                  Forgot password?
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  disabled={forgotLoading}
+                  className="dynamic-button text-xs text-primary-500 hover:underline rounded-md px-1 disabled:opacity-60"
+                >
+                  {forgotLoading ? 'Sending…' : 'Forgot password?'}
                 </button>
               </div>
               <div className="relative">
@@ -132,13 +233,16 @@ export default function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className={`w-full pl-10 pr-12 py-3 rounded-xl border text-sm bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${errors.password ? 'border-red-400' : 'border-brand-border dark:border-brand-dark-border'
+                  disabled={isLocked}
+                  autoComplete="current-password"
+                  className={`w-full pl-10 pr-12 py-3 rounded-xl border text-sm bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all disabled:opacity-50 ${errors.password ? 'border-red-400' : 'border-brand-border dark:border-brand-dark-border'
                     }`}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3.5 top-1/2 -translate-y-1/2 text-brand-muted hover:text-brand-text dark:hover:text-brand-dark-text"
+                  tabIndex={-1}
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -155,11 +259,15 @@ export default function Login() {
               id="login-submit"
               whileTap={{ scale: 0.97 }}
               type="submit"
-              disabled={loading}
+              disabled={loading || isLocked}
               className="w-full py-3.5 bg-primary-500 text-white font-bold rounded-xl hover:bg-primary-600 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
                 <span className="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : isLocked ? (
+                <>
+                  <Timer size={16} /> Locked ({lockoutSeconds}s)
+                </>
               ) : (
                 'Sign In'
               )}

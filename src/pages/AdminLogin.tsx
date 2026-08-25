@@ -1,156 +1,283 @@
-import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { Shield, Lock, UserCheck, KeyRound, AlertCircle, Sparkles } from 'lucide-react'
+import React, { useState, useEffect, useRef } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  ShieldCheck,
+  Lock,
+  Mail,
+  KeyRound,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  Timer,
+  ArrowLeft,
+  ArrowRight,
+  Zap,
+  CheckCircle2,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 
 export default function AdminLogin() {
   const [adminId, setAdminId] = useState('')
   const [adminPassword, setAdminPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+  const [attemptsLeft, setAttemptsLeft] = useState<number | null>(null)
+  const [lockoutSeconds, setLockoutSeconds] = useState(0)
+  const lockoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const { adminLogin } = useAuthStore()
   const navigate = useNavigate()
 
+  // Countdown timer for lockout
+  useEffect(() => {
+    if (lockoutSeconds <= 0) {
+      if (lockoutTimerRef.current) {
+        clearInterval(lockoutTimerRef.current)
+        lockoutTimerRef.current = null
+      }
+      return
+    }
+    lockoutTimerRef.current = setInterval(() => {
+      setLockoutSeconds(prev => {
+        if (prev <= 1) {
+          clearInterval(lockoutTimerRef.current!)
+          lockoutTimerRef.current = null
+          setErrorMsg('')
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => {
+      if (lockoutTimerRef.current) clearInterval(lockoutTimerRef.current)
+    }
+  }, [lockoutSeconds])
+
   const handleAdminSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!adminId.trim()) {
-      setErrorMsg('Admin ID or Email is required')
+      setErrorMsg('Please enter your Admin Email or ID')
       return
     }
     if (!adminPassword) {
-      setErrorMsg('Admin Password is required')
+      setErrorMsg('Please enter your password')
       return
     }
 
     setErrorMsg('')
     setLoading(true)
 
-    // Brief transition delay
-    await new Promise(r => setTimeout(r, 600))
-
-    const success = await adminLogin(adminId, adminPassword)
+    const result = await adminLogin(adminId.trim(), adminPassword)
     setLoading(false)
 
-    if (success) {
-      toast.success('Admin Authentication Successful! Welcome to System Dashboard ⚡', { duration: 2500 })
+    if (result.success) {
+      toast.success('Admin authentication verified', { duration: 2500 })
       navigate('/admin')
     } else {
-      setErrorMsg('Invalid Admin Credentials. Check Admin ID and Admin Password.')
-      toast.error('Access Denied: Invalid Admin Credentials')
+      const rl = result.rateLimitInfo
+      if (rl?.blocked && rl.remainingMs > 0) {
+        const secs = Math.ceil(rl.remainingMs / 1000)
+        setLockoutSeconds(secs)
+        setErrorMsg(`Access temporarily locked. Please wait ${secs}s before retrying.`)
+        toast.error('Too many failed attempts — locked temporarily')
+      } else {
+        const left = rl?.attemptsLeft ?? null
+        setAttemptsLeft(left)
+        if (left !== null && left <= 3 && left > 0) {
+          setErrorMsg(`Invalid credentials. ${left} attempt${left === 1 ? '' : 's'} remaining.`)
+        } else {
+          setErrorMsg(result.error || 'Invalid administrator ID or password.')
+        }
+        toast.error('Authentication failed: Access denied')
+      }
     }
   }
 
+  const isLocked = lockoutSeconds > 0
+
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center px-4 pt-20 pb-12 relative overflow-hidden">
-      {/* Background Ambient Glows */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-primary-600/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+    <div className="min-h-screen bg-black text-white flex flex-col justify-between relative overflow-hidden font-sans select-none selection:bg-white selection:text-black">
 
-      <motion.div
-        initial={{ opacity: 0, y: 25 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
-        className="w-full max-w-md relative z-10"
-      >
-        <div className="bg-slate-900/90 border border-slate-800 backdrop-blur-2xl rounded-3xl p-8 shadow-2xl space-y-6">
-          {/* Header */}
-          <div className="text-center space-y-2">
-            <div className="w-14 h-14 bg-gradient-to-br from-primary-500 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-primary-500/20 border border-primary-400/30">
-              <Shield size={28} className="text-white" />
-            </div>
+      {/* Top Header Bar */}
+      <header className="relative z-10 w-full px-6 py-5 flex items-center justify-between border-b border-zinc-900 bg-black/80 backdrop-blur-md">
+        <Link to="/" className="inline-flex items-center gap-3 group">
+          <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center shadow-md shadow-white/10 group-hover:scale-105 transition-transform">
+            <Zap size={16} className="text-black fill-black" />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="font-bold tracking-tight text-base text-white">Skills021</span>
+            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-zinc-900 text-zinc-300 border border-zinc-800">
+              Admin Portal
+            </span>
+          </div>
+        </Link>
 
-            <div className="pt-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold tracking-widest uppercase bg-primary-500/10 text-primary-400 border border-primary-500/20">
-                <Sparkles size={12} /> Restricted Access
-              </span>
-              <h1 className="text-2xl font-black tracking-tight text-white mt-2">
-                Admin Control Portal
+        <div className="flex items-center gap-4">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors py-1.5 px-3 rounded-lg hover:bg-zinc-900"
+          >
+            <ArrowLeft size={14} />
+            <span>Back to site</span>
+          </Link>
+        </div>
+      </header>
+
+      {/* Center Auth Card */}
+      <main className="relative z-10 flex-1 flex items-center justify-center px-4 py-12">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: 'easeOut' }}
+          className="w-full max-w-[430px]"
+        >
+          <div className="bg-zinc-950 border border-zinc-800/90 rounded-2xl p-7 sm:p-9 shadow-2xl backdrop-blur-xl relative">
+            {/* Minimalist Top White Line */}
+            <div className="absolute top-0 left-8 right-8 h-[1px] bg-gradient-to-r from-transparent via-zinc-400/30 to-transparent" />
+
+            {/* Card Header */}
+            <div className="mb-7 text-center">
+              <div className="w-12 h-12 mx-auto rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-white shadow-inner mb-4">
+                <ShieldCheck size={22} />
+              </div>
+              <h1 className="text-xl font-bold tracking-tight text-white">
+                Admin Console
               </h1>
-              <p className="text-xs text-slate-400">
-                Enter your dedicated Admin ID and Security Password to manage system operations.
+              <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
+                Sign in with verified administrator credentials to access system controls.
               </p>
             </div>
-          </div>
 
-          {/* Form */}
-          <form onSubmit={handleAdminSubmit} className="space-y-4">
-            {errorMsg && (
-              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-400 flex items-center gap-2 font-medium">
-                <AlertCircle size={16} className="shrink-0" />
-                <span>{errorMsg}</span>
+            {/* Error & Warning Banners */}
+            <AnimatePresence mode="wait">
+              {errorMsg && (
+                <motion.div
+                  key="error"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mb-5 p-3.5 rounded-xl text-xs flex items-start gap-2.5 font-medium border bg-zinc-900 border-zinc-700 text-zinc-200"
+                >
+                  {isLocked ? (
+                    <Timer size={16} className="shrink-0 mt-0.5 text-zinc-300" />
+                  ) : (
+                    <AlertCircle size={16} className="shrink-0 mt-0.5 text-zinc-300" />
+                  )}
+                  <div className="flex-1 leading-relaxed">
+                    <span>{errorMsg}</span>
+                    {isLocked && (
+                      <div className="mt-1 font-mono text-[11px] text-white font-semibold">
+                        Lockout expires in: {lockoutSeconds}s
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Remaining Attempts Gauge */}
+            {attemptsLeft !== null && attemptsLeft <= 4 && !isLocked && attemptsLeft > 0 && (
+              <div className="mb-5 p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-between text-[11px] text-zinc-400">
+                <span>Security threshold:</span>
+                <span className="font-mono font-semibold text-zinc-200">
+                  {attemptsLeft} attempt{attemptsLeft === 1 ? '' : 's'} remaining
+                </span>
               </div>
             )}
 
-            {/* Admin ID / Email */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                Admin ID / Email
-              </label>
-              <div className="relative">
-                <UserCheck size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={adminId}
-                  onChange={e => setAdminId(e.target.value)}
-                  placeholder="admin@skills021.com or admin"
-                  className="w-full pl-10 pr-4 py-3 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
-                  autoFocus
-                />
+            {/* Form */}
+            <form onSubmit={handleAdminSubmit} className="space-y-4" noValidate>
+              {/* Admin ID / Email */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                  Admin Email or Username
+                </label>
+                <div className="relative">
+                  <Mail
+                    size={16}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
+                  />
+                  <input
+                    id="admin-id-input"
+                    type="text"
+                    value={adminId}
+                    onChange={e => setAdminId(e.target.value)}
+                    placeholder="admin@skills021.com"
+                    disabled={isLocked || loading}
+                    autoComplete="username"
+                    autoFocus
+                    className="w-full pl-10 pr-4 py-2.5 bg-black border border-zinc-800 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-white focus:ring-1 focus:ring-white/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
               </div>
-            </div>
 
-            {/* Admin Password */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-                Admin Security Password
-              </label>
-              <div className="relative">
-                <KeyRound size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="password"
-                  value={adminPassword}
-                  onChange={e => setAdminPassword(e.target.value)}
-                  placeholder="••••••••••••"
-                  className="w-full pl-10 pr-4 py-3 bg-slate-800/80 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
-                />
+              {/* Password */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-zinc-300">
+                    Security Password
+                  </label>
+                </div>
+                <div className="relative">
+                  <KeyRound
+                    size={16}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
+                  />
+                  <input
+                    id="admin-password-input"
+                    type={showPassword ? 'text' : 'password'}
+                    value={adminPassword}
+                    onChange={e => setAdminPassword(e.target.value)}
+                    placeholder="••••••••••••"
+                    disabled={isLocked || loading}
+                    autoComplete="current-password"
+                    className="w-full pl-10 pr-11 py-2.5 bg-black border border-zinc-800 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-white focus:ring-1 focus:ring-white/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(v => !v)}
+                    disabled={isLocked || loading}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors p-1 rounded-md"
+                    tabIndex={-1}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
               </div>
-            </div>
 
-            {/* Submit Button */}
-            <motion.button
-              whileTap={{ scale: 0.98 }}
-              type="submit"
-              disabled={loading}
-              className="w-full py-3.5 bg-gradient-to-r from-primary-500 to-indigo-600 hover:from-primary-600 hover:to-indigo-700 text-white font-bold rounded-xl text-sm shadow-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2 mt-2"
-            >
-              {loading ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Authenticating...
-                </>
-              ) : (
-                <>
-                  <Lock size={16} /> Access Admin Dashboard
-                </>
-              )}
-            </motion.button>
-          </form>
-
-          {/* Credentials Hint Box */}
-          <div className="p-3.5 bg-slate-800/50 border border-slate-700/50 rounded-2xl text-center space-y-1">
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Admin Credentials</p>
-            <p className="text-xs font-mono text-primary-400 font-semibold">
-              Admin ID: <span className="text-white">{import.meta.env.VITE_ADMIN_ID || 'admin@skills021.com'}</span>
-            </p>
-            <p className="text-xs font-mono text-primary-400 font-semibold">
-              Password: <span className="text-white">{import.meta.env.VITE_ADMIN_PASSWORD ? '•••••••• (Configured in .env)' : 'admin123'}</span>
-            </p>
+              {/* High-Contrast Solid White Button with Crisp Black Text */}
+              <button
+                type="submit"
+                disabled={loading || isLocked}
+                style={{ backgroundColor: '#ffffff', color: '#000000' }}
+                className="w-full mt-2 py-3 px-4 font-semibold text-sm rounded-xl transition-all shadow-md hover:bg-zinc-200 active:bg-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 group cursor-pointer"
+              >
+                {loading ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                    <span className="text-black font-semibold">Verifying session…</span>
+                  </>
+                ) : isLocked ? (
+                  <>
+                    <Timer size={16} className="text-black" />
+                    <span className="text-black font-semibold">Locked ({lockoutSeconds}s)</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock size={15} className="text-black" />
+                    <span className="text-black font-semibold">Sign In to Dashboard</span>
+                    <ArrowRight size={14} className="text-black group-hover:translate-x-0.5 transition-transform" />
+                  </>
+                )}
+              </button>
+            </form>
           </div>
-        </div>
-      </motion.div>
+        </motion.div>
+      </main>
     </div>
   )
 }

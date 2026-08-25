@@ -3,9 +3,10 @@ import { motion } from 'framer-motion'
 import {
   LayoutDashboard, BookOpen, Settings,
   Clock, CheckCircle, TrendingUp, Play, Save,
-  User, Phone, School, Lock, AlertCircle, CreditCard, ShieldCheck, Loader2, Sparkles, Copy, Camera, Image as ImageIcon
+  User, Phone, School, Lock, AlertCircle, CreditCard, ShieldCheck, Loader2, Sparkles, Copy, Camera, Image as ImageIcon, LogOut
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
+import LogoutConfirmModal from '../components/LogoutConfirmModal'
 import { fetchPublishedSiteCourses } from '../lib/courseService'
 import { Course } from '../store/contentStore'
 import { getEnrollmentsForUser, Enrollment } from '../lib/videoEngagementService'
@@ -61,7 +62,7 @@ function UserAvatarDisplay({
 }
 
 export default function UserDashboard() {
-  const { user, updateProfileInSupabase } = useAuthStore()
+  const { user, updateProfileInSupabase, logoutUser } = useAuthStore()
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview')
   const [coursesList, setCoursesList] = useState<Course[]>([])
   const [enrollments, setEnrollments] = useState<Enrollment[]>([])
@@ -69,6 +70,13 @@ export default function UserDashboard() {
   const [activePlayCourse, setActivePlayCourse] = useState<Course | null>(null)
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [showAvatarModal, setShowAvatarModal] = useState(false)
+  const [showLogoutModal, setShowLogoutModal] = useState(false)
+
+  const handleConfirmLogout = async () => {
+    await logoutUser()
+    toast.success('Logged out successfully')
+    setShowLogoutModal(false)
+  }
 
   const [profileForm, setProfileForm] = useState({
     name: user?.name || '',
@@ -849,6 +857,17 @@ export default function UserDashboard() {
                     {item.label}
                   </button>
                 ))}
+
+                <div className="pt-2 border-t border-brand-border dark:border-brand-dark-border mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowLogoutModal(true)}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors cursor-pointer"
+                  >
+                    <LogOut size={17} />
+                    Sign Out
+                  </button>
+                </div>
               </nav>
             </div>
           </aside>
@@ -918,6 +937,15 @@ export default function UserDashboard() {
           onSaveAvatar={handleSaveAvatar}
         />
       )}
+
+      {/* Logout Confirmation Dialog */}
+      <LogoutConfirmModal
+        isOpen={showLogoutModal}
+        isAdmin={false}
+        userNameOrEmail={user?.email || user?.name}
+        onConfirm={handleConfirmLogout}
+        onCancel={() => setShowLogoutModal(false)}
+      />
     </div>
   )
 }

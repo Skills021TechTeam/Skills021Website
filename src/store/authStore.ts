@@ -10,6 +10,60 @@ import {
 } from '../lib/supabase'
 import { getEnrollmentsForUser } from '../lib/videoEngagementService'
 
+// ─── Rate Limiter ────────────────────────────────────────────────────────────
+// In-memory rate limiting to protect against brute-force attacks.
+// 5 failed attempts: 30s lockout. 8 failed attempts: 2 min lockout. 10+ attempts: 5 min lockout.
+interface RateLimitState {
+  attempts: number
+  lockedUntil: number | null
+}
+
+const rateLimitMap: Record<string, RateLimitState> = {}
+
+function getRateLimitKey(identifier: string) {
+  return identifier.trim().toLowerCase()
+}
+
+function getLockoutDuration(attempts: number): number {
+  if (attempts >= 10) return 5 * 60 * 1000 // 5 minutes
+  if (attempts >= 8) return 2 * 60 * 1000  // 2 minutes
+  if (attempts >= 5) return 30 * 1000       // 30 seconds
+  return 0
+}
+
+export function checkRateLimit(identifier: string): { blocked: boolean; remainingMs: number; attemptsLeft: number } {
+  const key = getRateLimitKey(identifier)
+  const state = rateLimitMap[key] ?? { attempts: 0, lockedUntil: null }
+
+  if (state.lockedUntil && Date.now() < state.lockedUntil) {
+    return { blocked: true, remainingMs: state.lockedUntil - Date.now(), attemptsLeft: 0 }
+  }
+
+  // Max attempts before lockout
+  const attemptsLeft = Math.max(0, 10 - state.attempts)
+  return { blocked: false, remainingMs: 0, attemptsLeft }
+}
+
+export function recordFailedAttempt(identifier: string): { blocked: boolean; remainingMs: number; attemptsLeft: number } {
+  const key = getRateLimitKey(identifier)
+  const state = rateLimitMap[key] ?? { attempts: 0, lockedUntil: null }
+  const newAttempts = state.attempts + 1
+  const lockoutMs = getLockoutDuration(newAttempts)
+  rateLimitMap[key] = {
+    attempts: newAttempts,
+    lockedUntil: lockoutMs > 0 ? Date.now() + lockoutMs : null,
+  }
+  const attemptsLeft = Math.max(0, 10 - newAttempts)
+  return { blocked: lockoutMs > 0, remainingMs: lockoutMs, attemptsLeft }
+}
+
+export function clearRateLimit(identifier: string) {
+  const key = getRateLimitKey(identifier)
+  delete rateLimitMap[key]
+}
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
 export interface User {
   id: string
   name: string
@@ -37,17 +91,19 @@ interface AuthState {
   user: User | null
   isAuthenticated: boolean
   setUser: (user: User | null) => void
-  loginWithSupabase: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
+  loginWithSupabase: (email: string, password: string) => Promise<{ success: boolean; error?: string; rateLimitInfo?: { blocked: boolean; remainingMs: number; attemptsLeft: number } }>
   registerWithSupabase: (data: RegisterData) => Promise<{ success: boolean; error?: string }>
   logoutUser: () => Promise<void>
   logout: () => void
   updateProfileInSupabase: (data: Partial<User>) => Promise<boolean>
   refreshUserData: () => Promise<void>
+  /** Re-verify session on app startup and sync user profile */
+  hydrateFromSession: () => Promise<void>
 
   // Dedicated Admin Portal Auth
   isAdminAuthenticated: boolean
   adminUser: { id: string; email: string; name: string } | null
-  adminLogin: (adminId: string, adminPassword: string) => Promise<boolean>
+  adminLogin: (adminId: string, adminPassword: string) => Promise<{ success: boolean; error?: string; rateLimitInfo?: { blocked: boolean; remainingMs: number; attemptsLeft: number } }>
   adminLogout: () => Promise<void>
 }
 
@@ -62,48 +118,114 @@ export const useAuthStore = create<AuthState>()(
       adminUser: null,
 
       setUser: (user: User | null) => {
-        set({ user, isAuthenticated: !!user })
+        set({ user, isAuthenticated: !!user, isAdminAuthenticated: user?.role === 'admin' })
       },
 
-      loginWithSupabase: async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+      hydrateFromSession: async () => {
         try {
-          const res = await signInUser(email, password)
+          const { data: { session } } = await supabase.auth.getSession()
+          if (!session?.user) {
+            // Keep local admin auth if user logged in as admin locally
+            const current = get()
+            if (!current.isAdminAuthenticated) {
+              set({ user: null, isAuthenticated: false, isAdminAuthenticated: false, adminUser: null })
+            }
+            return
+          }
+
+          const u = session.user
+          const [profile, enrollments] = await Promise.all([
+            getUserProfile(u.id).catch(() => null),
+            getEnrollmentsForUser(u.id).catch(() => []),
+          ])
+
+          const configuredAdminEmail = ((import.meta.env.VITE_ADMIN_ID as string) || 'admin@skills021.com').toLowerCase().trim()
+          const isConfiguredAdmin = (u.email || '').toLowerCase().trim() === configuredAdminEmail
+          const isAdmin = profile?.role === 'admin' || u.user_metadata?.role === 'admin' || isConfiguredAdmin
+
+          const mappedUser: User = {
+            id: u.id,
+            name: profile?.name || u.user_metadata?.name || u.email?.split('@')[0] || (isAdmin ? 'System Administrator' : 'User'),
+            email: u.email || '',
+            role: isAdmin ? 'admin' : 'user',
+            college: profile?.college || u.user_metadata?.college || (isAdmin ? 'Skills021 Central HQ' : 'Student Institution'),
+            phone: profile?.phone || u.user_metadata?.phone || '',
+            avatarUrl: profile?.avatar_url || u.user_metadata?.avatar_url || '',
+            isPremium: Boolean(profile?.is_premium ?? u.user_metadata?.is_premium ?? isAdmin),
+            joinedDate: profile?.created_at
+              ? new Date(profile.created_at).toISOString().split('T')[0]
+              : new Date(u.created_at).toISOString().split('T')[0],
+            enrolledCourses: enrollments.map(e => e.courseId),
+          }
+
+          set({
+            user: mappedUser,
+            isAuthenticated: true,
+            isAdminAuthenticated: isAdmin,
+            adminUser: isAdmin ? { id: mappedUser.id, email: mappedUser.email, name: mappedUser.name } : null,
+          })
+        } catch {
+          // Fail gracefully without crashing
+        }
+      },
+
+      loginWithSupabase: async (email: string, password: string) => {
+        const cleanEmail = email.trim()
+        const preCheck = checkRateLimit(cleanEmail)
+        if (preCheck.blocked) {
+          return { success: false, error: `Too many failed attempts. Try again in ${Math.ceil(preCheck.remainingMs / 1000)}s.`, rateLimitInfo: preCheck }
+        }
+
+        try {
+          const res = await signInUser(cleanEmail, password)
           if (res?.user) {
             const u = res.user
 
-            // Fetch profile and real course enrollments from Supabase
             const [profile, enrollments] = await Promise.all([
               getUserProfile(u.id).catch(() => null),
               getEnrollmentsForUser(u.id).catch(() => []),
             ])
 
+            const configuredAdminEmail = ((import.meta.env.VITE_ADMIN_ID as string) || 'admin@skills021.com').toLowerCase().trim()
+            const isConfiguredAdmin = (u.email || '').toLowerCase().trim() === configuredAdminEmail
+            const isAdmin = profile?.role === 'admin' || u.user_metadata?.role === 'admin' || isConfiguredAdmin
+
             const mappedUser: User = {
               id: u.id,
-              name: profile?.name || u.user_metadata?.name || u.email?.split('@')[0] || 'User',
-              email: u.email || email,
-              role: profile?.role || u.user_metadata?.role || 'user',
-              college: profile?.college || u.user_metadata?.college || 'Student Institution',
+              name: profile?.name || u.user_metadata?.name || u.email?.split('@')[0] || (isAdmin ? 'System Administrator' : 'User'),
+              email: u.email || cleanEmail,
+              role: isAdmin ? 'admin' : 'user',
+              college: profile?.college || u.user_metadata?.college || (isAdmin ? 'Skills021 Central HQ' : 'Student Institution'),
               phone: profile?.phone || u.user_metadata?.phone || '',
               avatarUrl: profile?.avatar_url || u.user_metadata?.avatar_url || '',
-              isPremium: Boolean(profile?.is_premium ?? u.user_metadata?.is_premium ?? false),
+              isPremium: Boolean(profile?.is_premium ?? u.user_metadata?.is_premium ?? isAdmin),
               joinedDate: profile?.created_at
                 ? new Date(profile.created_at).toISOString().split('T')[0]
                 : new Date(u.created_at).toISOString().split('T')[0],
               enrolledCourses: enrollments.map(e => e.courseId),
             }
 
-            set({ user: mappedUser, isAuthenticated: true })
+            clearRateLimit(cleanEmail)
+
+            set({
+              user: mappedUser,
+              isAuthenticated: true,
+              isAdminAuthenticated: isAdmin,
+              adminUser: isAdmin ? { id: mappedUser.id, email: mappedUser.email, name: mappedUser.name } : null,
+            })
             return { success: true }
           }
-          return { success: false, error: 'User not found. Please check your credentials.' }
+          const rlInfo = recordFailedAttempt(cleanEmail)
+          return { success: false, error: 'User not found. Please check your credentials.', rateLimitInfo: rlInfo }
         } catch (err: any) {
           console.error('Login error:', err)
+          const rlInfo = recordFailedAttempt(cleanEmail)
           const message = err?.message || 'Invalid email or password. Please check your credentials.'
-          return { success: false, error: message }
+          return { success: false, error: message, rateLimitInfo: rlInfo }
         }
       },
 
-      registerWithSupabase: async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
+      registerWithSupabase: async (data: RegisterData) => {
         try {
           const res = await signUpUser(
             data.email,
@@ -150,7 +272,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
-        signOutUser().catch(() => {})
+        // Pure local state reset to prevent recursive onAuthStateChange event loops
         set({ user: null, isAuthenticated: false, isAdminAuthenticated: false, adminUser: null })
       },
 
@@ -234,45 +356,73 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      // Dedicated Admin Portal Actions
-      adminLogin: async (adminId: string, adminPassword: string): Promise<boolean> => {
-        const validId = (import.meta.env.VITE_ADMIN_ID as string) || 'admin@skills021.com'
-        const validPass = (import.meta.env.VITE_ADMIN_PASSWORD as string) || 'admin123'
+      // ── Admin Portal Auth ────────────────────────────────────────────────────
+      adminLogin: async (adminId: string, adminPassword: string) => {
+        const configuredAdminId = ((import.meta.env.VITE_ADMIN_ID as string) || 'admin@skills021.com').trim()
+        const configuredAdminPass = ((import.meta.env.VITE_ADMIN_PASSWORD as string) || 'Admin@4123').trim()
 
         const inputIdClean = adminId.trim().toLowerCase()
-        const isIdValid =
-          inputIdClean === validId.toLowerCase() ||
+        const isMatchConfiguredId =
+          inputIdClean === configuredAdminId.toLowerCase() ||
           inputIdClean === 'admin' ||
           inputIdClean === 'admin@skills021.com'
-        const isPassValid = adminPassword === validPass || adminPassword === 'admin123'
+        const isMatchConfiguredPass = adminPassword === configuredAdminPass
 
-        if (isIdValid && isPassValid) {
-          const adminEmail = 'admin@skills021.com'
+        // Rate limit pre-check
+        const preCheck = checkRateLimit(adminId)
+        if (preCheck.blocked) {
+          return {
+            success: false,
+            error: `Too many failed attempts. Try again in ${Math.ceil(preCheck.remainingMs / 1000)}s.`,
+            rateLimitInfo: preCheck,
+          }
+        }
+
+        // Case 1: Matches the secure configured admin credentials (.env)
+        if (isMatchConfiguredId && isMatchConfiguredPass) {
+          const adminEmail = configuredAdminId.includes('@') ? configuredAdminId : 'admin@skills021.com'
           let adminUid = 'admin-1'
 
-          // Authenticate in Supabase Auth so RLS policies identify session as Admin
+          // Seamlessly establish a Supabase Auth session for RLS access
           try {
             const res = await signInUser(adminEmail, adminPassword)
             if (res?.user) {
               adminUid = res.user.id
             }
           } catch (authErr) {
-            // If the user doesn't exist in Supabase Auth yet, attempt auto-signup
+            // Auto-provision admin user in Supabase Auth if not yet created
             try {
-              const res = await signUpUser(adminEmail, adminPassword, 'System Administrator', 'Skills021 Central HQ')
+              const res = await signUpUser(adminEmail, adminPassword, 'System Administrator', 'Skills021 Central HQ', '', '')
               if (res?.user) {
                 adminUid = res.user.id
               }
             } catch (signupErr) {
-              console.warn('Could not initialize Supabase Auth admin user:', signupErr)
+              console.warn('Supabase Auth auto-signup notice:', signupErr)
             }
           }
+
+          // Ensure profile has role: 'admin'
+          try {
+            await upsertUserProfile({
+              id: adminUid,
+              email: adminEmail,
+              name: 'System Administrator',
+              college: 'Skills021 Central HQ',
+              role: 'admin',
+              is_premium: true,
+            })
+          } catch (profileErr) {
+            console.warn('Admin profile upsert notice:', profileErr)
+          }
+
+          clearRateLimit(adminId)
 
           const adminObj = {
             id: adminUid,
             email: adminEmail,
             name: 'System Administrator',
           }
+
           set({
             isAdminAuthenticated: true,
             adminUser: adminObj,
@@ -282,12 +432,53 @@ export const useAuthStore = create<AuthState>()(
               email: adminEmail,
               role: 'admin',
               college: 'Skills021 Central HQ',
+              isPremium: true,
             },
             isAuthenticated: true,
           })
-          return true
+          return { success: true }
         }
-        return false
+
+        // Case 2: Attempt standard Supabase auth if someone has another admin account
+        if (adminId.includes('@')) {
+          try {
+            const res = await signInUser(adminId.trim(), adminPassword)
+            if (res?.user) {
+              const profile = await getUserProfile(res.user.id).catch(() => null)
+              if (profile?.role === 'admin' || res.user.user_metadata?.role === 'admin') {
+                clearRateLimit(adminId)
+                const adminObj = {
+                  id: res.user.id,
+                  email: res.user.email || adminId.trim(),
+                  name: profile?.name || 'System Administrator',
+                }
+                set({
+                  isAdminAuthenticated: true,
+                  adminUser: adminObj,
+                  user: {
+                    id: res.user.id,
+                    name: profile?.name || 'System Administrator',
+                    email: res.user.email || adminId.trim(),
+                    role: 'admin',
+                    college: profile?.college || 'Skills021 Central HQ',
+                    isPremium: true,
+                  },
+                  isAuthenticated: true,
+                })
+                return { success: true }
+              }
+            }
+          } catch {
+            // fall through
+          }
+        }
+
+        const rlInfo = recordFailedAttempt(adminId)
+        return {
+          success: false,
+          error: 'Invalid Admin Credentials. Please check your Admin ID and Password.',
+          rateLimitInfo: rlInfo,
+        }
       },
 
       adminLogout: async () => {

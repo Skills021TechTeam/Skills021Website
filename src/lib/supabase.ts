@@ -7,7 +7,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables. Check VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in your .env file.')
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true,
+  },
+})
 
 export interface UserProfile {
   id: string
@@ -337,6 +343,41 @@ export async function updateUserAuthPassword(newPassword: string): Promise<void>
     password: newPassword,
   })
   if (error) throw error
+}
+
+/**
+ * Sends a Supabase password-reset email to the given address.
+ * The link in the email redirects to the app's /reset-password route.
+ */
+export async function resetPasswordForEmail(email: string): Promise<void> {
+  const redirectTo = `${window.location.origin}/reset-password`
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+  if (error) throw error
+}
+
+/**
+ * Verifies that a live Supabase session exists and returns the user's role
+ * from the public.profiles table. Returns null if there is no active session.
+ * Use this in route guards instead of trusting localStorage.
+ */
+export async function verifySessionAndGetRole(): Promise<{ userId: string; role: 'user' | 'admin' } | null> {
+  try {
+    const { data: { session }, error: sessionErr } = await supabase.auth.getSession()
+    if (sessionErr || !session?.user) return null
+
+    const userId = session.user.id
+    const { data: profile, error: profileErr } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .maybeSingle()
+
+    if (profileErr || !profile) return null
+
+    return { userId, role: (profile.role as 'user' | 'admin') || 'user' }
+  } catch {
+    return null
+  }
 }
 
 /** Admin / Aggregate queries for users and paid courses from Supabase **/

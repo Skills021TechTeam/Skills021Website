@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, BookOpen, FileText, HelpCircle, Map,
@@ -9,6 +10,7 @@ import {
   QrCode, UploadCloud
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
+import LogoutConfirmModal from '../components/LogoutConfirmModal'
 import {
   fetchHackathons as fetchAdminHackathons,
   createHackathon as createAdminHackathon,
@@ -333,18 +335,120 @@ function SearchBar({ value, onChange, placeholder = 'Search...' }: { value: stri
   )
 }
 
-function DeleteModal({ title, onConfirm, onCancel }: { title: string; onConfirm: () => void; onCancel: () => void }) {
+function DeleteModal({
+  title,
+  itemType,
+  onConfirm,
+  onCancel,
+}: {
+  title: string
+  itemType?: string
+  onConfirm: () => void | Promise<void>
+  onCancel: () => void
+}) {
+  const [confirmInput, setConfirmInput] = useState('')
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  const cleanTitle = (title || '').trim()
+  const isMatch =
+    confirmInput.trim().toLowerCase() === 'delete' ||
+    (cleanTitle.length > 0 && confirmInput.trim().toLowerCase() === cleanTitle.toLowerCase())
+
+  const handleConfirm = async () => {
+    if (!isMatch || isDeleting) return
+    setIsDeleting(true)
+    try {
+      await onConfirm()
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const displayType = itemType
+    ? itemType.charAt(0).toUpperCase() + itemType.slice(1)
+    : 'Item'
+
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-sm w-full shadow-xl">
-        <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-xl flex items-center justify-center mx-auto mb-4">
-          <Trash2 size={22} className="text-red-500" />
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4"
+    >
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white dark:bg-zinc-950 rounded-2xl p-6 sm:p-7 max-w-md w-full border border-red-500/30 shadow-2xl space-y-4 relative"
+      >
+        <button
+          onClick={onCancel}
+          className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 dark:hover:text-white"
+        >
+          <X size={18} />
+        </button>
+
+        <div className="flex items-center gap-3 text-red-500">
+          <div className="p-2.5 bg-red-500/10 dark:bg-red-500/20 rounded-xl border border-red-500/20">
+            <Trash2 size={22} className="text-red-500" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-zinc-900 dark:text-white">
+              Delete {displayType}
+            </h3>
+            <p className="text-xs text-red-500 font-semibold uppercase tracking-wider">
+              Irreversible Action
+            </p>
+          </div>
         </div>
-        <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text text-center mb-2">Delete "{title}"?</h3>
-        <p className="text-sm text-brand-muted dark:text-brand-dark-muted text-center mb-6">This action cannot be undone.</p>
-        <div className="flex gap-3">
-          <button onClick={onCancel} className="flex-1 py-2.5 border border-brand-border dark:border-brand-dark-border rounded-xl text-sm font-semibold text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5">Cancel</button>
-          <button onClick={onConfirm} className="flex-1 py-2.5 bg-red-500 text-white rounded-xl text-sm font-semibold hover:bg-red-600">Delete</button>
+
+        <div className="p-3.5 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-700 dark:text-red-300 leading-relaxed">
+          <p className="font-bold mb-0.5">⚠️ Danger Zone Warning:</p>
+          This action <strong>cannot be undone</strong>. This will permanently delete{' '}
+          <span className="font-extrabold text-zinc-900 dark:text-white">"{title || 'this item'}"</span> and all associated files and data.
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">
+            To confirm deletion, type <span className="select-all font-mono font-bold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20">delete</span> or <span className="select-all font-mono font-bold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20">"{title}"</span>:
+          </label>
+          <input
+            type="text"
+            value={confirmInput}
+            onChange={e => setConfirmInput(e.target.value)}
+            placeholder={`Type "delete" or "${title}"`}
+            className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-800 bg-zinc-50 dark:bg-black text-sm text-zinc-900 dark:text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-red-500"
+            autoFocus
+            onKeyDown={e => {
+              if (e.key === 'Enter' && isMatch) {
+                handleConfirm()
+              }
+            }}
+          />
+        </div>
+
+        <div className="flex items-center justify-end gap-2.5 pt-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-800 text-xs font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!isMatch || isDeleting}
+            onClick={handleConfirm}
+            className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 cursor-pointer"
+          >
+            {isDeleting ? (
+              <>
+                <Loader2 size={13} className="animate-spin" /> Deleting…
+              </>
+            ) : (
+              'I understand the consequences, delete this'
+            )}
+          </button>
         </div>
       </motion.div>
     </motion.div>
@@ -747,7 +851,21 @@ export default function AdminDashboard() {
 
   // Stores
   const content = useContentStore()
+  const navigate = useNavigate()
   const { adminUser, adminLogout, logoutUser } = useAuthStore()
+  const [showAdminLogoutModal, setShowAdminLogoutModal] = useState(false)
+
+  const handleConfirmAdminLogout = async () => {
+    setShowAdminLogoutModal(false)
+    try {
+      await adminLogout()
+      toast.success('Signed out of Admin Portal')
+    } catch (err) {
+      console.error('Logout error:', err)
+    } finally {
+      navigate('/admin/login', { replace: true })
+    }
+  }
 
   // ─── Payment Gateway & UPI QR Settings ─────────────────────────────────────
   const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>({
@@ -2879,6 +2997,7 @@ export default function AdminDashboard() {
           {deleteVideoId && (
             <DeleteModal
               title={videos.find(v => v.id === deleteVideoId)?.title || ''}
+              itemType="Video"
               onConfirm={() => handleDelete(deleteVideoId)}
               onCancel={() => setDeleteVideoId(null)}
             />
@@ -6566,8 +6685,8 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <button
-                  onClick={() => { adminLogout(); logoutUser(); window.location.href = '/admin/login' }}
-                  className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 text-xs font-bold transition-all flex items-center gap-1"
+                  onClick={() => setShowAdminLogoutModal(true)}
+                  className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
                   title="Sign out of Admin Dashboard"
                 >
                   <LogOut size={14} />
@@ -6796,6 +6915,7 @@ export default function AdminDashboard() {
         {deleteId && (
           <DeleteModal
             title={deleteId.title}
+            itemType={deleteId.type}
             onConfirm={handleDelete}
             onCancel={() => setDeleteId(null)}
           />
@@ -7245,6 +7365,14 @@ export default function AdminDashboard() {
             </motion.div>
           </div>
         )}
+        {/* Admin Logout Confirmation Modal */}
+        <LogoutConfirmModal
+          isOpen={showAdminLogoutModal}
+          isAdmin={true}
+          userNameOrEmail={adminUser?.email || 'admin@skills021.com'}
+          onConfirm={handleConfirmAdminLogout}
+          onCancel={() => setShowAdminLogoutModal(false)}
+        />
       </AnimatePresence>
     </div>
   )

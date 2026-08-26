@@ -265,8 +265,9 @@ export async function incrementDownloadCount(resourceId: string, currentDownload
 // stored in Supabase. If a fetch fails, the browser's own save/open handling
 // remains the final fallback.
 export async function triggerResourceDownload(fileUrl: string, fileName: string): Promise<void> {
+  let resolvedUrl = fileUrl
   try {
-    const resolvedUrl = isBackblazeRef(fileUrl) ? await getBackblazeVideoUrl(fileUrl) : fileUrl
+    resolvedUrl = isBackblazeRef(fileUrl) ? await getBackblazeVideoUrl(fileUrl) : fileUrl
     const response = await fetch(resolvedUrl, { mode: 'cors' })
     if (!response.ok) {
       throw new Error(`Server responded with ${response.status}`)
@@ -291,10 +292,17 @@ export async function triggerResourceDownload(fileUrl: string, fileName: string)
 
     console.log(`[Download] Successfully downloaded: ${downloadName}`)
   } catch (err) {
-    console.error('[Download] Blob download failed, falling back to opening the file directly:', err)
-    // Last resort: just navigate to the file so the browser's own
-    // download/save handling can take over.
-    window.open(fileUrl, '_blank', 'noopener,noreferrer')
+    console.error('[Download] Blob download failed, falling back to opening direct download URL:', err)
+    if (resolvedUrl && !resolvedUrl.startsWith('b2://')) {
+      window.open(resolvedUrl, '_blank', 'noopener,noreferrer')
+    } else {
+      try {
+        const directUrl = await getBackblazeVideoUrl(fileUrl)
+        window.open(directUrl, '_blank', 'noopener,noreferrer')
+      } catch (authErr) {
+        console.error('Failed to resolve direct download link:', authErr)
+      }
+    }
   }
 }
 
@@ -463,8 +471,8 @@ export async function deleteSubject(id: number): Promise<void> {
 
 // ─── Storage Operations (Backblaze B2 for PDFs/files; Supabase stores refs) ──
 
-export async function uploadResourceFile(file: File, path: string): Promise<string> {
-  return uploadToBackblaze(file, `resources/${path}`, undefined)
+export async function uploadResourceFile(file: File, path: string, onProgress?: (percent: number) => void): Promise<string> {
+  return uploadToBackblaze(file, `resources/${path}`, onProgress)
 }
 export async function deleteResourceFile(fileUrl: string): Promise<void> {
   if (isBackblazeRef(fileUrl)) {

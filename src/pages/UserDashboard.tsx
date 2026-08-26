@@ -479,8 +479,10 @@ export default function UserDashboard() {
               </div>
             </div>
 
+            {/* Transactions List — Responsive Table on Desktop, Cards on Mobile */}
             <div className="card overflow-hidden">
-              <div className="overflow-x-auto">
+              {/* Desktop Table View */}
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 dark:bg-white/5">
                     <tr>
@@ -568,6 +570,62 @@ export default function UserDashboard() {
                     )}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Mobile Cards View */}
+              <div className="sm:hidden divide-y divide-brand-border dark:divide-brand-dark-border">
+                {enrollments.length === 0 ? (
+                  <div className="p-8 text-center text-brand-muted text-xs">
+                    No transaction records found.
+                  </div>
+                ) : (
+                  enrollments.map((enr) => {
+                    const matched = coursesList.find((c) => String(c.id) === String(enr.courseId))
+                    const isPremium = enr.itemType === 'premium_membership'
+                    const isPaid = enr.status === 'paid'
+                    const isPending = enr.status === 'pending'
+                    const isRejected = enr.status === 'rejected'
+
+                    return (
+                      <div key={enr.id} className="p-4 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-bold text-sm text-brand-text dark:text-brand-dark-text leading-snug">
+                            {enr.itemTitle || matched?.title || (isPremium ? 'All-Access Premium Membership' : `Course #${enr.courseId}`)}
+                          </p>
+                          <span className="font-bold text-sm text-brand-text dark:text-brand-dark-text shrink-0">
+                            {enr.amount > 0 ? `₹${enr.amount}` : 'FREE'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs pt-1">
+                          <span
+                            className={`badge text-[10px] font-bold ${
+                              isPaid
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                : isPending
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                                : isRejected
+                                ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}
+                          >
+                            {isPaid ? '✅ APPROVED' : isPending ? '⏳ PENDING' : isRejected ? '❌ REJECTED' : 'FREE'}
+                          </span>
+                          <span className="text-[11px] text-brand-muted">
+                            {enr.createdAt ? new Date(enr.createdAt).toLocaleDateString() : ''}
+                          </span>
+                        </div>
+
+                        {enr.utrNumber && (
+                          <div className="text-[11px] text-brand-muted bg-gray-50 dark:bg-white/5 px-2.5 py-1 rounded-lg flex items-center justify-between">
+                            <span>UTR / Ref:</span>
+                            <span className="font-mono font-bold text-brand-text dark:text-brand-dark-text">{enr.utrNumber}</span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
               </div>
             </div>
           </div>
@@ -872,23 +930,26 @@ export default function UserDashboard() {
             </div>
           </aside>
 
-          {/* Mobile Tab Bar */}
-          <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-brand-dark-card border-t border-brand-border dark:border-brand-dark-border flex">
-            {sidebarItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`flex-1 flex flex-col items-center gap-1 py-3 text-xs transition-colors ${activeTab === item.id ? 'text-primary-500 font-bold' : 'text-brand-muted dark:text-brand-dark-muted'
-                  }`}
-              >
-                <item.icon size={20} />
-                <span className="text-[10px]">{item.label.split(' ')[0]}</span>
-              </button>
-            ))}
-          </div>
-
           {/* Main Content */}
           <main className="flex-1 min-w-0 pb-20 lg:pb-0">
+            {/* Mobile Segmented Tab Switcher at Top of Content */}
+            <div className="lg:hidden mb-5 flex gap-1.5 overflow-x-auto no-scrollbar p-1.5 bg-gray-100 dark:bg-white/5 rounded-2xl border border-gray-200 dark:border-brand-dark-border">
+              {sidebarItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                    activeTab === item.id
+                      ? 'bg-white dark:bg-brand-dark-card text-primary-600 dark:text-primary-400 shadow-xs'
+                      : 'text-brand-muted dark:text-brand-dark-muted hover:text-brand-text'
+                  }`}
+                >
+                  <item.icon size={15} />
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+
             <motion.div
               key={activeTab}
               initial={{ opacity: 0, y: 10 }}

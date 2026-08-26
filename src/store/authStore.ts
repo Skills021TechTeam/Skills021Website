@@ -139,8 +139,8 @@ export const useAuthStore = create<AuthState>()(
             getEnrollmentsForUser(u.id).catch(() => []),
           ])
 
-          const configuredAdminEmail = ((import.meta.env.VITE_ADMIN_ID as string) || 'admin@skills021.com').toLowerCase().trim()
-          const isConfiguredAdmin = (u.email || '').toLowerCase().trim() === configuredAdminEmail
+          const configuredAdminEmail = ((import.meta.env.VITE_ADMIN_ID as string) || '').toLowerCase().trim()
+          const isConfiguredAdmin = Boolean(configuredAdminEmail) && (u.email || '').toLowerCase().trim() === configuredAdminEmail
           const isAdmin = profile?.role === 'admin' || u.user_metadata?.role === 'admin' || isConfiguredAdmin
 
           const mappedUser: User = {
@@ -186,8 +186,8 @@ export const useAuthStore = create<AuthState>()(
               getEnrollmentsForUser(u.id).catch(() => []),
             ])
 
-            const configuredAdminEmail = ((import.meta.env.VITE_ADMIN_ID as string) || 'admin@skills021.com').toLowerCase().trim()
-            const isConfiguredAdmin = (u.email || '').toLowerCase().trim() === configuredAdminEmail
+            const configuredAdminEmail = ((import.meta.env.VITE_ADMIN_ID as string) || '').toLowerCase().trim()
+            const isConfiguredAdmin = Boolean(configuredAdminEmail) && (u.email || '').toLowerCase().trim() === configuredAdminEmail
             const isAdmin = profile?.role === 'admin' || u.user_metadata?.role === 'admin' || isConfiguredAdmin
 
             const mappedUser: User = {
@@ -358,15 +358,15 @@ export const useAuthStore = create<AuthState>()(
 
       // ── Admin Portal Auth ────────────────────────────────────────────────────
       adminLogin: async (adminId: string, adminPassword: string) => {
-        const configuredAdminId = ((import.meta.env.VITE_ADMIN_ID as string) || 'admin@skills021.com').trim()
-        const configuredAdminPass = ((import.meta.env.VITE_ADMIN_PASSWORD as string) || 'Admin@4123').trim()
+        const configuredAdminId = ((import.meta.env.VITE_ADMIN_ID as string) || '').trim()
+        const configuredAdminPass = ((import.meta.env.VITE_ADMIN_PASSWORD as string) || '').trim()
 
         const inputIdClean = adminId.trim().toLowerCase()
         const isMatchConfiguredId =
-          inputIdClean === configuredAdminId.toLowerCase() ||
-          inputIdClean === 'admin' ||
-          inputIdClean === 'admin@skills021.com'
-        const isMatchConfiguredPass = adminPassword === configuredAdminPass
+          Boolean(configuredAdminId) &&
+          (inputIdClean === configuredAdminId.toLowerCase() ||
+            (configuredAdminId.includes('@') && inputIdClean === configuredAdminId.split('@')[0].toLowerCase()))
+        const isMatchConfiguredPass = Boolean(configuredAdminPass) && adminPassword === configuredAdminPass
 
         // Rate limit pre-check
         const preCheck = checkRateLimit(adminId)
@@ -380,7 +380,7 @@ export const useAuthStore = create<AuthState>()(
 
         // Case 1: Matches the secure configured admin credentials (.env)
         if (isMatchConfiguredId && isMatchConfiguredPass) {
-          const adminEmail = configuredAdminId.includes('@') ? configuredAdminId : 'admin@skills021.com'
+          const adminEmail = configuredAdminId.includes('@') ? configuredAdminId : `${configuredAdminId}@skills021.com`
           let adminUid = 'admin-1'
 
           // Seamlessly establish a Supabase Auth session for RLS access

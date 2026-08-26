@@ -24,6 +24,7 @@ import AdminDashboard from './pages/AdminDashboard'
 import { supabase, getUserProfile } from './lib/supabase'
 import { getEnrollmentsForUser } from './lib/videoEngagementService'
 import { useAuthStore, User } from './store/authStore'
+import MobileBottomNav from './components/MobileBottomNav'
 import WebinarVisitPopup from './components/WebinarVisitPopup'
 
 // Apply saved dark mode preference on load
@@ -155,7 +156,10 @@ export default function App() {
   return (
     <BrowserRouter>
       <Navbar />
-      <AnimatedRoutes />
+      <div className="pb-16 lg:pb-0">
+        <AnimatedRoutes />
+      </div>
+      <MobileBottomNav />
       <WebinarVisitPopup />
       <Toaster
         position="top-right"

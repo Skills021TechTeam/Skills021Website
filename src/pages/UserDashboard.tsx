@@ -3,7 +3,8 @@ import { motion } from 'framer-motion'
 import {
   LayoutDashboard, BookOpen, Settings,
   Clock, CheckCircle, TrendingUp, Play, Save,
-  User, Phone, School, Lock, AlertCircle, CreditCard, ShieldCheck, Loader2, Sparkles, Copy, Camera, Image as ImageIcon, LogOut
+  User, Phone, School, Lock, AlertCircle, CreditCard, ShieldCheck, Loader2, Sparkles, Copy, Camera, Image as ImageIcon, LogOut,
+  GraduationCap, Calendar, BookMarked, FileText, ChevronDown, ChevronUp, BarChart3, Target
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import LogoutConfirmModal from '../components/LogoutConfirmModal'
@@ -84,9 +85,15 @@ export default function UserDashboard() {
     phone: user?.phone || '',
     password: '',
     confirmPassword: '',
+    age: user?.age || '',
+    branch: user?.branch || '',
+    currentSemester: user?.currentSemester || '',
+    bio: user?.bio || '',
+    semesterSGPA: user?.semesterSGPA || ({} as Record<string, number>),
   })
   const [savingProfile, setSavingProfile] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
+  const [showSGPASection, setShowSGPASection] = useState(false)
 
   useEffect(() => {
     if (user) {
@@ -95,9 +102,67 @@ export default function UserDashboard() {
         name: user.name || '',
         college: user.college || '',
         phone: user.phone || '',
+        age: user.age || '',
+        branch: user.branch || '',
+        currentSemester: user.currentSemester || '',
+        bio: user.bio || '',
+        semesterSGPA: user.semesterSGPA || {},
       }))
     }
   }, [user])
+
+  // Branch options
+  const branchOptions = [
+    'Computer Science & Engineering (CSE)',
+    'Information Technology (IT)',
+    'Electronics & Communication (ECE)',
+    'Electrical Engineering (EE)',
+    'Mechanical Engineering (ME)',
+    'Civil Engineering (CE)',
+    'Chemical Engineering',
+    'Biotechnology',
+    'Aerospace Engineering',
+    'Data Science & AI',
+    'Mathematics & Computing',
+    'BCA',
+    'BBA',
+    'B.Sc',
+    'B.Com',
+    'Other',
+  ]
+
+  // Semester to year helper
+  const getYearFromSemester = (sem: number): string => {
+    if (sem <= 2) return '1st Year'
+    if (sem <= 4) return '2nd Year'
+    if (sem <= 6) return '3rd Year'
+    return '4th Year'
+  }
+
+  // Profile completion calculator
+  const calculateProfileCompletion = (): { percentage: number; missing: string[] } => {
+    const fields: { key: string; label: string; check: () => boolean }[] = [
+      { key: 'name', label: 'Full Name', check: () => Boolean(user?.name && user.name.trim()) },
+      { key: 'email', label: 'Email', check: () => Boolean(user?.email) },
+      { key: 'phone', label: 'Phone Number', check: () => Boolean(user?.phone && user.phone.trim()) },
+      { key: 'college', label: 'College', check: () => Boolean(user?.college && user.college.trim() && user.college !== 'Student Institution') },
+      { key: 'avatar', label: 'Profile Picture', check: () => Boolean(user?.avatarUrl) },
+      { key: 'age', label: 'Age', check: () => Boolean(user?.age) },
+      { key: 'branch', label: 'Branch', check: () => Boolean(user?.branch && user.branch.trim()) },
+      { key: 'semester', label: 'Current Semester', check: () => Boolean(user?.currentSemester) },
+      { key: 'bio', label: 'Bio', check: () => Boolean(user?.bio && user.bio.trim()) },
+      { key: 'sgpa', label: 'Academic Record', check: () => {
+        if (Number(user?.currentSemester) === 1) return true
+        const sgpa = user?.semesterSGPA
+        return Boolean(sgpa && Object.keys(sgpa).length > 0 && Object.values(sgpa).some(v => v > 0))
+      }},
+    ]
+    const filled = fields.filter(f => f.check())
+    const missing = fields.filter(f => !f.check()).map(f => f.label)
+    return { percentage: Math.round((filled.length / fields.length) * 100), missing }
+  }
+
+  const profileCompletion = calculateProfileCompletion()
 
   const loadData = useCallback(async () => {
     if (!user?.id) return
@@ -173,10 +238,17 @@ export default function UserDashboard() {
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault()
     setSavingProfile(true)
+    const semNum = profileForm.currentSemester ? Number(profileForm.currentSemester) : undefined
     const success = await updateProfileInSupabase({
       name: profileForm.name.trim(),
       college: profileForm.college.trim(),
       phone: profileForm.phone.trim(),
+      age: profileForm.age ? Number(profileForm.age) : undefined,
+      branch: profileForm.branch,
+      currentSemester: semNum,
+      yearOfStudy: semNum ? getYearFromSemester(semNum) : undefined,
+      bio: profileForm.bio.trim(),
+      semesterSGPA: profileForm.semesterSGPA,
     })
     setSavingProfile(false)
     if (success) {
@@ -635,11 +707,71 @@ export default function UserDashboard() {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">Profile Settings</h2>
+              <div className="flex items-center gap-3 flex-wrap">
+                <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">Profile Settings</h2>
+                {profileCompletion.percentage === 100 && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 shadow-xs">
+                    <CheckCircle size={13} className="text-emerald-500" />
+                    Profile Completed
+                  </span>
+                )}
+              </div>
               <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">
-                Manage your profile picture, personal information & password
+                Manage your profile picture, personal information &amp; password
               </p>
             </div>
+
+            {/* Profile Completion Ring Card - Only shown when profile is incomplete (< 100%) */}
+            {profileCompletion.percentage < 100 && (
+              <div className="card p-6">
+                <div className="flex flex-col sm:flex-row items-center gap-6">
+                  {/* SVG Ring */}
+                  <div className="relative flex-shrink-0">
+                    <svg width="100" height="100" viewBox="0 0 100 100" className="transform -rotate-90">
+                      <circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="8" className="text-gray-200 dark:text-white/10" />
+                      <circle
+                        cx="50" cy="50" r="42" fill="none"
+                        strokeWidth="8" strokeLinecap="round"
+                        stroke={profileCompletion.percentage >= 70 ? '#f59e0b' : '#ef4444'}
+                        strokeDasharray={`${2 * Math.PI * 42}`}
+                        strokeDashoffset={`${2 * Math.PI * 42 * (1 - profileCompletion.percentage / 100)}`}
+                        style={{ transition: 'stroke-dashoffset 0.8s ease-out, stroke 0.5s ease' }}
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-2xl font-black text-brand-text dark:text-brand-dark-text">{profileCompletion.percentage}%</span>
+                      <span className="text-[9px] font-semibold text-brand-muted uppercase tracking-wider">Complete</span>
+                    </div>
+                  </div>
+
+                  {/* Info Text & Missing Fields */}
+                  <div className="flex-1 text-center sm:text-left">
+                    <h3 className="font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-2 justify-center sm:justify-start">
+                      <Target size={18} className="text-primary-500" />
+                      {profileCompletion.percentage >= 70
+                        ? '✨ Almost there!'
+                        : '📝 Complete your profile'}
+                    </h3>
+                    <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1">
+                      {`Fill in ${profileCompletion.missing.length} more field${profileCompletion.missing.length > 1 ? 's' : ''} to complete your profile.`}
+                    </p>
+                    {profileCompletion.missing.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-3 justify-center sm:justify-start">
+                        {profileCompletion.missing.map((field) => (
+                          <span
+                            key={field}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 border border-amber-200 dark:border-amber-800/30"
+                          >
+                            <AlertCircle size={10} />
+                            {field}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Profile Avatar Card */}
             <div className="card p-6 space-y-4">
@@ -765,6 +897,107 @@ export default function UserDashboard() {
                       />
                     </div>
                   </div>
+
+                  {/* Age */}
+                  <div>
+                    <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">
+                      Age
+                    </label>
+                    <div className="relative">
+                      <Calendar size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
+                      <input
+                        type="number"
+                        min={16}
+                        max={60}
+                        value={profileForm.age}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, age: e.target.value }))}
+                        placeholder="e.g. 20"
+                        className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-sm text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Branch */}
+                  <div>
+                    <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">
+                      Branch / Department
+                    </label>
+                    <div className="relative">
+                      <GraduationCap size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
+                      <select
+                        value={profileForm.branch}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, branch: e.target.value }))}
+                        className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-sm text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500 appearance-none cursor-pointer"
+                      >
+                        <option value="">Select your branch</option>
+                        {branchOptions.map((b) => (
+                          <option key={b} value={b}>{b}</option>
+                        ))}
+                      </select>
+                      <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* Current Semester */}
+                  <div>
+                    <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">
+                      Current Semester
+                    </label>
+                    <div className="relative">
+                      <BookMarked size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
+                      <select
+                        value={profileForm.currentSemester}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          setProfileForm((p) => ({ ...p, currentSemester: val }))
+                        }}
+                        className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-sm text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500 appearance-none cursor-pointer"
+                      >
+                        <option value="">Select semester</option>
+                        {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
+                          <option key={s} value={s}>Semester {s}</option>
+                        ))}
+                      </select>
+                      <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* Year of Study (auto) */}
+                  <div>
+                    <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">
+                      Year of Study
+                    </label>
+                    <div className="relative">
+                      <School size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
+                      <input
+                        type="text"
+                        value={profileForm.currentSemester ? getYearFromSemester(Number(profileForm.currentSemester)) : '—'}
+                        disabled
+                        className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-gray-50 dark:bg-white/5 text-sm text-brand-muted dark:text-brand-dark-muted cursor-not-allowed"
+                      />
+                    </div>
+                    <p className="text-[10px] text-brand-muted mt-1 italic">Auto-calculated from semester</p>
+                  </div>
+                </div>
+
+                {/* Bio */}
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-brand-text dark:text-brand-dark-text mb-1.5">
+                    <FileText size={14} className="inline mr-1.5 text-brand-muted" />
+                    Short Bio
+                    <span className="text-[10px] text-brand-muted ml-2 font-normal">({(profileForm.bio || '').length}/200)</span>
+                  </label>
+                  <textarea
+                    value={profileForm.bio}
+                    onChange={(e) => {
+                      if (e.target.value.length <= 200) {
+                        setProfileForm((p) => ({ ...p, bio: e.target.value }))
+                      }
+                    }}
+                    rows={3}
+                    placeholder="Tell us a bit about yourself..."
+                    className="w-full px-4 py-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-sm text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                  />
                 </div>
 
                 <div className="pt-2">
@@ -784,6 +1017,163 @@ export default function UserDashboard() {
                 </div>
               </div>
             </form>
+
+            {/* Academic Record (SGPA) Section */}
+            {profileForm.currentSemester && Number(profileForm.currentSemester) >= 2 && (
+              <div className="card overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowSGPASection(!showSGPASection)}
+                  className="w-full flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <BarChart3 size={18} className="text-primary-500" />
+                    <h3 className="font-bold text-brand-text dark:text-brand-dark-text">
+                      Academic Record
+                    </h3>
+                    <span className="badge text-[10px] px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-semibold">
+                      Optional
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {(() => {
+                      const sgpa = profileForm.semesterSGPA || {}
+                      const vals = Object.values(sgpa).filter((v) => v > 0)
+                      if (vals.length > 0) {
+                        const cgpa = (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2)
+                        return (
+                          <span className="text-sm font-bold text-primary-600 dark:text-primary-400">
+                            CGPA: {cgpa}
+                          </span>
+                        )
+                      }
+                      return null
+                    })()}
+                    {showSGPASection ? (
+                      <ChevronUp size={18} className="text-brand-muted" />
+                    ) : (
+                      <ChevronDown size={18} className="text-brand-muted" />
+                    )}
+                  </div>
+                </button>
+
+                {showSGPASection && (
+                  <div className="px-6 pb-6 space-y-5 border-t border-brand-border dark:border-brand-dark-border pt-5">
+                    <p className="text-xs text-brand-muted dark:text-brand-dark-muted">
+                      Enter your SGPA for each completed semester. This helps track your academic progress.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                      {Array.from({ length: Number(profileForm.currentSemester) - 1 }, (_, i) => i + 1).map((sem) => {
+                        const val = profileForm.semesterSGPA?.[String(sem)] ?? ''
+                        const barWidth = val ? Math.min((Number(val) / 10) * 100, 100) : 0
+                        const barColor = Number(val) >= 8 ? 'bg-emerald-500' : Number(val) >= 6 ? 'bg-amber-500' : Number(val) >= 4 ? 'bg-orange-500' : 'bg-red-500'
+
+                        return (
+                          <div key={sem} className="bg-gray-50 dark:bg-white/5 rounded-xl p-3.5 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
+                                Sem {sem}
+                              </span>
+                              {val && (
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                  Number(val) >= 8 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                  : Number(val) >= 6 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                  : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                }`}>
+                                  {Number(val) >= 8 ? 'Excellent' : Number(val) >= 6 ? 'Good' : 'Needs Work'}
+                                </span>
+                              )}
+                            </div>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="10"
+                              value={val}
+                              onChange={(e) => {
+                                const v = e.target.value
+                                if (v === '' || (Number(v) >= 0 && Number(v) <= 10)) {
+                                  setProfileForm((p) => ({
+                                    ...p,
+                                    semesterSGPA: {
+                                      ...p.semesterSGPA,
+                                      [String(sem)]: v === '' ? 0 : Number(v),
+                                    },
+                                  }))
+                                }
+                              }}
+                              placeholder="0.00 – 10.00"
+                              className="w-full px-3 py-2 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-sm text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500 text-center font-mono"
+                            />
+                            {/* Mini progress bar */}
+                            <div className="h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${barColor} transition-all duration-500`}
+                                style={{ width: `${barWidth}%` }}
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {/* CGPA Summary */}
+                    {(() => {
+                      const sgpa = profileForm.semesterSGPA || {}
+                      const vals = Object.values(sgpa).filter((v) => v > 0)
+                      if (vals.length === 0) return null
+                      const cgpa = (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2)
+                      const maxSgpa = Math.max(...vals).toFixed(2)
+                      const minSgpa = Math.min(...vals).toFixed(2)
+                      return (
+                        <div className="mt-4 grid grid-cols-3 gap-3">
+                          <div className="bg-gradient-to-br from-primary-500/10 to-indigo-500/10 dark:from-primary-500/20 dark:to-indigo-500/20 rounded-xl p-4 text-center border border-primary-200/50 dark:border-primary-500/20">
+                            <p className="text-[10px] text-brand-muted uppercase tracking-wider font-semibold">CGPA</p>
+                            <p className="text-xl font-black text-primary-600 dark:text-primary-400 mt-0.5">{cgpa}</p>
+                          </div>
+                          <div className="bg-emerald-50 dark:bg-emerald-900/10 rounded-xl p-4 text-center border border-emerald-200/50 dark:border-emerald-500/20">
+                            <p className="text-[10px] text-brand-muted uppercase tracking-wider font-semibold">Highest</p>
+                            <p className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-0.5">{maxSgpa}</p>
+                          </div>
+                          <div className="bg-amber-50 dark:bg-amber-900/10 rounded-xl p-4 text-center border border-amber-200/50 dark:border-amber-500/20">
+                            <p className="text-[10px] text-brand-muted uppercase tracking-wider font-semibold">Lowest</p>
+                            <p className="text-xl font-black text-amber-600 dark:text-amber-400 mt-0.5">{minSgpa}</p>
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    <div className="pt-2">
+                      <motion.button
+                        whileTap={{ scale: 0.97 }}
+                        type="button"
+                        disabled={savingProfile}
+                        onClick={async () => {
+                          setSavingProfile(true)
+                          const semNum = profileForm.currentSemester ? Number(profileForm.currentSemester) : undefined
+                          const success = await updateProfileInSupabase({
+                            semesterSGPA: profileForm.semesterSGPA,
+                            currentSemester: semNum,
+                            yearOfStudy: semNum ? getYearFromSemester(semNum) : undefined,
+                          })
+                          setSavingProfile(false)
+                          if (success) toast.success('Academic record saved! 📚')
+                          else toast.error('Failed to save academic record.')
+                        }}
+                        className="flex items-center gap-2 btn-primary disabled:opacity-60 text-xs px-5 py-2.5"
+                      >
+                        {savingProfile ? (
+                          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        ) : (
+                          <Save size={15} />
+                        )}
+                        {savingProfile ? 'Saving...' : 'Save Academic Record'}
+                      </motion.button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Change Password Form */}
             <form onSubmit={handleChangePassword} className="space-y-4">
@@ -895,10 +1285,46 @@ export default function UserDashboard() {
                 <span className="mt-2 badge bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400 text-xs">
                   {user?.college || 'Student'}
                 </span>
+                {user?.branch && (
+                  <span className="mt-1 badge bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 text-[10px]">
+                    {user.branch}
+                  </span>
+                )}
+                {user?.currentSemester && (
+                  <span className="mt-1 badge bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[10px]">
+                    Sem {user.currentSemester} · {getYearFromSemester(user.currentSemester)}
+                  </span>
+                )}
                 {user?.phone && (
                   <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted mt-1 flex items-center gap-1">
                     <Phone size={11} /> {user.phone}
                   </span>
+                )}
+
+                {/* Completion Status */}
+                {profileCompletion.percentage === 100 ? (
+                  <div className="mt-3 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40 text-xs font-semibold w-full">
+                    <CheckCircle size={14} className="text-emerald-500" />
+                    Profile Completed
+                  </div>
+                ) : (
+                  <div className="mt-3 flex items-center gap-2.5 w-full">
+                    <div className="relative flex-shrink-0">
+                      <svg width="36" height="36" viewBox="0 0 36 36" className="transform -rotate-90">
+                        <circle cx="18" cy="18" r="14" fill="none" stroke="currentColor" strokeWidth="3" className="text-gray-200 dark:text-white/10" />
+                        <circle
+                          cx="18" cy="18" r="14" fill="none"
+                          strokeWidth="3" strokeLinecap="round"
+                          stroke={profileCompletion.percentage >= 70 ? '#f59e0b' : '#ef4444'}
+                          strokeDasharray={`${2 * Math.PI * 14}`}
+                          strokeDashoffset={`${2 * Math.PI * 14 * (1 - profileCompletion.percentage / 100)}`}
+                          style={{ transition: 'stroke-dashoffset 0.8s ease-out' }}
+                        />
+                      </svg>
+                      <span className="absolute inset-0 flex items-center justify-center text-[8px] font-black text-brand-text dark:text-brand-dark-text">{profileCompletion.percentage}%</span>
+                    </div>
+                    <span className="text-[10px] text-brand-muted dark:text-brand-dark-muted font-medium">Profile ({profileCompletion.percentage}%)</span>
+                  </div>
                 )}
               </div>
               <nav className="space-y-1">

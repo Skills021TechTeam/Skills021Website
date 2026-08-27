@@ -75,6 +75,12 @@ export interface User {
   isPremium?: boolean
   enrolledCourses?: string[]
   joinedDate?: string
+  age?: number
+  branch?: string
+  currentSemester?: number
+  semesterSGPA?: Record<string, number>
+  yearOfStudy?: string
+  bio?: string
 }
 
 export interface RegisterData {
@@ -156,6 +162,12 @@ export const useAuthStore = create<AuthState>()(
               ? new Date(profile.created_at).toISOString().split('T')[0]
               : new Date(u.created_at).toISOString().split('T')[0],
             enrolledCourses: enrollments.map(e => e.courseId),
+            age: profile?.age ?? u.user_metadata?.age,
+            branch: profile?.branch ?? u.user_metadata?.branch ?? '',
+            currentSemester: profile?.current_semester ?? u.user_metadata?.current_semester,
+            semesterSGPA: profile?.semester_sgpa ?? u.user_metadata?.semester_sgpa ?? {},
+            yearOfStudy: profile?.year_of_study ?? u.user_metadata?.year_of_study ?? '',
+            bio: profile?.bio ?? u.user_metadata?.bio ?? '',
           }
 
           set({
@@ -203,6 +215,12 @@ export const useAuthStore = create<AuthState>()(
                 ? new Date(profile.created_at).toISOString().split('T')[0]
                 : new Date(u.created_at).toISOString().split('T')[0],
               enrolledCourses: enrollments.map(e => e.courseId),
+              age: profile?.age ?? u.user_metadata?.age,
+              branch: profile?.branch ?? u.user_metadata?.branch ?? '',
+              currentSemester: profile?.current_semester ?? u.user_metadata?.current_semester,
+              semesterSGPA: profile?.semester_sgpa ?? u.user_metadata?.semester_sgpa ?? {},
+              yearOfStudy: profile?.year_of_study ?? u.user_metadata?.year_of_study ?? '',
+              bio: profile?.bio ?? u.user_metadata?.bio ?? '',
             }
 
             clearRateLimit(cleanEmail)
@@ -302,6 +320,12 @@ export const useAuthStore = create<AuthState>()(
               college: nextCollege,
               phone: nextPhone,
               avatar_url: nextAvatar,
+              age: data.age ?? current.age,
+              branch: data.branch ?? current.branch,
+              current_semester: data.currentSemester ?? current.currentSemester,
+              semester_sgpa: data.semesterSGPA ?? current.semesterSGPA,
+              year_of_study: data.yearOfStudy ?? current.yearOfStudy,
+              bio: data.bio ?? current.bio,
             },
           })
         } catch (metaErr) {
@@ -319,6 +343,12 @@ export const useAuthStore = create<AuthState>()(
             role: current.role,
             avatar_url: nextAvatar,
             is_premium: data.isPremium ?? current.isPremium ?? false,
+            age: data.age ?? current.age,
+            branch: data.branch ?? current.branch,
+            current_semester: data.currentSemester ?? current.currentSemester,
+            semester_sgpa: data.semesterSGPA ?? current.semesterSGPA,
+            year_of_study: data.yearOfStudy ?? current.yearOfStudy,
+            bio: data.bio ?? current.bio,
           })
         } catch (err) {
           console.warn('Profile DB upsert notice:', err)
@@ -348,6 +378,12 @@ export const useAuthStore = create<AuthState>()(
                 avatarUrl: profile.avatar_url || current.avatarUrl || '',
                 isPremium: Boolean(profile.is_premium ?? current.isPremium ?? false),
                 enrolledCourses: enrollments.map(e => e.courseId),
+                age: profile.age ?? current.age,
+                branch: profile.branch ?? current.branch,
+                currentSemester: profile.current_semester ?? current.currentSemester,
+                semesterSGPA: profile.semester_sgpa ?? current.semesterSGPA,
+                yearOfStudy: profile.year_of_study ?? current.yearOfStudy,
+                bio: profile.bio ?? current.bio,
               },
             })
           }

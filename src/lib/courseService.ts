@@ -368,8 +368,8 @@ export async function uploadCourseThumbnail(file: File, path: string): Promise<s
 }
 
 // ─── Storage: Course Video Upload (Backblaze B2) ───────────────────────────
-export async function uploadCourseVideo(file: File, path: string): Promise<string> {
-  return uploadToBackblaze(file, `courses/${path}`, undefined)
+export async function uploadCourseVideo(file: File, path: string, onProgress?: (percent: number) => void): Promise<string> {
+  return uploadToBackblaze(file, `courses/${path}`, onProgress)
 }
 
 // ─── Storage: Delete a course file (thumbnail or video) by its public URL ──

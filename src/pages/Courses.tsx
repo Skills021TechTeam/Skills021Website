@@ -62,7 +62,8 @@ interface CourseCardProps {
 }
 
 function CourseCard({ course, userId, isAdmin, isPremium, isEnrolled, isPending, onPlay, onEnroll, onRated }: CourseCardProps) {
-  const canWatch = isAdmin || isPremium || isEnrolled
+  const isFreeCourse = course.price === 'FREE' || course.price === 0
+  const canWatch = isAdmin || isPremium || isEnrolled || isFreeCourse
 
   return (
     <motion.div
@@ -618,12 +619,15 @@ export default function Courses() {
   const filtered = useMemo(() => {
     return published.filter(c => {
       if (!hierarchyActive) {
-        if (c.group !== activeGroup) return false
-        if (activeSub && c.subcategory !== activeSub) return false
+        if (activeSub) {
+          if (c.subcategory?.trim().toLowerCase() !== activeSub.trim().toLowerCase()) return false
+        } else {
+          if (c.group?.trim().toLowerCase() !== activeGroup.trim().toLowerCase()) return false
+        }
       }
-      if (activeLevel !== 'All Levels' && c.level !== activeLevel) return false
-      if (activePrice === 'Free' && c.price !== 'FREE') return false
-      if (activePrice === 'Paid' && c.price === 'FREE') return false
+      if (activeLevel !== 'All Levels' && c.level?.trim().toLowerCase() !== activeLevel.trim().toLowerCase()) return false
+      if (activePrice === 'Free' && c.price !== 'FREE' && c.price !== 0) return false
+      if (activePrice === 'Paid' && (c.price === 'FREE' || c.price === 0)) return false
       if (appliedSubjectId && c.subjectId !== appliedSubjectId) return false
       if (appliedSemesterId && c.semesterId !== appliedSemesterId) return false
       if (appliedBranchId && c.branchId !== appliedBranchId) return false
@@ -1105,7 +1109,7 @@ export default function Courses() {
           userId={userId ?? ''}
           userName={user?.name ?? 'Guest'}
           isAdmin={isAdmin}
-          canWatch={isAdmin || Boolean(user?.isPremium) || enrolledIds.has(playCourse.id)}
+          canWatch={isAdmin || Boolean(user?.isPremium) || enrolledIds.has(playCourse.id) || playCourse.price === 'FREE' || playCourse.price === 0}
           onClose={() => setPlayCourse(null)}
         />
       )}

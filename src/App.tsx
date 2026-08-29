@@ -9,6 +9,7 @@ import AdminRoute from './components/AdminRoute'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import ResetPassword from './pages/ResetPassword'
 import AdminLogin from './pages/AdminLogin'
 import Courses from './pages/Courses'
 import Resources from './pages/Resources'
@@ -24,7 +25,9 @@ import AdminDashboard from './pages/AdminDashboard'
 import { supabase, getUserProfile } from './lib/supabase'
 import { getEnrollmentsForUser } from './lib/videoEngagementService'
 import { useAuthStore, User } from './store/authStore'
+import MobileBottomNav from './components/MobileBottomNav'
 import WebinarVisitPopup from './components/WebinarVisitPopup'
+import { initGlobalHaptics } from './lib/haptics'
 
 // Apply saved dark mode preference on load
 const applyTheme = () => {
@@ -65,6 +68,7 @@ function AnimatedRoutes() {
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/admin/login" element={<AdminLogin />} />
 
             {/* Protected Learning & Platform Features */}
@@ -95,6 +99,12 @@ export default function App() {
   const logout = useAuthStore(s => s.logout)
 
   useEffect(() => {
+    return initGlobalHaptics()
+  }, [])
+
+  useEffect(() => {
+    let hasHydrated = false
+
     const syncUserFromSupabase = async (u: any) => {
       try {
         const [profile, enrollments] = await Promise.all([
@@ -115,6 +125,12 @@ export default function App() {
             ? new Date(profile.created_at).toISOString().split('T')[0]
             : new Date(u.created_at).toISOString().split('T')[0],
           enrolledCourses: enrollments.map(e => e.courseId),
+          age: profile?.age ?? u.user_metadata?.age,
+          branch: profile?.branch ?? u.user_metadata?.branch ?? '',
+          currentSemester: profile?.current_semester ?? u.user_metadata?.current_semester,
+          semesterSGPA: profile?.semester_sgpa ?? u.user_metadata?.semester_sgpa ?? {},
+          yearOfStudy: profile?.year_of_study ?? u.user_metadata?.year_of_study ?? '',
+          bio: profile?.bio ?? u.user_metadata?.bio ?? '',
         }
         setUser(mappedUser)
       } catch {
@@ -129,6 +145,12 @@ export default function App() {
           isPremium: Boolean(u.user_metadata?.is_premium ?? false),
           joinedDate: new Date(u.created_at).toISOString().split('T')[0],
           enrolledCourses: [],
+          age: u.user_metadata?.age,
+          branch: u.user_metadata?.branch ?? '',
+          currentSemester: u.user_metadata?.current_semester,
+          semesterSGPA: u.user_metadata?.semester_sgpa ?? {},
+          yearOfStudy: u.user_metadata?.year_of_study ?? '',
+          bio: u.user_metadata?.bio ?? '',
         }
         setUser(mappedUser)
       }
@@ -136,13 +158,16 @@ export default function App() {
 
     // On mount: verify the actual Supabase session and reconcile persisted state.
     // This clears stale localStorage auth if the session expired or was revoked.
-    hydrateFromSession()
+    hydrateFromSession().then(() => { hasHydrated = true })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT' || (!session && event !== 'INITIAL_SESSION')) {
+      // Skip INITIAL_SESSION — hydrateFromSession already handles it to avoid duplicate fetches
+      if (event === 'INITIAL_SESSION') return
+
+      if (event === 'SIGNED_OUT' || !session) {
         // Clear ALL auth state — including admin flags — on real sign-out
         logout()
-      } else if (session?.user) {
+      } else if (session?.user && hasHydrated) {
         syncUserFromSupabase(session.user)
       }
     })
@@ -155,7 +180,10 @@ export default function App() {
   return (
     <BrowserRouter>
       <Navbar />
-      <AnimatedRoutes />
+      <div className="pb-16 lg:pb-0">
+        <AnimatedRoutes />
+      </div>
+      <MobileBottomNav />
       <WebinarVisitPopup />
       <Toaster
         position="top-right"

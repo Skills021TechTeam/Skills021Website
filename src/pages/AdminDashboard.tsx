@@ -2081,7 +2081,7 @@ export default function AdminDashboard() {
       // Reset resource form
       setResTitle(''); setResDescription(''); setResAuthor('Skills021 Team')
       setResUploadFile(null); setResUploadProgress(0); setResUploadStatus('idle'); setResExistingFileUrl('')
-      setResIsPremium(false); setResPrice(0); setResStatus('Draft')
+      setResIsPremium(false); setResPrice(0); setResStatus('Published')
       setSelectedCollegeId(''); setSelectedCourseId(''); setSelectedBranchId('')
       setSelectedSemesterId(''); setSelectedSubjectId(''); setSelectedResourceTypeId('')
       setCourses([]); setBranches([]); setSemesters([]); setSubjects([])
@@ -2093,6 +2093,8 @@ export default function AdminDashboard() {
       setEditItem({ ...emptyExamForm, _type: type })
     } else if (type === 'pathfinder-mapping') {
       setEditItem({ _type: type, career_path_id: '', exam_ids: [] })
+    } else if (type === 'course') {
+      setEditItem({ _type: type, status: 'Published', group: 'College & Tech Courses', subcategory: 'DSA', level: 'Beginner', isFree: true, price: 'FREE' })
     } else {
       setEditItem({ _type: type })
     }
@@ -2453,13 +2455,19 @@ export default function AdminDashboard() {
                       <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
-                          <button onClick={async () => {
-                            try {
-                              const updated = await toggleResourceStatusApi(r.id, r.status)
-                              setDbResources(prev => prev.map(res => res.id === r.id ? updated : res))
-                              toast.success(`Resource ${updated.status === 'Published' ? 'published' : 'unpublished'}`)
-                            } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to toggle status') }
-                          }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted"><EyeOff size={14} /></button>
+                          <button
+                            onClick={async () => {
+                              try {
+                                const updated = await toggleResourceStatusApi(r.id, r.status)
+                                setDbResources(prev => prev.map(res => res.id === r.id ? updated : res))
+                                toast.success(`Resource ${updated.status === 'Published' ? 'published' : 'unpublished'}`)
+                              } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to toggle status') }
+                            }}
+                            title={r.status === 'Published' ? 'Unpublish' : 'Publish'}
+                            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted"
+                          >
+                            {r.status === 'Published' ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
                           <button onClick={() => openEdit({ ...r, _type: 'resource' })} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500"><Edit2 size={14} /></button>
                           <button onClick={() => setDeleteId({ id: r.id, title: r.title, type: 'resource' })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 size={14} /></button>
                         </div>
@@ -5364,7 +5372,6 @@ export default function AdminDashboard() {
 
         setResourceSaving(true)
 
-        let uploadInterval: any = undefined
         try {
           let fileUrl = resExistingFileUrl
 
@@ -5424,23 +5431,10 @@ export default function AdminDashboard() {
             const sanitizedFilename = cleanPathSegment(resUploadFile.name.split('.').slice(0, -1).join('.')) + '.' + resUploadFile.name.split('.').pop()
             const storagePath = `${col}/${crs}/${br}/${sem}/${sub}/${timestamp}_${sanitizedFilename}`
 
-            // Start simulated progress indicator
+            // Perform storage upload with real progress tracking
             setResUploadStatus('uploading')
-            setResUploadProgress(10)
-            uploadInterval = setInterval(() => {
-              setResUploadProgress(p => {
-                if (p >= 90) {
-                  clearInterval(uploadInterval)
-                  return 90
-                }
-                return p + 10
-              })
-            }, 150)
-
-            // Perform storage upload
-            fileUrl = await uploadResourceFile(resUploadFile, storagePath)
-
-            clearInterval(uploadInterval)
+            setResUploadProgress(0)
+            fileUrl = await uploadResourceFile(resUploadFile, storagePath, (p) => setResUploadProgress(p))
             setResUploadProgress(100)
             setResUploadStatus('success')
 
@@ -5489,7 +5483,6 @@ export default function AdminDashboard() {
           }
           closeModal()
         } catch (err) {
-          if (uploadInterval) clearInterval(uploadInterval)
           setResUploadStatus('error')
           setResUploadProgress(0)
           toast.error(err instanceof Error ? err.message : 'Failed to save resource')
@@ -5692,22 +5685,17 @@ export default function AdminDashboard() {
           let videoUrl = courseExistingVideoUrl
           let thumbnailUrl = courseExistingThumbUrl
 
-          // Upload video file if a new one was selected
+          // Upload video file if a new one was selected with real progress tracking
           if (courseVideoFile) {
             setCourseVideoUploadStatus('uploading')
-            setCourseVideoUploadProgress(10)
-            const interval = setInterval(() => {
-              setCourseVideoUploadProgress(p => (p >= 90 ? (clearInterval(interval), 90) : p + 10))
-            }, 150)
+            setCourseVideoUploadProgress(0)
             try {
               const path = `${Date.now()}_${cleanFilename(courseVideoFile.name)}`
-              videoUrl = await uploadCourseVideo(courseVideoFile, path)
+              videoUrl = await uploadCourseVideo(courseVideoFile, path, (p) => setCourseVideoUploadProgress(p))
               newlyUploadedVideoUrl = videoUrl
-              clearInterval(interval)
               setCourseVideoUploadProgress(100)
               setCourseVideoUploadStatus('success')
             } catch (err) {
-              clearInterval(interval)
               setCourseVideoUploadStatus('error')
               throw err
             }

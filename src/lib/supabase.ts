@@ -26,6 +26,12 @@ export interface UserProfile {
   role: 'user' | 'admin'
   avatar_url?: string
   is_premium?: boolean
+  age?: number
+  branch?: string
+  current_semester?: number
+  semester_sgpa?: Record<string, number>
+  year_of_study?: string
+  bio?: string
   created_at?: string
   updated_at?: string
 }
@@ -188,6 +194,12 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
       role: data.role || 'user',
       avatar_url: data.avatar_url || '',
       is_premium: Boolean(data.is_premium ?? false),
+      age: data.age ?? undefined,
+      branch: data.branch ?? '',
+      current_semester: data.current_semester ?? undefined,
+      semester_sgpa: data.semester_sgpa ?? {},
+      year_of_study: data.year_of_study ?? '',
+      bio: data.bio ?? '',
       created_at: data.created_at,
       updated_at: data.updated_at,
     }
@@ -218,6 +230,24 @@ export async function upsertUserProfile(
   }
   if (profile.college) {
     payload.college = profile.college
+  }
+  if (profile.age !== undefined) {
+    payload.age = profile.age
+  }
+  if (profile.branch !== undefined) {
+    payload.branch = profile.branch
+  }
+  if (profile.current_semester !== undefined) {
+    payload.current_semester = profile.current_semester
+  }
+  if (profile.semester_sgpa !== undefined) {
+    payload.semester_sgpa = profile.semester_sgpa
+  }
+  if (profile.year_of_study !== undefined) {
+    payload.year_of_study = profile.year_of_study
+  }
+  if (profile.bio !== undefined) {
+    payload.bio = profile.bio
   }
 
   try {
@@ -265,6 +295,12 @@ export async function upsertUserProfile(
       role: data?.role || 'user',
       avatar_url: data?.avatar_url || profile.avatar_url || '',
       is_premium: Boolean(data?.is_premium ?? false),
+      age: data?.age ?? profile.age,
+      branch: data?.branch ?? profile.branch ?? '',
+      current_semester: data?.current_semester ?? profile.current_semester,
+      semester_sgpa: data?.semester_sgpa ?? profile.semester_sgpa ?? {},
+      year_of_study: data?.year_of_study ?? profile.year_of_study ?? '',
+      bio: data?.bio ?? profile.bio ?? '',
       created_at: data?.created_at,
       updated_at: data?.updated_at,
     }

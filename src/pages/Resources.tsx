@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import {
   FileText, Download, Bookmark, Share2, Lock, Search,
   Clock, BookOpen, ChevronDown, Eye, Loader2, Archive, Compass,
-  Sparkles, ArrowRight
+  Sparkles, ArrowRight, SlidersHorizontal, X
 } from 'lucide-react'
 import type { Resource } from '../store/contentStore'
 import {
@@ -167,6 +167,7 @@ export default function Resources() {
   const [activeType, setActiveType] = useState<string | null>(initType)
   const [search, setSearch] = useState('')
   const [showPremium, setShowPremium] = useState<'all' | 'free' | 'premium'>('all')
+  const [showMobileFilter, setShowMobileFilter] = useState(false)
 
   // ─── Academic Hierarchy States ──────────────────────────────────────────
   const [colleges, setColleges] = useState<College[]>([])
@@ -659,35 +660,182 @@ export default function Resources() {
 
         {/* Main */}
         <main className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between gap-3 mb-5">
             <div>
-              <h2 className="text-xl font-bold text-brand-text dark:text-brand-dark-text">
+              <h2 className="text-lg sm:text-xl font-bold text-brand-text dark:text-brand-dark-text">
                 {activeType || (activeLevelName ? activeLevelName + ' Resources' : 'All Resources')}
               </h2>
-              <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">{filtered.length} resource{filtered.length !== 1 ? 's' : ''}</p>
+              <p className="text-xs sm:text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">
+                {filtered.length} resource{filtered.length !== 1 ? 's' : ''} available
+              </p>
             </div>
+
+            {/* Mobile Filter Button */}
+            <button
+              onClick={() => setShowMobileFilter(true)}
+              className="md:hidden flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gray-100 dark:bg-white/10 text-brand-text dark:text-brand-dark-text text-xs font-semibold hover:bg-gray-200 dark:hover:bg-white/15 transition-all cursor-pointer shadow-xs active:scale-95"
+            >
+              <SlidersHorizontal size={14} className="text-primary-500" />
+              <span>Filters</span>
+              {(selectedCollegeId || selectedCourseId || selectedBranchId || selectedSemesterId || selectedSubjectId || showPremium !== 'all') && (
+                <span className="w-2 h-2 rounded-full bg-primary-500" />
+              )}
+            </button>
           </div>
+
+          {/* Active Filter Chips */}
+          {(activeLevelName || showPremium !== 'all' || activeType) && (
+            <div className="flex flex-wrap items-center gap-1.5 mb-5">
+              {activeType && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary-50 dark:bg-primary-950/30 text-primary-600 dark:text-primary-400 text-xs font-medium border border-primary-500/20">
+                  Type: {activeType}
+                  <button onClick={() => setActiveType(null)} className="hover:text-primary-800 dark:hover:text-primary-200">
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              {activeLevelName && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary-50 dark:bg-primary-950/30 text-primary-600 dark:text-primary-400 text-xs font-medium border border-primary-500/20">
+                  {activeLevelName}
+                  <button onClick={handleResetHierarchy} className="hover:text-primary-800 dark:hover:text-primary-200">
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+              {showPremium !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 text-xs font-medium border border-amber-500/20">
+                  {showPremium === 'free' ? 'Free Only' : 'Premium Only'}
+                  <button onClick={() => setShowPremium('all')} className="hover:text-amber-800 dark:hover:text-amber-200">
+                    <X size={12} />
+                  </button>
+                </span>
+              )}
+            </div>
+          )}
 
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-20">
-              <Loader2 size={40} className="animate-spin text-brand-muted dark:text-brand-dark-muted mb-4" />
-              <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Loading resources...</p>
+              <Loader2 size={36} className="animate-spin text-primary-500 mb-3" />
+              <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Loading study resources…</p>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-20">
-              <FileText size={48} className="mx-auto text-gray-200 dark:text-brand-dark-muted mb-4" />
-              <h3 className="text-lg font-semibold text-brand-text dark:text-brand-dark-text mb-2">No resources found</h3>
-              <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Try changing filters or search terms.</p>
+            <div className="text-center py-16 px-4 rounded-2xl bg-gray-50 dark:bg-white/5 border border-dashed border-gray-200 dark:border-white/10">
+              <FileText size={44} className="mx-auto text-brand-muted dark:text-brand-dark-muted mb-3 opacity-40" />
+              <h3 className="text-base font-bold text-brand-text dark:text-brand-dark-text mb-1">No notes or resources found</h3>
+              <p className="text-xs text-brand-muted dark:text-brand-dark-muted max-w-sm mx-auto mb-4">
+                Try selecting a different subject or reset filters to see all available learning materials.
+              </p>
+              <button
+                onClick={() => {
+                  setActiveType(null)
+                  handleResetHierarchy()
+                  setShowPremium('all')
+                  setSearch('')
+                }}
+                className="px-4 py-2 bg-primary-500 text-white rounded-xl text-xs font-semibold hover:bg-primary-600 transition-colors"
+              >
+                Reset All Filters
+              </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
               <AnimatePresence mode="popLayout">
-                {filtered.map(r => <ResourceCard key={r.id} resource={r} onDownload={handleDownload} />)}
+                {filtered.map((r) => (
+                  <ResourceCard key={r.id} resource={r} onDownload={handleDownload} />
+                ))}
               </AnimatePresence>
             </div>
           )}
         </main>
       </div>
+
+      {/* Mobile Filter Sheet / Modal */}
+      <AnimatePresence>
+        {showMobileFilter && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowMobileFilter(false)}
+            className="md:hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex flex-col justify-end"
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 280 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-brand-dark-card rounded-t-3xl max-h-[85vh] overflow-y-auto p-5 border-t border-gray-200 dark:border-brand-dark-border shadow-2xl safe-bottom"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-brand-dark-border mb-4">
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal size={18} className="text-primary-500" />
+                  <h3 className="font-bold text-base text-brand-text dark:text-brand-dark-text">Academic Filters</h3>
+                </div>
+                <button
+                  onClick={() => setShowMobileFilter(false)}
+                  className="p-1.5 rounded-full bg-gray-100 dark:bg-white/10 text-brand-muted hover:text-brand-text"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Free / Premium Switcher */}
+              <div className="mb-4">
+                <label className="block text-[11px] font-bold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider mb-2">
+                  Access Type
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['all', 'free', 'premium'] as const).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setShowPremium(p)}
+                      className={`py-2 px-3 rounded-xl text-xs font-semibold capitalize text-center transition-all ${
+                        showPremium === p
+                          ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black shadow-xs'
+                          : 'bg-gray-100 dark:bg-white/5 text-brand-muted dark:text-brand-dark-muted'
+                      }`}
+                    >
+                      {p === 'all' ? 'All' : p === 'free' ? 'Free' : 'Premium'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Academic Hierarchy Dropdowns */}
+              <div className="space-y-1 mb-6">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-[11px] font-bold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider">
+                    University & Subject
+                  </label>
+                  {(selectedCollegeId || selectedCourseId || selectedBranchId || selectedSemesterId || selectedSubjectId) && (
+                    <button
+                      onClick={handleResetHierarchy}
+                      className="text-[11px] font-bold text-red-500 uppercase tracking-wider"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+
+                {renderHierarchyDropdown('College', 'Select College...', colleges, selectedCollegeId, handleCollegeSelect, 'college', false)}
+                {renderHierarchyDropdown('Course', selectedCollegeId ? 'Select Course...' : 'Select College first', courses, selectedCourseId, handleCourseSelect, 'course', !selectedCollegeId)}
+                {renderHierarchyDropdown('Branch', selectedCourseId ? 'Select Branch...' : 'Select Course first', branches, selectedBranchId, handleBranchSelect, 'branch', !selectedCourseId)}
+                {renderHierarchyDropdown('Semester', selectedBranchId ? 'Select Semester...' : 'Select Branch first', semesters.map((s) => ({ id: s.id, name: `Semester ${s.semester_number}` })), selectedSemesterId, handleSemesterSelect, 'semester', !selectedBranchId)}
+                {renderHierarchyDropdown('Subject', selectedSemesterId ? 'Select Subject...' : 'Select Semester first', subjects, selectedSubjectId, handleSubjectSelect, 'subject', !selectedSemesterId)}
+              </div>
+
+              {/* Apply / Close Button */}
+              <button
+                onClick={() => setShowMobileFilter(false)}
+                className="w-full py-3 bg-primary-500 hover:bg-primary-600 text-white font-bold text-sm rounded-xl transition-colors shadow-md active:scale-98"
+              >
+                Apply & View ({filtered.length} Resources)
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Download Confirmation Dialog */}
       <ConfirmDownloadDialog

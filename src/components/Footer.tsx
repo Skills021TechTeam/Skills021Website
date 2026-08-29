@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { Play, Globe, Link2, Mail, BookOpen, FileText, HelpCircle } from 'lucide-react'
 
 const footerLinks = [
-  
+
   {
     title: 'Courses',
     links: [

@@ -2074,3 +2074,34 @@
     animation: none !important;
   }
 }
+
+/* ── Mobile Touch & Responsive Utilities ── */
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .touch-pan-x {
+    touch-action: pan-x;
+  }
+  .safe-bottom {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+  .mobile-container {
+    width: 100%;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+/* Prevent horizontal overflow bounce while maintaining smooth scrolling */
+html, body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+}

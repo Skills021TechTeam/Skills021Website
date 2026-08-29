@@ -4,7 +4,8 @@ import {
   LayoutDashboard, BookOpen, Settings,
   Clock, CheckCircle, TrendingUp, Play, Save,
   User, Phone, School, Lock, AlertCircle, CreditCard, ShieldCheck, Loader2, Sparkles, Copy, Camera, Image as ImageIcon, LogOut,
-  GraduationCap, Calendar, BookMarked, FileText, ChevronDown, ChevronUp, BarChart3, Target
+  GraduationCap, Calendar, BookMarked, FileText, ChevronDown, ChevronUp, BarChart3, Target,
+  Smartphone, Volume2
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import LogoutConfirmModal from '../components/LogoutConfirmModal'
@@ -16,6 +17,7 @@ import VideoPlayerModal from '../components/VideoPlayerModal'
 import EnrollModal from '../components/EnrollModal'
 import AvatarPickerModal from '../components/AvatarPickerModal'
 import toast from 'react-hot-toast'
+import { haptic } from '../lib/haptics'
 
 type DashboardTab = 'overview' | 'courses' | 'transactions' | 'profile'
 
@@ -94,6 +96,8 @@ export default function UserDashboard() {
   const [savingProfile, setSavingProfile] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
   const [showSGPASection, setShowSGPASection] = useState(false)
+  const [hapticsEnabled, setHapticsEnabled] = useState(() => haptic.isEnabled())
+  const [hapticsSoundEnabled, setHapticsSoundEnabled] = useState(() => haptic.isSoundEnabled())
 
   useEffect(() => {
     if (user) {
@@ -1231,6 +1235,145 @@ export default function UserDashboard() {
                 </div>
               </div>
             </form>
+
+            {/* Haptic & Tactile Feedback Preferences */}
+            <div className="card p-6 space-y-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-2">
+                    <Smartphone size={18} className="text-primary-500" />
+                    Haptic & Tactile Experience
+                  </h3>
+                  <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1">
+                    Configure device vibrations and subtle tactile clicks for buttons, quizzes, and navigation across the entire website.
+                  </p>
+                </div>
+                <span className="badge text-[11px] px-2.5 py-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 font-semibold">
+                  Active
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                {/* Haptic Vibration Toggle */}
+                <div className="p-4 rounded-xl border border-brand-border dark:border-brand-dark-border bg-gray-50/50 dark:bg-white/[0.02] flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-semibold text-brand-text dark:text-brand-dark-text flex items-center gap-1.5">
+                      <Smartphone size={15} className="text-primary-500" />
+                      Mobile Vibration
+                    </p>
+                    <p className="text-xs text-brand-muted dark:text-brand-dark-muted">
+                      Native motor vibration on supported mobile devices & PWAs.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !hapticsEnabled
+                      setHapticsEnabled(next)
+                      haptic.setEnabled(next)
+                      if (next) haptic.success()
+                    }}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      hapticsEnabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-zinc-700'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        hapticsEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Tactile Audio Micro-clicks Toggle */}
+                <div className="p-4 rounded-xl border border-brand-border dark:border-brand-dark-border bg-gray-50/50 dark:bg-white/[0.02] flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-semibold text-brand-text dark:text-brand-dark-text flex items-center gap-1.5">
+                      <Volume2 size={15} className="text-primary-500" />
+                      Tactile Micro-response
+                    </p>
+                    <p className="text-xs text-brand-muted dark:text-brand-dark-muted">
+                      Subtle tactile feedback for desktop & non-vibrating devices.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !hapticsSoundEnabled
+                      setHapticsSoundEnabled(next)
+                      haptic.setSoundEnabled(next)
+                      if (next) haptic.light()
+                    }}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      hapticsSoundEnabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-zinc-700'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        hapticsSoundEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* Live Test Patterns */}
+              <div className="pt-2 border-t border-brand-border dark:border-brand-dark-border">
+                <p className="text-xs font-semibold text-brand-text dark:text-brand-dark-text mb-2.5">
+                  Test Feedback Patterns:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    data-haptic="light"
+                    onClick={() => haptic.light()}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 text-brand-text dark:text-brand-dark-text transition-colors"
+                  >
+                    Light Tap
+                  </button>
+                  <button
+                    type="button"
+                    data-haptic="medium"
+                    onClick={() => haptic.medium()}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 text-brand-text dark:text-brand-dark-text transition-colors"
+                  >
+                    Medium Click
+                  </button>
+                  <button
+                    type="button"
+                    data-haptic="heavy"
+                    onClick={() => haptic.heavy()}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 text-brand-text dark:text-brand-dark-text transition-colors"
+                  >
+                    Heavy Impact
+                  </button>
+                  <button
+                    type="button"
+                    data-haptic="success"
+                    onClick={() => haptic.success()}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
+                  >
+                    Success Pulse 🎉
+                  </button>
+                  <button
+                    type="button"
+                    data-haptic="warning"
+                    onClick={() => haptic.warning()}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors"
+                  >
+                    Warning Pulse ⚠️
+                  </button>
+                  <button
+                    type="button"
+                    data-haptic="error"
+                    onClick={() => haptic.error()}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors"
+                  >
+                    Error Pulse ❌
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )
 

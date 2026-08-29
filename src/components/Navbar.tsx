@@ -10,6 +10,7 @@ import {
 import { useAuthStore } from '../store/authStore'
 import LogoutConfirmModal from './LogoutConfirmModal'
 import toast from 'react-hot-toast'
+import { haptic } from '../lib/haptics'
 
 // ─── Dropdown variants ────────────────────────────────────────────────────────
 const dropdownVariants: any = {
@@ -462,10 +463,13 @@ export default function Navbar() {
           </div>
 
           {/* ── Right Side Controls ── */}
-          <div className="hidden xl:flex items-center gap-2">
+          <div className="hidden lg:flex items-center gap-2">
             {/* Dark Mode */}
             <button
-              onClick={() => setDarkMode(!darkMode)}
+              onClick={() => {
+                haptic.medium()
+                setDarkMode(!darkMode)
+              }}
               className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
               title={darkMode ? 'Light mode' : 'Dark mode'}
             >
@@ -557,15 +561,21 @@ export default function Navbar() {
           </div>
 
           {/* ── Mobile Controls ── */}
-          <div className="xl:hidden flex items-center gap-2">
+          <div className="lg:hidden flex items-center gap-2">
             <button
-              onClick={() => setDarkMode(!darkMode)}
+              onClick={() => {
+                haptic.medium()
+                setDarkMode(!darkMode)
+              }}
               className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-500 dark:text-gray-400"
             >
               {darkMode ? <Sun size={18} /> : <Moon size={18} />}
             </button>
             <button
-              onClick={() => setMobileOpen(!mobileOpen)}
+              onClick={() => {
+                haptic.light()
+                setMobileOpen(!mobileOpen)
+              }}
               className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10"
             >
               {mobileOpen ? <X size={22} /> : <Menu size={22} />}
@@ -581,7 +591,7 @@ export default function Navbar() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="xl:hidden bg-white dark:bg-brand-dark-bg border-t border-gray-200 dark:border-brand-dark-border overflow-hidden max-h-[80vh] overflow-y-auto"
+            className="lg:hidden bg-white dark:bg-brand-dark-bg border-t border-gray-200 dark:border-brand-dark-border overflow-hidden max-h-[80vh] overflow-y-auto"
           >
             <div className="px-4 py-3 space-y-0.5">
               {NAV_ITEMS.map(item => {

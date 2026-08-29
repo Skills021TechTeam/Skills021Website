@@ -9,6 +9,7 @@ import AdminRoute from './components/AdminRoute'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import ResetPassword from './pages/ResetPassword'
 import AdminLogin from './pages/AdminLogin'
 import Courses from './pages/Courses'
 import Resources from './pages/Resources'
@@ -26,6 +27,7 @@ import { getEnrollmentsForUser } from './lib/videoEngagementService'
 import { useAuthStore, User } from './store/authStore'
 import MobileBottomNav from './components/MobileBottomNav'
 import WebinarVisitPopup from './components/WebinarVisitPopup'
+import { initGlobalHaptics } from './lib/haptics'
 
 // Apply saved dark mode preference on load
 const applyTheme = () => {
@@ -66,6 +68,7 @@ function AnimatedRoutes() {
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/admin/login" element={<AdminLogin />} />
 
             {/* Protected Learning & Platform Features */}
@@ -94,6 +97,10 @@ export default function App() {
   const setUser = useAuthStore(s => s.setUser)
   const hydrateFromSession = useAuthStore(s => s.hydrateFromSession)
   const logout = useAuthStore(s => s.logout)
+
+  useEffect(() => {
+    return initGlobalHaptics()
+  }, [])
 
   useEffect(() => {
     let hasHydrated = false

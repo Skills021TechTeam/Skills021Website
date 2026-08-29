@@ -4,6 +4,7 @@ import { HelpCircle, Clock, Users, ChevronRight, CheckCircle, X, Trophy, RotateC
 import { useContentStore, Quiz, QuizCategory } from '../store/contentStore'
 import PanelSpotlightCard from '../components/PanelSpotlightCard'
 import toast from 'react-hot-toast'
+import { haptic } from '../lib/haptics'
 
 const CATEGORIES: { label: QuizCategory; color: string; bg: string }[] = [
   { label: 'School', color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/20' },
@@ -30,29 +31,51 @@ function QuizRunner({ quiz, onClose }: { quiz: Quiz; onClose: () => void }) {
     if (!started) return
     const timer = setInterval(() => {
       setTimeLeft(t => {
-        if (t <= 0) { clearInterval(timer); setShowResult(true); return 0 }
+        if (t <= 0) {
+          clearInterval(timer)
+          setShowResult(true)
+          haptic.warning()
+          return 0
+        }
         return t - 1
       })
     }, 1000)
     return () => clearInterval(timer)
   })
 
-  const handleStart = () => setStarted(true)
+  const handleStart = () => {
+    haptic.medium()
+    setStarted(true)
+  }
 
   const handleAnswer = (idx: number) => {
     if (answers[current] !== null) return
     setSelected(idx)
+    const isCorrect = idx === quiz.questions[current]?.correctIndex
+    if (isCorrect) {
+      haptic.success()
+    } else {
+      haptic.error()
+    }
     const newAns = [...answers]
     newAns[current] = idx
     setAnswers(newAns)
   }
 
   const handleNext = () => {
+    haptic.light()
     if (current < quiz.questions.length - 1) {
       setCurrent(c => c + 1)
       setSelected(null)
     } else {
       setShowResult(true)
+      const finalScore = answers.reduce<number>((acc, ans, i) => ans === quiz.questions[i]?.correctIndex ? acc + 1 : acc, 0)
+      const finalPct = Math.round((finalScore / quiz.questions.length) * 100)
+      if (finalPct >= 70) {
+        haptic.success()
+      } else {
+        haptic.medium()
+      }
     }
   }
 

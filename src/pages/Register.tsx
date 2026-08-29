@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { User, Mail, Lock, Eye, EyeOff, Zap, AlertCircle, School, Phone, ShieldCheck } from 'lucide-react'
@@ -55,10 +55,16 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const { registerWithSupabase } = useAuthStore()
+  const { registerWithSupabase, isAuthenticated, user, isAdminAuthenticated } = useAuthStore()
   const navigate = useNavigate()
   const location = useLocation()
   const from = (location.state as { from?: string } | null)?.from
+
+  useEffect(() => {
+    if (isAuthenticated || isAdminAuthenticated) {
+      navigate(user?.role === 'admin' || isAdminAuthenticated ? '/admin' : '/dashboard', { replace: true })
+    }
+  }, [isAuthenticated, isAdminAuthenticated, user, navigate])
 
   const validate = () => {
     const errs: Record<string, string> = {}

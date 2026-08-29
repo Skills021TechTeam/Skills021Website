@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Home, BookOpen, FileText, Compass, UserCircle2, Shield } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
+import { haptic } from '../lib/haptics'
 
 export default function MobileBottomNav() {
   const location = useLocation()
@@ -64,6 +65,7 @@ export default function MobileBottomNav() {
             <Link
               key={item.id}
               to={item.path}
+              onClick={() => haptic.light()}
               className={`relative flex flex-col items-center justify-center flex-1 py-1 px-1.5 rounded-xl transition-all duration-200 select-none ${
                 active
                   ? 'text-primary-600 dark:text-primary-400 font-bold'

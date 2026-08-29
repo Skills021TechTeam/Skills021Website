@@ -9,57 +9,109 @@ import {
   upsertUserProfile,
 } from '../lib/supabase'
 import { getEnrollmentsForUser } from '../lib/videoEngagementService'
+import { saveKnownAccount } from '../lib/accountLookup'
 
 // ─── Rate Limiter ────────────────────────────────────────────────────────────
-// In-memory rate limiting to protect against brute-force attacks.
-// 5 failed attempts: 30s lockout. 8 failed attempts: 2 min lockout. 10+ attempts: 5 min lockout.
+// Strict security rate limiting to protect against brute-force attacks:
+// - 3 failed attempts: 90-second lockout (90,000 ms)
+// - 4 failed attempts: 3-minute lockout (180,000 ms)
+// - 5+ failed attempts: 5-minute lockout (300,000 ms)
+// Persisted in localStorage so page reloads do not bypass the countdown.
+
+const RATE_LIMIT_STORAGE_KEY = 'skills021_login_rate_limits'
+
 interface RateLimitState {
   attempts: number
   lockedUntil: number | null
+  lastAttemptAt?: number
 }
 
-const rateLimitMap: Record<string, RateLimitState> = {}
+function getStoredRateLimits(): Record<string, RateLimitState> {
+  try {
+    const raw = localStorage.getItem(RATE_LIMIT_STORAGE_KEY)
+    if (!raw) return {}
+    return JSON.parse(raw)
+  } catch {
+    return {}
+  }
+}
+
+function persistRateLimit(key: string, state: RateLimitState | null) {
+  try {
+    const map = getStoredRateLimits()
+    if (state === null) {
+      delete map[key]
+    } else {
+      map[key] = state
+    }
+    localStorage.setItem(RATE_LIMIT_STORAGE_KEY, JSON.stringify(map))
+  } catch (e) {
+    console.warn('Could not persist rate limit state:', e)
+  }
+}
 
 function getRateLimitKey(identifier: string) {
   return identifier.trim().toLowerCase()
 }
 
-function getLockoutDuration(attempts: number): number {
-  if (attempts >= 10) return 5 * 60 * 1000 // 5 minutes
-  if (attempts >= 8) return 2 * 60 * 1000  // 2 minutes
-  if (attempts >= 5) return 30 * 1000       // 30 seconds
+export function getLockoutDuration(attempts: number): number {
+  if (attempts >= 5) return 5 * 60 * 1000  // 5 minutes
+  if (attempts >= 4) return 3 * 60 * 1000  // 3 minutes
+  if (attempts >= 3) return 90 * 1000      // 90 seconds
   return 0
 }
 
-export function checkRateLimit(identifier: string): { blocked: boolean; remainingMs: number; attemptsLeft: number } {
+export function checkRateLimit(identifier: string): {
+  blocked: boolean
+  remainingMs: number
+  attemptsLeft: number
+  totalAttempts: number
+} {
   const key = getRateLimitKey(identifier)
-  const state = rateLimitMap[key] ?? { attempts: 0, lockedUntil: null }
+  const map = getStoredRateLimits()
+  const state = map[key] ?? { attempts: 0, lockedUntil: null }
 
   if (state.lockedUntil && Date.now() < state.lockedUntil) {
-    return { blocked: true, remainingMs: state.lockedUntil - Date.now(), attemptsLeft: 0 }
+    const remainingMs = state.lockedUntil - Date.now()
+    return { blocked: true, remainingMs, attemptsLeft: 0, totalAttempts: state.attempts }
   }
 
-  // Max attempts before lockout
-  const attemptsLeft = Math.max(0, 10 - state.attempts)
-  return { blocked: false, remainingMs: 0, attemptsLeft }
+  // 3 attempts maximum before lockout
+  const attemptsLeft = Math.max(0, 3 - state.attempts)
+  return { blocked: false, remainingMs: 0, attemptsLeft, totalAttempts: state.attempts }
 }
 
-export function recordFailedAttempt(identifier: string): { blocked: boolean; remainingMs: number; attemptsLeft: number } {
+export function recordFailedAttempt(identifier: string): {
+  blocked: boolean
+  remainingMs: number
+  attemptsLeft: number
+  totalAttempts: number
+} {
   const key = getRateLimitKey(identifier)
-  const state = rateLimitMap[key] ?? { attempts: 0, lockedUntil: null }
+  const map = getStoredRateLimits()
+  const state = map[key] ?? { attempts: 0, lockedUntil: null }
   const newAttempts = state.attempts + 1
   const lockoutMs = getLockoutDuration(newAttempts)
-  rateLimitMap[key] = {
+
+  const newState: RateLimitState = {
     attempts: newAttempts,
     lockedUntil: lockoutMs > 0 ? Date.now() + lockoutMs : null,
+    lastAttemptAt: Date.now(),
   }
-  const attemptsLeft = Math.max(0, 10 - newAttempts)
-  return { blocked: lockoutMs > 0, remainingMs: lockoutMs, attemptsLeft }
+  persistRateLimit(key, newState)
+
+  const attemptsLeft = lockoutMs > 0 ? 0 : Math.max(0, 3 - newAttempts)
+  return {
+    blocked: lockoutMs > 0,
+    remainingMs: lockoutMs,
+    attemptsLeft,
+    totalAttempts: newAttempts,
+  }
 }
 
 export function clearRateLimit(identifier: string) {
   const key = getRateLimitKey(identifier)
-  delete rateLimitMap[key]
+  persistRateLimit(key, null)
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -225,6 +277,13 @@ export const useAuthStore = create<AuthState>()(
 
             clearRateLimit(cleanEmail)
 
+            saveKnownAccount({
+              email: mappedUser.email,
+              name: mappedUser.name,
+              avatarUrl: mappedUser.avatarUrl,
+              role: mappedUser.role,
+            })
+
             set({
               user: mappedUser,
               isAuthenticated: true,
@@ -268,6 +327,12 @@ export const useAuthStore = create<AuthState>()(
               joinedDate: new Date().toISOString().split('T')[0],
               enrolledCourses: [],
             }
+            saveKnownAccount({
+              email: mappedUser.email,
+              name: mappedUser.name,
+              avatarUrl: mappedUser.avatarUrl,
+              role: mappedUser.role,
+            })
             set({ user: mappedUser, isAuthenticated: true })
             return { success: true }
           }
@@ -302,6 +367,13 @@ export const useAuthStore = create<AuthState>()(
         const nextName = data.name ?? current.name
         const nextCollege = data.college ?? current.college
         const nextPhone = data.phone ?? current.phone ?? ''
+
+        saveKnownAccount({
+          email: current.email,
+          name: nextName,
+          avatarUrl: nextAvatar,
+          role: current.role,
+        })
 
         // 1. Immediately update local store so avatar & profile reflect instantly on UI
         set({
@@ -453,6 +525,13 @@ export const useAuthStore = create<AuthState>()(
 
           clearRateLimit(adminId)
 
+          saveKnownAccount({
+            email: adminEmail,
+            name: 'System Administrator',
+            avatarUrl: '',
+            role: 'admin',
+          })
+
           const adminObj = {
             id: adminUid,
             email: adminEmail,
@@ -483,6 +562,12 @@ export const useAuthStore = create<AuthState>()(
               const profile = await getUserProfile(res.user.id).catch(() => null)
               if (profile?.role === 'admin' || res.user.user_metadata?.role === 'admin') {
                 clearRateLimit(adminId)
+                saveKnownAccount({
+                  email: res.user.email || adminId.trim(),
+                  name: profile?.name || 'System Administrator',
+                  avatarUrl: profile?.avatar_url || '',
+                  role: 'admin',
+                })
                 const adminObj = {
                   id: res.user.id,
                   email: res.user.email || adminId.trim(),

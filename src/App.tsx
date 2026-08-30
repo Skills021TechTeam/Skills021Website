@@ -22,6 +22,9 @@ import Hackathons from './pages/Hackathons'
 import HackathonDetails from './pages/HackathonDetails'
 import UserDashboard from './pages/UserDashboard'
 import AdminDashboard from './pages/AdminDashboard'
+import Apply from './pages/Apply'
+import Contact from './pages/Contact'
+import Blog from './pages/Blog'
 import { supabase, getUserProfile } from './lib/supabase'
 import { getEnrollmentsForUser } from './lib/videoEngagementService'
 import { useAuthStore, User } from './store/authStore'
@@ -66,6 +69,9 @@ function AnimatedRoutes() {
           <Routes location={location} key={location.pathname}>
             {/* Public Home & Auth Pages */}
             <Route path="/" element={<Home />} />
+            <Route path="/apply" element={<Apply />} />
+            <Route path="/contact" element={<Contact />} />
+            <Route path="/blog" element={<Blog />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/reset-password" element={<ResetPassword />} />

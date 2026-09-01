@@ -364,7 +364,7 @@ export default function Navbar() {
           {/* ── Logo: text only, no icon ── */}
           <Link to="/" className="flex-shrink-0">
             <span className="text-xl font-black text-[#0A0A0A] dark:text-white tracking-tight hover:opacity-80 transition-opacity">
-              SKILL021
+              SKILLS021
             </span>
           </Link>
 

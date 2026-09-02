@@ -30,11 +30,13 @@ import { getEnrollmentsForUser } from './lib/videoEngagementService'
 import { useAuthStore, User } from './store/authStore'
 import MobileBottomNav from './components/MobileBottomNav'
 import WebinarVisitPopup from './components/WebinarVisitPopup'
+import CookieBanner from './components/CookieBanner'
 import { initGlobalHaptics } from './lib/haptics'
+import { getCookie } from './lib/cookieService'
 
 // Apply saved dark mode preference on load
 const applyTheme = () => {
-  const saved = localStorage.getItem('skills021_theme')
+  const saved = localStorage.getItem('skills021_theme') || getCookie('skills021_theme')
   if (saved === 'dark') document.documentElement.classList.add('dark')
   else document.documentElement.classList.remove('dark')
 }
@@ -118,15 +120,20 @@ export default function App() {
           getEnrollmentsForUser(u.id).catch(() => []),
         ])
 
+        const configuredAdminEmail = ((import.meta.env.VITE_ADMIN_ID as string) || '').toLowerCase().trim()
+        const isConfiguredAdmin = Boolean(configuredAdminEmail) && (u.email || '').toLowerCase().trim() === configuredAdminEmail
+        const isCurrentAdmin = useAuthStore.getState().isAdminAuthenticated || useAuthStore.getState().user?.role === 'admin'
+        const isAdmin = profile?.role === 'admin' || u.user_metadata?.role === 'admin' || isConfiguredAdmin || isCurrentAdmin
+
         const mappedUser: User = {
           id: u.id,
-          name: profile?.name || u.user_metadata?.name || u.email?.split('@')[0] || 'User',
+          name: profile?.name || u.user_metadata?.name || u.email?.split('@')[0] || (isAdmin ? 'System Administrator' : 'User'),
           email: u.email || '',
-          role: profile?.role || u.user_metadata?.role || 'user',
-          college: profile?.college || u.user_metadata?.college || 'Student Institution',
+          role: isAdmin ? 'admin' : 'user',
+          college: profile?.college || u.user_metadata?.college || (isAdmin ? 'Skills021 Central HQ' : 'Student Institution'),
           phone: profile?.phone || u.user_metadata?.phone || '',
           avatarUrl: profile?.avatar_url || u.user_metadata?.avatar_url || '',
-          isPremium: Boolean(profile?.is_premium ?? u.user_metadata?.is_premium ?? false),
+          isPremium: Boolean(profile?.is_premium ?? u.user_metadata?.is_premium ?? isAdmin),
           joinedDate: profile?.created_at
             ? new Date(profile.created_at).toISOString().split('T')[0]
             : new Date(u.created_at).toISOString().split('T')[0],
@@ -140,15 +147,20 @@ export default function App() {
         }
         setUser(mappedUser)
       } catch {
+        const configuredAdminEmail = ((import.meta.env.VITE_ADMIN_ID as string) || '').toLowerCase().trim()
+        const isConfiguredAdmin = Boolean(configuredAdminEmail) && (u.email || '').toLowerCase().trim() === configuredAdminEmail
+        const isCurrentAdmin = useAuthStore.getState().isAdminAuthenticated || useAuthStore.getState().user?.role === 'admin'
+        const isAdmin = u.user_metadata?.role === 'admin' || isConfiguredAdmin || isCurrentAdmin
+
         const mappedUser: User = {
           id: u.id,
-          name: u.user_metadata?.name || u.email?.split('@')[0] || 'User',
+          name: u.user_metadata?.name || u.email?.split('@')[0] || (isAdmin ? 'System Administrator' : 'User'),
           email: u.email || '',
-          role: u.user_metadata?.role || 'user',
-          college: u.user_metadata?.college || 'Student Institution',
+          role: isAdmin ? 'admin' : 'user',
+          college: u.user_metadata?.college || (isAdmin ? 'Skills021 Central HQ' : 'Student Institution'),
           phone: u.user_metadata?.phone || '',
           avatarUrl: u.user_metadata?.avatar_url || '',
-          isPremium: Boolean(u.user_metadata?.is_premium ?? false),
+          isPremium: Boolean(u.user_metadata?.is_premium ?? isAdmin),
           joinedDate: new Date(u.created_at).toISOString().split('T')[0],
           enrolledCourses: [],
           age: u.user_metadata?.age,
@@ -170,9 +182,14 @@ export default function App() {
       // Skip INITIAL_SESSION — hydrateFromSession already handles it to avoid duplicate fetches
       if (event === 'INITIAL_SESSION') return
 
+      const authState = useAuthStore.getState()
+      const isLocalAdmin = authState.isAdminAuthenticated || authState.user?.role === 'admin'
+
       if (event === 'SIGNED_OUT' || !session) {
-        // Clear ALL auth state — including admin flags — on real sign-out
-        logout()
+        // Only clear state on real student sign-out, never log out an active Admin
+        if (!isLocalAdmin) {
+          logout()
+        }
       } else if (session?.user && hasHydrated) {
         syncUserFromSupabase(session.user)
       }
@@ -191,6 +208,7 @@ export default function App() {
       </div>
       <MobileBottomNav />
       <WebinarVisitPopup />
+      <CookieBanner />
       <Toaster
         position="top-right"
         toastOptions={{

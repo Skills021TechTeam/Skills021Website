@@ -11,7 +11,7 @@ import { useAuthStore } from '../store/authStore'
 import LogoutConfirmModal from '../components/LogoutConfirmModal'
 import { fetchPublishedSiteCourses } from '../lib/courseService'
 import { Course } from '../store/contentStore'
-import { getEnrollmentsForUser, Enrollment } from '../lib/videoEngagementService'
+import { getEnrollmentsForUser, Enrollment, getPaymentSettings } from '../lib/videoEngagementService'
 import { updateUserAuthPassword } from '../lib/supabase'
 import VideoPlayerModal from '../components/VideoPlayerModal'
 import EnrollModal from '../components/EnrollModal'
@@ -74,6 +74,7 @@ export default function UserDashboard() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [showAvatarModal, setShowAvatarModal] = useState(false)
   const [showLogoutModal, setShowLogoutModal] = useState(false)
+  const [allAccessPrice, setAllAccessPrice] = useState(999)
 
   const handleConfirmLogout = async () => {
     await logoutUser()
@@ -187,6 +188,9 @@ export default function UserDashboard() {
 
   useEffect(() => {
     loadData()
+    getPaymentSettings().then((s) => {
+      if (s?.allAccessPrice) setAllAccessPrice(s.allAccessPrice)
+    })
   }, [loadData])
 
   const getInitials = (name: string) =>
@@ -323,7 +327,7 @@ export default function UserDashboard() {
                     onClick={() => setShowUpgradeModal(true)}
                     className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-primary-500 to-indigo-600 text-white font-bold text-xs shadow-md hover:opacity-90 transition-all"
                   >
-                    <Sparkles size={13} /> Upgrade to All-Access (₹999)
+                    <Sparkles size={13} /> Upgrade to All-Access (₹{allAccessPrice.toLocaleString()})
                   </button>
                 ) : null}
                 {paidEnrollments.length > 0 && (
@@ -562,7 +566,7 @@ export default function UserDashboard() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 dark:bg-white/5">
                     <tr>
-                      {['Item / Course', 'Type', 'Amount', 'UTR / Ref Number', 'Admin Approval Status', 'Date Submitted'].map((h) => (
+                      {['Item / Course', 'Type', 'Amount', 'UTR / Ref Number', 'Skills021 Access Status', 'Date Submitted'].map((h) => (
                         <th
                           key={h}
                           className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap"
@@ -579,6 +583,12 @@ export default function UserDashboard() {
                       const isPaid = enr.status === 'paid'
                       const isPending = enr.status === 'pending'
                       const isRejected = enr.status === 'rejected'
+                      const isSkills021Grant =
+                        enr.utrNumber === 'Granted by Skills021' ||
+                        enr.utrNumber === 'GRANTED_BY_SKILLS021' ||
+                        Boolean(enr.utrNumber?.toLowerCase().includes('skills021')) ||
+                        (!enr.utrNumber && !enr.screenshotUrl && (enr.status === 'paid' || enr.status === 'free'))
+                      const cleanReason = (enr.rejectionReason || '').replace(/admin/gi, 'Skills021')
 
                       return (
                         <tr key={enr.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
@@ -604,7 +614,11 @@ export default function UserDashboard() {
                             {enr.amount > 0 ? `₹${enr.amount}` : '₹0 (Free)'}
                           </td>
                           <td className="px-4 py-3">
-                            {enr.utrNumber ? (
+                            {isSkills021Grant ? (
+                              <span className="inline-flex items-center gap-1 font-semibold text-primary-600 dark:text-primary-400 text-xs bg-primary-50 dark:bg-primary-900/20 px-2.5 py-1 rounded-lg border border-primary-500/20">
+                                <Sparkles size={11} className="text-amber-500" /> Granted by Skills021
+                              </span>
+                            ) : enr.utrNumber ? (
                               <span className="font-mono text-xs font-bold px-2 py-0.5 bg-gray-100 dark:bg-white/10 rounded">
                                 {enr.utrNumber}
                               </span>
@@ -613,17 +627,21 @@ export default function UserDashboard() {
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            {isPaid ? (
+                            {isSkills021Grant ? (
+                              <span className="badge text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 font-bold flex items-center gap-1 w-fit shadow-sm">
+                                ✅ GRANTED BY SKILLS021
+                              </span>
+                            ) : isPaid ? (
                               <span className="badge text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 font-bold">
-                                ✅ APPROVED & ACTIVE
+                                ✅ APPROVED BY SKILLS021
                               </span>
                             ) : isPending ? (
                               <span className="badge text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-bold animate-pulse">
-                                ⏳ PENDING ADMIN APPROVAL
+                                ⏳ PENDING SKILLS021 VERIFICATION
                               </span>
                             ) : isRejected ? (
                               <span className="badge text-xs bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 font-bold">
-                                ❌ REJECTED {enr.rejectionReason ? `(${enr.rejectionReason})` : ''}
+                                ❌ REJECTED {cleanReason ? `(${cleanReason})` : ''}
                               </span>
                             ) : (
                               <span className="badge text-xs bg-blue-100 text-blue-700 font-bold">
@@ -661,6 +679,12 @@ export default function UserDashboard() {
                     const isPaid = enr.status === 'paid'
                     const isPending = enr.status === 'pending'
                     const isRejected = enr.status === 'rejected'
+                    const isSkills021Grant =
+                      enr.utrNumber === 'Granted by Skills021' ||
+                      enr.utrNumber === 'GRANTED_BY_SKILLS021' ||
+                      Boolean(enr.utrNumber?.toLowerCase().includes('skills021')) ||
+                      (!enr.utrNumber && !enr.screenshotUrl && (enr.status === 'paid' || enr.status === 'free'))
+                    const cleanReason = (enr.rejectionReason || '').replace(/admin/gi, 'Skills021')
 
                     return (
                       <div key={enr.id} className="p-4 space-y-2">
@@ -676,7 +700,7 @@ export default function UserDashboard() {
                         <div className="flex items-center justify-between text-xs pt-1">
                           <span
                             className={`badge text-[10px] font-bold ${
-                              isPaid
+                              isSkills021Grant || isPaid
                                 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
                                 : isPending
                                 ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
@@ -685,19 +709,33 @@ export default function UserDashboard() {
                                 : 'bg-blue-100 text-blue-700'
                             }`}
                           >
-                            {isPaid ? '✅ APPROVED' : isPending ? '⏳ PENDING' : isRejected ? '❌ REJECTED' : 'FREE'}
+                            {isSkills021Grant
+                              ? '✅ GRANTED BY SKILLS021'
+                              : isPaid
+                              ? '✅ APPROVED BY SKILLS021'
+                              : isPending
+                              ? '⏳ PENDING VERIFICATION'
+                              : isRejected
+                              ? `❌ REJECTED ${cleanReason ? `(${cleanReason})` : ''}`
+                              : 'FREE'}
                           </span>
                           <span className="text-[11px] text-brand-muted">
                             {enr.createdAt ? new Date(enr.createdAt).toLocaleDateString() : ''}
                           </span>
                         </div>
 
-                        {enr.utrNumber && (
-                          <div className="text-[11px] text-brand-muted bg-gray-50 dark:bg-white/5 px-2.5 py-1 rounded-lg flex items-center justify-between">
-                            <span>UTR / Ref:</span>
+                        <div className="text-[11px] text-brand-muted bg-gray-50 dark:bg-white/5 px-2.5 py-1 rounded-lg flex items-center justify-between">
+                          <span>UTR / Ref:</span>
+                          {isSkills021Grant ? (
+                            <span className="font-semibold text-primary-600 dark:text-primary-400 flex items-center gap-1">
+                              <Sparkles size={11} className="text-amber-500" /> Granted by Skills021
+                            </span>
+                          ) : enr.utrNumber ? (
                             <span className="font-mono font-bold text-brand-text dark:text-brand-dark-text">{enr.utrNumber}</span>
-                          </div>
-                        )}
+                          ) : (
+                            <span className="italic">N/A (Free)</span>
+                          )}
+                        </div>
                       </div>
                     )
                   })
@@ -1545,7 +1583,7 @@ export default function UserDashboard() {
       {showUpgradeModal && (
         <EnrollModal
           isPremiumMembership={true}
-          premiumAmount={999}
+          premiumAmount={allAccessPrice}
           userId={user?.id || `user-${Date.now()}`}
           defaultEmail={user?.email}
           defaultName={user?.name}

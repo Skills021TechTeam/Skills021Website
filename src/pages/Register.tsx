@@ -21,6 +21,7 @@ import {
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 import { resendVerificationEmail } from '../lib/supabase'
+import Logo from '../components/Logo'
 
 const colleges = [
   'AKTU-affiliated',
@@ -199,12 +200,9 @@ export default function Register() {
         <div className="card p-8">
           {/* Logo & Header */}
           <div className="text-center mb-8">
-            <Link to="/" className="inline-flex items-center gap-2 mb-4">
-              <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-teal-500 rounded-xl flex items-center justify-center shadow-md shadow-primary-500/20">
-                <Zap size={22} className="text-white" />
-              </div>
-              <span className="text-2xl font-bold text-primary-500">Skills021</span>
-            </Link>
+            <div className="mb-4 flex justify-center">
+              <Logo size="md" />
+            </div>
 
             {isRegistered ? (
               <div>

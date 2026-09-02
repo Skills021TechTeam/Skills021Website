@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom'
-import { Play, Globe, Link2, Mail, BookOpen, FileText, HelpCircle } from 'lucide-react'
+import { Play, Globe, Link2, Mail, BookOpen, FileText, HelpCircle, Cookie, ShieldCheck } from 'lucide-react'
+import { openCookieSettings } from '../lib/cookieService'
+import Logo from './Logo'
 
 const footerLinks = [
 
@@ -25,28 +27,6 @@ const footerLinks = [
       { label: 'Interview Questions', to: '/resources?type=Interview+Questions' },
     ],
   },
-  // {
-  //   title: 'Services',
-  //   links: [
-  //     { label: 'Counseling', to: '/counseling' },
-  //     { label: 'Hackathons', to: '/hackathons' },
-  //     { label: 'Internships', to: '/internships' },
-  //     { label: 'Mentorship', to: '/mentorship' },
-  //     { label: 'Success Stories', to: '/success-stories' },
-  //     { label: 'Career Guidance', to: '/counseling?cat=Career' },
-  //   ],
-  // },
-  // {
-  //   title: 'Company',
-  //   links: [
-  //     { label: 'About Skill021', to: '/' },
-  //     { label: 'Blog', to: '/blog' },
-  //     { label: 'Contact Us', to: '/contact' },
-  //     { label: 'Privacy Policy', to: '/' },
-  //     { label: 'Terms of Service', to: '/' },
-  //     { label: 'Refund Policy', to: '/' },
-  //   ],
-  // },
 ]
 
 export default function Footer() {
@@ -56,9 +36,7 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10">
           {/* Brand */}
           <div className="lg:col-span-1">
-            <Link to="/" className="inline-block mb-5">
-              <span className="text-xl font-black text-white tracking-tight">SKILL021</span>
-            </Link>
+            <Logo size="md" showTagline={true} className="mb-5" />
             <p className="text-sm text-gray-400 leading-relaxed mb-6">
               India's premier EdTech platform — quality courses, study resources, and expert mentorship for students across India.
             </p>
@@ -109,6 +87,33 @@ export default function Footer() {
               </ul>
             </div>
           ))}
+
+          {/* Privacy & Experience column */}
+          <div>
+            <h3 className="text-xs font-bold text-white uppercase tracking-widest mb-4">Privacy & Experience</h3>
+            <ul className="space-y-2.5">
+              <li>
+                <button
+                  type="button"
+                  onClick={openCookieSettings}
+                  className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors duration-200 text-left"
+                >
+                  <Cookie size={14} className="text-gray-400" />
+                  Cookie Settings
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={openCookieSettings}
+                  className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors duration-200 text-left"
+                >
+                  <ShieldCheck size={14} className="text-gray-400" />
+                  Cookie Policy
+                </button>
+              </li>
+            </ul>
+          </div>
         </div>
 
         {/* Bottom Bar */}
@@ -116,8 +121,15 @@ export default function Footer() {
           <p className="text-sm text-gray-500">
             © 2025 Skill021. All rights reserved. Made with ❤️ for Indian students.
           </p>
-          <div className="flex items-center gap-6 text-xs text-gray-500">
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-xs text-gray-500">
             <span>🇮🇳 India</span>
+            <button
+              type="button"
+              onClick={openCookieSettings}
+              className="hover:text-white transition-colors flex items-center gap-1 text-gray-400"
+            >
+              <Cookie size={12} className="text-gray-400" /> Cookie Preferences
+            </button>
             <a href="https://www.youtube.com/@skills021" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">YouTube Channel</a>
             <span>100% Dynamic Platform</span>
           </div>

@@ -4,6 +4,7 @@ import { Bell, CalendarDays, ExternalLink, Radio, Video, X, ArrowRight } from 'l
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { getLiveWebinars, type LiveWebinar } from '../lib/webinarService'
+import { hasCookieConsent } from '../lib/cookieService'
 
 const DISMISS_KEY = 'skills021_webinar_visit_popup_seen'
 
@@ -34,6 +35,7 @@ export default function WebinarVisitPopup() {
     const hiddenRoutes = ['/login', '/register', '/admin', '/dashboard']
     if (hiddenRoutes.some((route) => location.pathname.startsWith(route))) return
     if (sessionStorage.getItem(DISMISS_KEY) === '1') return
+    if (!hasCookieConsent('marketing')) return
 
     let cancelled = false
 

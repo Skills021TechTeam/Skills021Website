@@ -164,12 +164,14 @@ interface ContentState {
   updateQuiz: (id: string, data: Partial<Quiz>) => void
   deleteQuiz: (id: string) => void
   toggleQuizStatus: (id: string) => void
+  incrementQuizParticipants: (id: string) => void
 
   // Roadmap actions
   addRoadmap: (roadmap: Omit<Roadmap, 'id' | 'createdAt' | 'views'>) => void
   updateRoadmap: (id: string, data: Partial<Roadmap>) => void
   deleteRoadmap: (id: string) => void
   toggleRoadmapStatus: (id: string) => void
+  incrementRoadmapViews: (id: string) => void
 }
 
 // ─── Seed Data ───────────────────────────────────────────────────────────────
@@ -246,7 +248,7 @@ const seedQuizzes: Quiz[] = [
   {
     id: 'q1', title: 'DSA Fundamentals Quiz', description: 'Test your knowledge of basic data structures and algorithms.',
     category: 'DSA', difficulty: 'Medium', timeLimit: 20, isPremium: false, status: 'Published',
-    participants: 3400, maxScore: 100, createdAt: '2025-12-01',
+    participants: 0, maxScore: 100, createdAt: '2025-12-01',
     questions: [
       { id: 'qq1', question: 'What is the time complexity of binary search?', options: ['O(n)', 'O(log n)', 'O(n²)', 'O(1)'], correctIndex: 1, explanation: 'Binary search divides the search space in half each step.' },
       { id: 'qq2', question: 'Which data structure is used for BFS?', options: ['Stack', 'Queue', 'Heap', 'Tree'], correctIndex: 1, explanation: 'BFS uses a Queue (FIFO) to process nodes level by level.' },
@@ -256,7 +258,7 @@ const seedQuizzes: Quiz[] = [
   {
     id: 'q2', title: 'JEE Physics — Mechanics', description: 'MCQs on Kinematics, Laws of Motion, and Work-Energy theorem.',
     category: 'JEE', difficulty: 'Hard', timeLimit: 30, isPremium: false, status: 'Published',
-    participants: 5600, maxScore: 100, createdAt: '2026-01-10',
+    participants: 0, maxScore: 100, createdAt: '2026-01-10',
     questions: [
       { id: 'qq4', question: 'A ball is thrown vertically upward with velocity 20 m/s. Max height reached is?', options: ['10 m', '20 m', '30 m', '40 m'], correctIndex: 1, explanation: 'h = v²/2g = 400/20 = 20 m' },
       { id: 'qq5', question: 'Newton\'s second law is F = ma. If F=0, the body:', options: ['Accelerates', 'Decelerates', 'Remains in current state', 'Stops'], correctIndex: 2, explanation: 'F=0 means a=0, so body continues at same velocity (Newton\'s 1st law).' },
@@ -265,7 +267,7 @@ const seedQuizzes: Quiz[] = [
   {
     id: 'q3', title: 'Aptitude — Logical Reasoning', description: 'Common placement aptitude questions on logical reasoning.',
     category: 'Aptitude', difficulty: 'Easy', timeLimit: 15, isPremium: false, status: 'Published',
-    participants: 8900, maxScore: 100, createdAt: '2026-02-01',
+    participants: 0, maxScore: 100, createdAt: '2026-02-01',
     questions: [
       { id: 'qq6', question: 'If all roses are flowers and all flowers are plants, then:', options: ['All plants are roses', 'All roses are plants', 'Some plants are roses', 'None of these'], correctIndex: 1, explanation: 'By transitive relation: roses → flowers → plants, so all roses are plants.' },
     ],
@@ -275,7 +277,7 @@ const seedQuizzes: Quiz[] = [
 const seedRoadmaps: Roadmap[] = [
   {
     id: 'rm1', title: 'Become a Software Engineer', description: 'Complete roadmap to land your first software engineering job at a top company.',
-    category: 'Tech Career', totalDuration: '12-18 months', status: 'Published', views: 45000,
+    category: 'Tech Career', totalDuration: '12-18 months', status: 'Published', views: 0,
     createdAt: '2025-10-01', thumbnail: '',
     steps: [
       { id: 's1', title: 'Programming Fundamentals', description: 'Learn a programming language (Python/Java/C++). Understand variables, loops, functions, OOP.', resources: ['CS50', 'Java Basics Course'], estimatedTime: '2-3 months', level: 'Foundation' },
@@ -286,7 +288,7 @@ const seedRoadmaps: Roadmap[] = [
   },
   {
     id: 'rm2', title: 'Crack JEE — Complete Roadmap', description: 'Strategic roadmap to crack JEE Mains and Advanced in your first attempt.',
-    category: 'Competitive Exams', totalDuration: '2 years', status: 'Published', views: 32000,
+    category: 'Competitive Exams', totalDuration: '2 years', status: 'Published', views: 0,
     createdAt: '2025-11-01', thumbnail: '',
     steps: [
       { id: 's5', title: 'Class 11 Foundation', description: 'Build strong conceptual understanding of Physics, Chemistry, Maths. Focus on NCERT.', resources: ['JEE Complete Course', 'NCERT Books'], estimatedTime: '1 year', level: 'Foundation' },
@@ -296,7 +298,7 @@ const seedRoadmaps: Roadmap[] = [
   },
   {
     id: 'rm3', title: 'Become a Data Scientist', description: 'End-to-end roadmap from Python basics to landing a data science role.',
-    category: 'Tech Career', totalDuration: '8-12 months', status: 'Published', views: 28000,
+    category: 'Tech Career', totalDuration: '8-12 months', status: 'Published', views: 0,
     createdAt: '2026-01-01', thumbnail: '',
     steps: [
       { id: 's8', title: 'Python & Statistics', description: 'Python programming, pandas, numpy, statistics, probability fundamentals.', resources: ['Python Course', 'Statistics for DS'], estimatedTime: '2-3 months', level: 'Foundation' },
@@ -348,6 +350,9 @@ export const useContentStore = create<ContentState>()(
       toggleQuizStatus: (id) => set((s) => ({
         quizzes: s.quizzes.map((q) => q.id === id ? { ...q, status: q.status === 'Published' ? 'Draft' : 'Published' } : q)
       })),
+      incrementQuizParticipants: (id) => set((s) => ({
+        quizzes: s.quizzes.map((q) => q.id === id ? { ...q, participants: (q.participants || 0) + 1 } : q)
+      })),
 
       addRoadmap: (roadmap) => set((s) => ({
         roadmaps: [...s.roadmaps, { ...roadmap, id: `rm-${Date.now()}`, views: 0, createdAt: new Date().toISOString().split('T')[0] }]
@@ -359,7 +364,52 @@ export const useContentStore = create<ContentState>()(
       toggleRoadmapStatus: (id) => set((s) => ({
         roadmaps: s.roadmaps.map((r) => r.id === id ? { ...r, status: r.status === 'Published' ? 'Draft' : 'Published' } : r)
       })),
+      incrementRoadmapViews: (id) => set((s) => ({
+        roadmaps: s.roadmaps.map((r) => r.id === id ? { ...r, views: (r.views || 0) + 1 } : r)
+      })),
     }),
-    { name: 'skill021_content' }
+    {
+      name: 'skill021_content',
+      version: 2,
+      migrate: (persistedState: any) => {
+        if (persistedState) {
+          if (Array.isArray(persistedState.quizzes)) {
+            persistedState.quizzes = persistedState.quizzes.map((q: any) => ({
+              ...q,
+              participants: (q.participants === 3400 || q.participants === 5600 || q.participants === 8900) ? 0 : (q.participants || 0)
+            }))
+          }
+          if (Array.isArray(persistedState.roadmaps)) {
+            persistedState.roadmaps = persistedState.roadmaps.map((r: any) => ({
+              ...r,
+              views: (r.views === 45000 || r.views === 32000 || r.views === 28000) ? 0 : (r.views || 0)
+            }))
+          }
+        }
+        return persistedState
+      },
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          let needsUpdate = false
+          const sanitizedQuizzes = state.quizzes.map((q) => {
+            if (q.participants === 3400 || q.participants === 5600 || q.participants === 8900) {
+              needsUpdate = true
+              return { ...q, participants: 0 }
+            }
+            return q
+          })
+          const sanitizedRoadmaps = state.roadmaps.map((r) => {
+            if (r.views === 45000 || r.views === 32000 || r.views === 28000) {
+              needsUpdate = true
+              return { ...r, views: 0 }
+            }
+            return r
+          })
+          if (needsUpdate) {
+            useContentStore.setState({ quizzes: sanitizedQuizzes, roadmaps: sanitizedRoadmaps })
+          }
+        }
+      },
+    }
   )
 )

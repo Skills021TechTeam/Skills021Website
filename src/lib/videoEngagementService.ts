@@ -26,6 +26,7 @@ export interface PaymentSettings {
   upiName: string
   qrCodeUrl: string
   instructions?: string
+  allAccessPrice?: number
   updatedAt?: string
 }
 
@@ -131,15 +132,17 @@ export interface EnrollInput {
   itemTitle?: string
   utrNumber?: string
   screenshotUrl?: string
+  itemType?: 'course' | 'premium_membership' | 'resource' | 'webinar'
 }
 
 export async function createEnrollment(input: EnrollInput): Promise<Enrollment> {
+  const itemType = input.itemType || 'course'
   const { data, error } = await supabase
     .from('enrollments')
     .upsert({
-      item_type: 'course',
+      item_type: itemType,
       item_id: input.courseId,
-      item_title: input.itemTitle || `Course #${input.courseId}`,
+      item_title: input.itemTitle || `${itemType} #${input.courseId}`,
       user_id: input.userId,
       first_name: input.firstName,
       last_name: input.lastName,
@@ -262,7 +265,7 @@ export async function rejectPaymentRequest(enrollmentId: string, reason: string)
   return mapEnrollment(data)
 }
 
-export async function revokeAccess(enrollmentId: string, reason = 'Access revoked by Admin'): Promise<Enrollment> {
+export async function revokeAccess(enrollmentId: string, reason = 'Access revoked by Skills021'): Promise<Enrollment> {
   const { data, error } = await supabase
     .from('enrollments')
     .update({
@@ -514,7 +517,25 @@ const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
   upiId: 'skills021@upi',
   upiName: 'Skills021',
   qrCodeUrl: '',
+  allAccessPrice: 999,
   instructions: 'Scan QR or pay directly to the UPI ID, then enter your 12-digit UTR number and upload screenshot proof.',
+}
+
+function parseInstructionsAndConfig(raw: string | undefined): { instructions: string; allAccessPrice: number } {
+  if (!raw) return { instructions: DEFAULT_PAYMENT_SETTINGS.instructions || '', allAccessPrice: 999 }
+  const match = raw.match(/<!--CONFIG:(.*?)-->/)
+  let allAccessPrice = 999
+  let cleanInstructions = raw
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[1])
+      if (typeof parsed.allAccessPrice === 'number' && parsed.allAccessPrice > 0) {
+        allAccessPrice = parsed.allAccessPrice
+      }
+      cleanInstructions = raw.replace(/<!--CONFIG:.*?-->/, '').trim()
+    } catch {}
+  }
+  return { instructions: cleanInstructions, allAccessPrice }
 }
 
 export async function getPaymentSettings(): Promise<PaymentSettings> {
@@ -526,12 +547,14 @@ export async function getPaymentSettings(): Promise<PaymentSettings> {
       .maybeSingle()
 
     if (data && !error) {
+      const { instructions, allAccessPrice } = parseInstructionsAndConfig(data.instructions)
       const settings: PaymentSettings = {
         id: data.id,
         upiId: data.upi_id || DEFAULT_PAYMENT_SETTINGS.upiId,
         upiName: data.upi_name || DEFAULT_PAYMENT_SETTINGS.upiName,
         qrCodeUrl: data.qr_code_url || '',
-        instructions: data.instructions || DEFAULT_PAYMENT_SETTINGS.instructions,
+        allAccessPrice: allAccessPrice || 999,
+        instructions: instructions || DEFAULT_PAYMENT_SETTINGS.instructions,
         updatedAt: data.updated_at,
       }
       localStorage.setItem('skills021_payment_settings', JSON.stringify(settings))
@@ -544,7 +567,12 @@ export async function getPaymentSettings(): Promise<PaymentSettings> {
   const cached = localStorage.getItem('skills021_payment_settings')
   if (cached) {
     try {
-      return JSON.parse(cached)
+      const parsed = JSON.parse(cached)
+      return {
+        ...DEFAULT_PAYMENT_SETTINGS,
+        ...parsed,
+        allAccessPrice: parsed.allAccessPrice || 999,
+      }
     } catch {}
   }
 
@@ -555,7 +583,11 @@ export async function updatePaymentSettings(settings: Partial<PaymentSettings>):
   const upiId = (settings.upiId || DEFAULT_PAYMENT_SETTINGS.upiId).trim()
   const upiName = (settings.upiName || DEFAULT_PAYMENT_SETTINGS.upiName).trim()
   const qrCodeUrl = (settings.qrCodeUrl ?? '').trim()
-  const instructions = (settings.instructions ?? DEFAULT_PAYMENT_SETTINGS.instructions ?? '').trim()
+  const cleanInstructions = (settings.instructions ?? DEFAULT_PAYMENT_SETTINGS.instructions ?? '').trim()
+  const allAccessPrice = settings.allAccessPrice && settings.allAccessPrice > 0 ? settings.allAccessPrice : 999
+
+  // Embed config tag into instructions field for database persistence without altering table schema
+  const payloadInstructions = `${cleanInstructions}\n<!--CONFIG:${JSON.stringify({ allAccessPrice })}-->`
 
   try {
     const { data, error } = await supabase
@@ -565,7 +597,7 @@ export async function updatePaymentSettings(settings: Partial<PaymentSettings>):
         upi_id: upiId,
         upi_name: upiName,
         qr_code_url: qrCodeUrl,
-        instructions: instructions,
+        instructions: payloadInstructions,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'id' })
       .select('*')
@@ -573,12 +605,14 @@ export async function updatePaymentSettings(settings: Partial<PaymentSettings>):
 
     if (error) throw error
 
+    const { instructions: savedCleanInstructions, allAccessPrice: savedPrice } = parseInstructionsAndConfig(data.instructions)
     const result: PaymentSettings = {
       id: data.id,
       upiId: data.upi_id,
       upiName: data.upi_name,
       qrCodeUrl: data.qr_code_url,
-      instructions: data.instructions,
+      allAccessPrice: savedPrice,
+      instructions: savedCleanInstructions,
       updatedAt: data.updated_at,
     }
     localStorage.setItem('skills021_payment_settings', JSON.stringify(result))
@@ -589,7 +623,8 @@ export async function updatePaymentSettings(settings: Partial<PaymentSettings>):
       upiId,
       upiName,
       qrCodeUrl,
-      instructions,
+      allAccessPrice,
+      instructions: cleanInstructions,
       updatedAt: new Date().toISOString(),
     }
     localStorage.setItem('skills021_payment_settings', JSON.stringify(fallback))

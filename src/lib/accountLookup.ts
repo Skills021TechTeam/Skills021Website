@@ -8,6 +8,15 @@ export interface KnownAccount {
   lastLogin?: number
 }
 
+export interface UserProfileLookupResult {
+  name: string
+  avatarUrl: string
+  role: 'user' | 'admin'
+  isAdmin: boolean
+  isCached: boolean
+  exists: boolean
+}
+
 const STORAGE_KEY = 'skills021_known_accounts'
 
 /**
@@ -69,7 +78,6 @@ export function getAdminAvatarUrl(): string {
  */
 export function deriveNameFromEmail(email: string): string {
   const prefix = (email || '').split('@')[0] || 'User'
-  // Replace dots, underscores, hyphens, and strip numbers
   const cleaned = prefix.replace(/[._-]+/g, ' ').replace(/\d+/g, '').trim()
   if (!cleaned) return prefix.charAt(0).toUpperCase() + prefix.slice(1)
   return cleaned
@@ -80,21 +88,26 @@ export function deriveNameFromEmail(email: string): string {
 }
 
 /**
- * Multi-layer profile & avatar lookup by email:
- * 1. Configured Admin credentials check -> Returns verified admin persona avatar
+ * Multi-layer profile & account existence check:
+ * 1. Configured Admin credentials check -> Returns verified admin persona avatar & exists: true
  * 2. Local device account cache & current auth store (instant)
  * 3. Supabase RPC get_public_profile_preview (works for all devices & anon visitors)
  * 4. Supabase profiles table query (fallback)
- * 5. If no avatar exists, returns empty string so nothing is shown.
+ * 5. If no account is found anywhere, returns exists: false so login does not ask for password.
  */
-export async function lookupUserPublicProfile(email: string): Promise<{
-  name: string
-  avatarUrl: string
-  role: 'user' | 'admin'
-  isAdmin: boolean
-  isCached: boolean
-}> {
+export async function lookupUserPublicProfile(email: string): Promise<UserProfileLookupResult> {
   const cleanEmail = email.trim().toLowerCase()
+  if (!cleanEmail) {
+    return {
+      name: '',
+      avatarUrl: '',
+      role: 'user',
+      isAdmin: false,
+      isCached: false,
+      exists: false,
+    }
+  }
+
   const configuredAdminId = ((import.meta.env.VITE_ADMIN_ID as string) || '').trim().toLowerCase()
   const isAdminEmail =
     (Boolean(configuredAdminId) &&
@@ -110,6 +123,7 @@ export async function lookupUserPublicProfile(email: string): Promise<{
       role: 'admin',
       isAdmin: true,
       isCached: true,
+      exists: true,
     }
   }
 
@@ -117,13 +131,14 @@ export async function lookupUserPublicProfile(email: string): Promise<{
   const knownAccounts = getKnownAccounts()
   const cached = knownAccounts[cleanEmail]
 
-  let resolvedName = cached?.name || deriveNameFromEmail(cleanEmail)
+  let resolvedName = cached?.name || ''
   let resolvedAvatar = (cached?.avatarUrl || '').trim()
   let resolvedRole: 'user' | 'admin' = cached?.role || 'user'
   let isCached = Boolean(cached && (cached.avatarUrl || cached.name))
+  let accountExists = Boolean(cached)
 
-  // 2. Also check skills021_auth in localStorage if cached avatar was empty
-  if (!resolvedAvatar) {
+  // 2. Also check skills021_auth in localStorage
+  if (!accountExists) {
     try {
       const rawAuth = localStorage.getItem('skills021_auth')
       if (rawAuth) {
@@ -135,12 +150,14 @@ export async function lookupUserPublicProfile(email: string): Promise<{
           }
           if (u.name) resolvedName = u.name
           if (u.role === 'admin') resolvedRole = 'admin'
+          accountExists = true
+          isCached = true
         }
       }
     } catch {}
   }
 
-  // 3. Try Supabase RPC get_public_profile_preview (allows public cross-device access)
+  // 3. Try Supabase RPC get_public_profile_preview (cross-device database lookup)
   let foundFromRemote = false
   try {
     const { data: rpcData, error: rpcError } = await supabase.rpc(
@@ -156,10 +173,11 @@ export async function lookupUserPublicProfile(email: string): Promise<{
       }
       if (row.role === 'admin') resolvedRole = 'admin'
       foundFromRemote = true
+      accountExists = true
       isCached = true
     }
   } catch {
-    // RPC may not be installed yet, fallback to table query
+    // RPC may not be installed or enabled yet, fallback to table query
   }
 
   // 4. Fallback: Query Supabase public.profiles table directly
@@ -175,21 +193,33 @@ export async function lookupUserPublicProfile(email: string): Promise<{
         const dbName =
           data.name ||
           `${data.first_name || ''} ${data.last_name || ''}`.trim() ||
-          resolvedName
+          deriveNameFromEmail(cleanEmail)
         if (dbName) resolvedName = dbName
         if (data.avatar_url && typeof data.avatar_url === 'string' && data.avatar_url.trim() !== '') {
           resolvedAvatar = data.avatar_url.trim()
         }
         if (data.role === 'admin') resolvedRole = 'admin'
+        accountExists = true
         isCached = true
       }
     } catch {
-      // Non-critical, fallback to cached or derived profile
+      // Non-critical
+    }
+  }
+
+  if (!accountExists) {
+    return {
+      name: '',
+      avatarUrl: '',
+      role: 'user',
+      isAdmin: false,
+      isCached: false,
+      exists: false,
     }
   }
 
   // Save to cache so next lookup is instantaneous
-  if (cleanEmail) {
+  if (cleanEmail && resolvedName) {
     saveKnownAccount({
       email: cleanEmail,
       name: resolvedName,
@@ -199,10 +229,11 @@ export async function lookupUserPublicProfile(email: string): Promise<{
   }
 
   return {
-    name: resolvedName,
+    name: resolvedName || deriveNameFromEmail(cleanEmail),
     avatarUrl: resolvedAvatar,
     role: resolvedRole,
     isAdmin: resolvedRole === 'admin',
     isCached,
+    exists: true,
   }
 }

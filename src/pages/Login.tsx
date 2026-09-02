@@ -12,11 +12,15 @@ import {
   ArrowRight,
   ArrowLeft,
   ShieldCheck,
+  RefreshCw,
+  CheckCircle2,
+  UserPlus,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore, checkRateLimit, clearRateLimit } from '../store/authStore'
-import { resetPasswordForEmail } from '../lib/supabase'
+import { resetPasswordForEmail, resendVerificationEmail } from '../lib/supabase'
 import { lookupUserPublicProfile } from '../lib/accountLookup'
+import ForgotPasswordModal from '../components/ForgotPasswordModal'
 
 type LoginStep = 'email' | 'password'
 
@@ -46,9 +50,14 @@ export default function Login() {
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({})
   const [attemptsLeft, setAttemptsLeft] = useState<number | null>(null)
   const [lockoutSeconds, setLockoutSeconds] = useState(0)
-  const [forgotLoading, setForgotLoading] = useState(false)
+  const [isForgotModalOpen, setIsForgotModalOpen] = useState(false)
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null)
+  const [resendingVerification, setResendingVerification] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
+  const [accountNotFound, setAccountNotFound] = useState(false)
 
   const lockoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const resendCooldownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const emailInputRef = useRef<HTMLInputElement>(null)
   const passwordInputRef = useRef<HTMLInputElement>(null)
 
@@ -65,6 +74,44 @@ export default function Login() {
       navigate(targetPath + targetSearch, { replace: true })
     }
   }, [isAuthenticated, isAdminAuthenticated, user, navigate, location])
+
+  // Check URL parameters or navigation state for verified flag & pre-filled email
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search)
+    if (searchParams.get('verified') === 'true' || location.hash.includes('type=signup')) {
+      toast.success('Email verified successfully! Please sign in.', { duration: 5000, id: 'email-verified' })
+    }
+    const prefilled = (location.state as any)?.prefillEmail
+    if (prefilled && typeof prefilled === 'string') {
+      setEmail(prefilled)
+    }
+  }, [location])
+
+  // Resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown <= 0) {
+      if (resendCooldownTimerRef.current) {
+        clearInterval(resendCooldownTimerRef.current)
+        resendCooldownTimerRef.current = null
+      }
+      return
+    }
+
+    resendCooldownTimerRef.current = setInterval(() => {
+      setResendCooldown(prev => {
+        if (prev <= 1) {
+          if (resendCooldownTimerRef.current) clearInterval(resendCooldownTimerRef.current)
+          resendCooldownTimerRef.current = null
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => {
+      if (resendCooldownTimerRef.current) clearInterval(resendCooldownTimerRef.current)
+    }
+  }, [resendCooldown])
 
   // Countdown timer for lockout
   useEffect(() => {
@@ -121,19 +168,29 @@ export default function Login() {
 
     if (!cleanEmail) {
       setErrors({ email: 'Email is required' })
+      setAccountNotFound(false)
       return
     }
     if (!/\S+@\S+\.\S+/.test(cleanEmail)) {
       setErrors({ email: 'Enter a valid email address' })
+      setAccountNotFound(false)
       return
     }
 
     setErrors({})
+    setAccountNotFound(false)
     setResolvingProfile(true)
     syncRateLimitForEmail(cleanEmail)
 
     try {
       const profile = await lookupUserPublicProfile(cleanEmail)
+      if (!profile.exists) {
+        setAccountNotFound(true)
+        setErrors({ email: 'No account exists with this email' })
+        return
+      }
+
+      setAccountNotFound(false)
       setProfilePreview(profile)
       setAvatarImageSrc(profile.avatarUrl || '')
       setStep('password')
@@ -141,8 +198,8 @@ export default function Login() {
         passwordInputRef.current?.focus()
       }, 120)
     } catch {
-      setAvatarImageSrc('')
-      setStep('password')
+      setAccountNotFound(true)
+      setErrors({ email: 'No account exists with this email' })
     } finally {
       setResolvingProfile(false)
     }
@@ -187,6 +244,7 @@ export default function Login() {
     setLoading(false)
 
     if (result.success) {
+      setUnverifiedEmail(null)
       clearRateLimit(cleanEmail)
       setAttemptsLeft(null)
       setLockoutSeconds(0)
@@ -203,6 +261,16 @@ export default function Login() {
       }
       return
     } else {
+      if (result.isUnverifiedEmail) {
+        setUnverifiedEmail(cleanEmail)
+        setErrors({
+          password: 'Email unverified. Check your inbox.',
+        })
+        toast.error('Please verify your email before logging in.', { duration: 4500 })
+        return
+      }
+
+      setUnverifiedEmail(null)
       const rl = result.rateLimitInfo
       if (rl?.blocked && rl.remainingMs > 0) {
         const secs = Math.ceil(rl.remainingMs / 1000)
@@ -225,6 +293,21 @@ export default function Login() {
     }
   }
 
+  const handleResendVerification = async () => {
+    const target = unverifiedEmail || email
+    if (!target || resendingVerification || resendCooldown > 0) return
+    setResendingVerification(true)
+    try {
+      await resendVerificationEmail(target.trim())
+      setResendCooldown(60)
+      toast.success('Verification link resent to your email! 📩', { duration: 4000 })
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to resend email.')
+    } finally {
+      setResendingVerification(false)
+    }
+  }
+
   // Switch Account / Return to Step 1
   const handleSwitchAccount = () => {
     setStep('email')
@@ -237,22 +320,8 @@ export default function Login() {
   }
 
   // Handle Forgot Password
-  const handleForgotPassword = async () => {
-    if (!email || !/\S+@\S+\.\S+/.test(email)) {
-      setErrors({ email: 'Enter your email first' })
-      setStep('email')
-      return
-    }
-
-    setForgotLoading(true)
-    try {
-      await resetPasswordForEmail(email.trim())
-      toast.success('Reset link sent to your inbox', { duration: 4000 })
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to send reset email')
-    } finally {
-      setForgotLoading(false)
-    }
+  const handleForgotPassword = () => {
+    setIsForgotModalOpen(true)
   }
 
   const handleGoogleClick = () => {
@@ -308,9 +377,18 @@ export default function Login() {
 
                 <form onSubmit={handleEmailNext} className="space-y-3.5" noValidate>
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 dark:text-zinc-300 mb-1.5">
-                      Email address
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-medium text-slate-700 dark:text-zinc-300">
+                        Email address
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleForgotPassword}
+                        className="text-xs text-primary-500 hover:text-primary-600 dark:hover:text-primary-400 hover:underline cursor-pointer"
+                      >
+                        Forgot?
+                      </button>
+                    </div>
                     <div className="relative">
                       <Mail
                         size={15}
@@ -324,6 +402,7 @@ export default function Login() {
                         onChange={e => {
                           setEmail(e.target.value)
                           if (errors.email) setErrors({})
+                          if (accountNotFound) setAccountNotFound(false)
                         }}
                         placeholder="name@gmail.com"
                         disabled={resolvingProfile}
@@ -340,6 +419,36 @@ export default function Login() {
                       <p className="mt-1.5 text-xs text-red-500 flex items-center gap-1 font-medium">
                         <AlertCircle size={12} /> {errors.email}
                       </p>
+                    )}
+
+                    {/* Account Not Found Notice Card with Create Account CTA */}
+                    {accountNotFound && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mt-2.5 p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl text-xs space-y-2"
+                      >
+                        <div className="flex items-start gap-2 text-amber-700 dark:text-amber-300 font-medium">
+                          <AlertCircle size={15} className="shrink-0 mt-0.5 text-amber-500" />
+                          <div>
+                            <p className="font-semibold text-xs text-amber-800 dark:text-amber-200">
+                              Account doesn't exist
+                            </p>
+                            <p className="text-[11px] text-slate-600 dark:text-zinc-400 mt-0.5 leading-relaxed">
+                              No account is associated with <span className="font-semibold text-slate-900 dark:text-zinc-200">{email}</span>.
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => navigate('/register', { state: { prefillEmail: email.trim() } })}
+                          className="w-full py-2 px-3 bg-primary-500 hover:bg-primary-600 active:bg-primary-700 text-white font-semibold text-xs rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                        >
+                          <UserPlus size={13} />
+                          <span>Create Free Account</span>
+                          <ArrowRight size={13} />
+                        </button>
+                      </motion.div>
                     )}
                   </div>
 
@@ -484,6 +593,40 @@ export default function Login() {
                   </div>
                 )}
 
+                {/* Unverified Email Warning Card */}
+                {unverifiedEmail && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-3.5 p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl text-xs space-y-2"
+                  >
+                    <div className="flex items-start gap-2 text-amber-700 dark:text-amber-300 font-medium">
+                      <Mail size={15} className="shrink-0 mt-0.5 text-amber-500" />
+                      <div>
+                        <p className="font-semibold text-xs text-amber-800 dark:text-amber-200">Email Verification Required</p>
+                        <p className="text-[11px] text-slate-600 dark:text-zinc-400 mt-0.5 leading-relaxed">
+                          We sent a link to <span className="font-semibold text-slate-900 dark:text-zinc-200">{unverifiedEmail}</span>. Please verify to log in.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleResendVerification}
+                      disabled={resendingVerification || resendCooldown > 0}
+                      className="w-full py-1.5 px-3 bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw size={12} className={resendingVerification ? 'animate-spin' : ''} />
+                      {resendingVerification ? (
+                        'Sending…'
+                      ) : resendCooldown > 0 ? (
+                        `Resend in ${resendCooldown}s`
+                      ) : (
+                        'Resend Verification Email'
+                      )}
+                    </button>
+                  </motion.div>
+                )}
+
                 {/* Password Form */}
                 <form onSubmit={handlePasswordSubmit} className="space-y-3.5" noValidate>
                   <div>
@@ -494,10 +637,9 @@ export default function Login() {
                       <button
                         type="button"
                         onClick={handleForgotPassword}
-                        disabled={forgotLoading}
-                        className="text-xs text-primary-500 hover:text-primary-600 dark:hover:text-primary-400 hover:underline disabled:opacity-60 cursor-pointer"
+                        className="text-xs text-primary-500 hover:text-primary-600 dark:hover:text-primary-400 hover:underline cursor-pointer"
                       >
-                        {forgotLoading ? 'Sending…' : 'Forgot?'}
+                        Forgot?
                       </button>
                     </div>
 
@@ -585,6 +727,18 @@ export default function Login() {
           </AnimatePresence>
         </div>
       </motion.div>
+
+      {/* Forgot Password CAPTCHA Modal */}
+      <ForgotPasswordModal
+        isOpen={isForgotModalOpen}
+        initialEmail={email}
+        onClose={() => setIsForgotModalOpen(false)}
+        onSuccess={(sentEmail) => {
+          if (!email && sentEmail) {
+            setEmail(sentEmail)
+          }
+        }}
+      />
     </div>
   )
 }

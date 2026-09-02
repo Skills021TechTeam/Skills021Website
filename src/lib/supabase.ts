@@ -76,11 +76,13 @@ export async function signUpUser(
   avatarUrl: string = ''
 ) {
   const { firstName, lastName } = splitName(name)
+  const redirectTo = `${window.location.origin}/login?verified=true`
 
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
+      emailRedirectTo: redirectTo,
       data: {
         name,
         first_name: firstName,
@@ -117,6 +119,21 @@ export async function signUpUser(
   }
 
   return data
+}
+
+/**
+ * Resends a sign-up verification email to the user's address.
+ */
+export async function resendVerificationEmail(email: string): Promise<void> {
+  const redirectTo = `${window.location.origin}/login?verified=true`
+  const { error } = await supabase.auth.resend({
+    type: 'signup',
+    email: email.trim(),
+    options: {
+      emailRedirectTo: redirectTo,
+    },
+  })
+  if (error) throw error
 }
 
 export async function signInUser(email: string, password: string) {

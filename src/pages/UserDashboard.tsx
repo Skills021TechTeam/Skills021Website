@@ -309,7 +309,7 @@ export default function UserDashboard() {
                   Welcome back, {user?.name?.split(' ')[0]}! 👋
                 </h2>
                 <p className="text-brand-muted dark:text-brand-dark-muted mt-1 text-sm">
-                  Student ID: <span className="font-mono text-xs opacity-75">{user?.id}</span>
+                  Ready to continue your learning journey today?
                 </p>
               </div>
 

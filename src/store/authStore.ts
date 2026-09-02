@@ -149,8 +149,8 @@ interface AuthState {
   user: User | null
   isAuthenticated: boolean
   setUser: (user: User | null) => void
-  loginWithSupabase: (email: string, password: string) => Promise<{ success: boolean; error?: string; rateLimitInfo?: { blocked: boolean; remainingMs: number; attemptsLeft: number } }>
-  registerWithSupabase: (data: RegisterData) => Promise<{ success: boolean; error?: string }>
+  loginWithSupabase: (email: string, password: string) => Promise<{ success: boolean; error?: string; isUnverifiedEmail?: boolean; rateLimitInfo?: { blocked: boolean; remainingMs: number; attemptsLeft: number } }>
+  registerWithSupabase: (data: RegisterData) => Promise<{ success: boolean; error?: string; needsEmailVerification?: boolean; email?: string }>
   logoutUser: () => Promise<void>
   logout: () => void
   updateProfileInSupabase: (data: Partial<User>) => Promise<boolean>
@@ -192,6 +192,18 @@ export const useAuthStore = create<AuthState>()(
           }
 
           const u = session.user
+          const isEmailConfirmed = Boolean(
+            u.email_confirmed_at ||
+            u.confirmed_at ||
+            (u.app_metadata?.provider !== 'email' && u.app_metadata?.provider)
+          )
+
+          if (!isEmailConfirmed && u.app_metadata?.provider === 'email') {
+            await supabase.auth.signOut().catch(() => {})
+            set({ user: null, isAuthenticated: false, isAdminAuthenticated: false, adminUser: null })
+            return
+          }
+
           const [profile, enrollments] = await Promise.all([
             getUserProfile(u.id).catch(() => null),
             getEnrollmentsForUser(u.id).catch(() => []),
@@ -245,6 +257,22 @@ export const useAuthStore = create<AuthState>()(
           if (res?.user) {
             const u = res.user
 
+            // Check if email confirmation is required and unconfirmed
+            const isEmailConfirmed = Boolean(
+              u.email_confirmed_at ||
+              u.confirmed_at ||
+              (u.app_metadata?.provider !== 'email' && u.app_metadata?.provider)
+            )
+
+            if (!isEmailConfirmed && u.app_metadata?.provider === 'email') {
+              await signOutUser().catch(() => {})
+              return {
+                success: false,
+                isUnverifiedEmail: true,
+                error: 'Please verify your email before logging in. We sent a verification link to your inbox.',
+              }
+            }
+
             const [profile, enrollments] = await Promise.all([
               getUserProfile(u.id).catch(() => null),
               getEnrollmentsForUser(u.id).catch(() => []),
@@ -296,8 +324,23 @@ export const useAuthStore = create<AuthState>()(
           return { success: false, error: 'User not found. Please check your credentials.', rateLimitInfo: rlInfo }
         } catch (err: any) {
           console.error('Login error:', err)
+          const rawMessage = err?.message || ''
+          const isEmailNotConfirmed =
+            err?.code === 'email_not_confirmed' ||
+            /email not confirmed/i.test(rawMessage) ||
+            /confirm your email/i.test(rawMessage) ||
+            /verify your email/i.test(rawMessage)
+
+          if (isEmailNotConfirmed) {
+            return {
+              success: false,
+              isUnverifiedEmail: true,
+              error: 'Please verify your email address before logging in. Check your inbox for the confirmation link.',
+            }
+          }
+
           const rlInfo = recordFailedAttempt(cleanEmail)
-          const message = err?.message || 'Invalid email or password. Please check your credentials.'
+          const message = rawMessage || 'Invalid email or password. Please check your credentials.'
           return { success: false, error: message, rateLimitInfo: rlInfo }
         }
       },
@@ -313,28 +356,26 @@ export const useAuthStore = create<AuthState>()(
             data.avatarUrl || ''
           )
 
+          saveKnownAccount({
+            email: data.email,
+            name: data.name,
+            avatarUrl: data.avatarUrl || '',
+            role: 'user',
+          })
+
+          // Ensure session is cleared so user is not logged in automatically before email verification
+          try {
+            await signOutUser()
+          } catch {
+            // ignore
+          }
+
           if (res?.user) {
-            const u = res.user
-            const mappedUser: User = {
-              id: u.id,
-              name: data.name,
+            return {
+              success: true,
+              needsEmailVerification: true,
               email: data.email,
-              role: 'user',
-              college: data.college,
-              phone: data.phone || '',
-              avatarUrl: data.avatarUrl || '',
-              isPremium: false,
-              joinedDate: new Date().toISOString().split('T')[0],
-              enrolledCourses: [],
             }
-            saveKnownAccount({
-              email: mappedUser.email,
-              name: mappedUser.name,
-              avatarUrl: mappedUser.avatarUrl,
-              role: mappedUser.role,
-            })
-            set({ user: mappedUser, isAuthenticated: true })
-            return { success: true }
           }
           return { success: false, error: 'Registration failed. Please try again.' }
         } catch (err: any) {

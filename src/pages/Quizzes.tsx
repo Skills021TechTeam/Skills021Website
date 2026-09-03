@@ -69,6 +69,7 @@ function QuizRunner({ quiz, onClose }: { quiz: Quiz; onClose: () => void }) {
       setSelected(null)
     } else {
       setShowResult(true)
+      useContentStore.getState().incrementQuizParticipants(quiz.id)
       const finalScore = answers.reduce<number>((acc, ans, i) => ans === quiz.questions[i]?.correctIndex ? acc + 1 : acc, 0)
       const finalPct = Math.round((finalScore / quiz.questions.length) * 100)
       if (finalPct >= 70) {
@@ -236,6 +237,14 @@ export default function Quizzes() {
   const published = quizzes.filter(q => q.status === 'Published')
   const filtered = activeCategory ? published.filter(q => q.category === activeCategory) : published
 
+  const totalQuizParticipants = published.reduce((a, q) => {
+    const p = (q.participants === 3400 || q.participants === 5600 || q.participants === 8900) ? 0 : (q.participants ?? 0)
+    return a + p
+  }, 0)
+  const formattedParticipants = totalQuizParticipants >= 1000
+    ? `${(totalQuizParticipants / 1000).toFixed(1)}K+`
+    : totalQuizParticipants.toLocaleString()
+
   return (
     <div className="min-h-screen bg-brand-bg dark:bg-brand-dark-bg pt-16">
       {/* Hero — shared split layout */}
@@ -253,7 +262,7 @@ export default function Quizzes() {
             </p>
             <div className="flex flex-wrap items-center gap-4 text-sm text-brand-muted dark:text-brand-dark-muted mb-6">
               <span className="flex items-center gap-2"><Trophy size={14} />{published.length}+ Timed Quizzes</span>
-              <span className="flex items-center gap-2"><Users size={14} />{(published.reduce((a, q) => a + q.participants, 0) / 1000).toFixed(0)}K+ Participants</span>
+              <span className="flex items-center gap-2"><Users size={14} />{formattedParticipants} Participants</span>
               <span className="flex items-center gap-2"><CheckCircle size={14} />100% Free Practice</span>
             </div>
           </motion.div>
@@ -261,7 +270,7 @@ export default function Quizzes() {
             <PanelSpotlightCard
               variant="quiz"
               stat={{ value: `${published.length}+`, label: 'Active Quizzes' }}
-              secondaryStat={{ value: `${(published.reduce((a, q) => a + q.participants, 0) / 1000).toFixed(0)}K+`, label: 'Participants' }}
+              secondaryStat={{ value: formattedParticipants, label: 'Participants' }}
             />
           </aside>
         </div>
@@ -321,7 +330,7 @@ export default function Quizzes() {
                 <div className="flex items-center gap-4 text-xs text-brand-muted dark:text-brand-dark-muted mb-4">
                   <span className="flex items-center gap-1"><HelpCircle size={11} />{quiz.questions.length} Questions</span>
                   <span className="flex items-center gap-1"><Clock size={11} />{quiz.timeLimit} min</span>
-                  <span className="flex items-center gap-1"><Users size={11} />{quiz.participants.toLocaleString()}</span>
+                  <span className="flex items-center gap-1"><Users size={11} />{(quiz.participants === 3400 || quiz.participants === 5600 || quiz.participants === 8900 ? 0 : (quiz.participants ?? 0)).toLocaleString()}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${CATEGORIES.find(c => c.label === quiz.category)?.bg || ''} ${CATEGORIES.find(c => c.label === quiz.category)?.color || ''}`}>

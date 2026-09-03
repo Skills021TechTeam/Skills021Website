@@ -18,7 +18,7 @@ import {
   type Subject
 } from '../lib/resourceService'
 import { useAuthStore } from '../store/authStore'
-import { getEnrollmentsForUser } from '../lib/videoEngagementService'
+import { getEnrollmentsForUser, getPaymentSettings } from '../lib/videoEngagementService'
 import EnrollModal from '../components/EnrollModal'
 import VideoPlayerModal from '../components/VideoPlayerModal'
 import CourseRatingMenu from '../components/CourseRatingMenu'
@@ -245,6 +245,7 @@ export default function Courses() {
   const [enrollCourse, setEnrollCourse] = useState<Course | null>(null)
   const [showPremiumModal, setShowPremiumModal] = useState(false)
   const [playCourse, setPlayCourse] = useState<Course | null>(null)
+  const [allAccessPrice, setAllAccessPrice] = useState(999)
 
   const requireLogin = () => {
     toast.error('Please log in to continue')
@@ -252,7 +253,10 @@ export default function Courses() {
   }
 
   useEffect(() => {
-    (async () => {
+    getPaymentSettings().then((s) => {
+      if (s?.allAccessPrice) setAllAccessPrice(s.allAccessPrice)
+    })
+    ;(async () => {
       try {
         const data = await fetchPublishedSiteCourses()
         setCourses(data)
@@ -1091,7 +1095,7 @@ export default function Courses() {
       {showPremiumModal && (
         <EnrollModal
           isPremiumMembership={true}
-          premiumAmount={999}
+          premiumAmount={allAccessPrice}
           userId={userId ?? `guest-${Date.now()}`}
           defaultEmail={user?.email}
           defaultName={user?.name}

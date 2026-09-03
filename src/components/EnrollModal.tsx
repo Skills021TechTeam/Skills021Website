@@ -56,7 +56,8 @@ export default function EnrollModal({
 
   const isFree = !isPremiumMembership && course?.price === 'FREE'
   const title = isPremiumMembership ? 'All-Access Premium Membership' : (course?.title || 'Course Access')
-  const amount = isPremiumMembership ? premiumAmount : (isFree ? 0 : (typeof course?.price === 'number' ? course.price : 499))
+  const effectivePremiumAmount = paymentSettings.allAccessPrice || premiumAmount
+  const amount = isPremiumMembership ? effectivePremiumAmount : (isFree ? 0 : (typeof course?.price === 'number' ? course.price : 499))
   const itemId = isPremiumMembership ? 'premium_all_access' : (course?.id || 'course_generic')
   const itemType = isPremiumMembership ? 'premium_membership' : 'course'
 
@@ -435,13 +436,13 @@ export default function EnrollModal({
                   <div className="flex justify-between">
                     <span className="text-brand-muted">Status:</span>
                     <span className="badge text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-bold">
-                      Pending Admin Approval
+                      Pending Skills021 Verification
                     </span>
                   </div>
                 </div>
 
                 <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted">
-                  Once the admin verifies your payment in the admin panel, your access will be activated immediately!
+                  Once the Skills021 team verifies your payment details, your access will be activated immediately!
                 </p>
 
                 <button

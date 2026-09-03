@@ -176,7 +176,14 @@ export const useAuthStore = create<AuthState>()(
       adminUser: null,
 
       setUser: (user: User | null) => {
-        set({ user, isAuthenticated: !!user, isAdminAuthenticated: user?.role === 'admin' })
+        const current = get()
+        const isStillAdmin = user?.role === 'admin' || (user !== null && current.isAdminAuthenticated)
+        set({
+          user,
+          isAuthenticated: !!user,
+          isAdminAuthenticated: isStillAdmin,
+          adminUser: isStillAdmin ? (current.adminUser || (user ? { id: user.id, email: user.email, name: user.name } : null)) : null,
+        })
       },
 
       hydrateFromSession: async () => {
@@ -185,7 +192,7 @@ export const useAuthStore = create<AuthState>()(
           if (!session?.user) {
             // Keep local admin auth if user logged in as admin locally
             const current = get()
-            if (!current.isAdminAuthenticated) {
+            if (!current.isAdminAuthenticated && current.user?.role !== 'admin') {
               set({ user: null, isAuthenticated: false, isAdminAuthenticated: false, adminUser: null })
             }
             return
@@ -200,7 +207,10 @@ export const useAuthStore = create<AuthState>()(
 
           if (!isEmailConfirmed && u.app_metadata?.provider === 'email') {
             await supabase.auth.signOut().catch(() => {})
-            set({ user: null, isAuthenticated: false, isAdminAuthenticated: false, adminUser: null })
+            const current = get()
+            if (!current.isAdminAuthenticated && current.user?.role !== 'admin') {
+              set({ user: null, isAuthenticated: false, isAdminAuthenticated: false, adminUser: null })
+            }
             return
           }
 
@@ -211,7 +221,8 @@ export const useAuthStore = create<AuthState>()(
 
           const configuredAdminEmail = ((import.meta.env.VITE_ADMIN_ID as string) || '').toLowerCase().trim()
           const isConfiguredAdmin = Boolean(configuredAdminEmail) && (u.email || '').toLowerCase().trim() === configuredAdminEmail
-          const isAdmin = profile?.role === 'admin' || u.user_metadata?.role === 'admin' || isConfiguredAdmin
+          const current = get()
+          const isAdmin = profile?.role === 'admin' || u.user_metadata?.role === 'admin' || isConfiguredAdmin || current.isAdminAuthenticated
 
           const mappedUser: User = {
             id: u.id,
@@ -238,7 +249,7 @@ export const useAuthStore = create<AuthState>()(
             user: mappedUser,
             isAuthenticated: true,
             isAdminAuthenticated: isAdmin,
-            adminUser: isAdmin ? { id: mappedUser.id, email: mappedUser.email, name: mappedUser.name } : null,
+            adminUser: isAdmin ? (current.adminUser || { id: mappedUser.id, email: mappedUser.email, name: mappedUser.name }) : null,
           })
         } catch {
           // Fail gracefully without crashing
@@ -391,13 +402,19 @@ export const useAuthStore = create<AuthState>()(
         } catch (err) {
           console.error('Logout error:', err)
         } finally {
-          set({ user: null, isAuthenticated: false, isAdminAuthenticated: false, adminUser: null })
+          const current = get()
+          if (!current.isAdminAuthenticated && current.user?.role !== 'admin') {
+            set({ user: null, isAuthenticated: false, isAdminAuthenticated: false, adminUser: null })
+          }
         }
       },
 
       logout: () => {
         // Pure local state reset to prevent recursive onAuthStateChange event loops
-        set({ user: null, isAuthenticated: false, isAdminAuthenticated: false, adminUser: null })
+        const current = get()
+        if (!current.isAdminAuthenticated && current.user?.role !== 'admin') {
+          set({ user: null, isAuthenticated: false, isAdminAuthenticated: false, adminUser: null })
+        }
       },
 
       updateProfileInSupabase: async (data: Partial<User>): Promise<boolean> => {

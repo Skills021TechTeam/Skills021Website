@@ -1,20 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import {
-  ShieldCheck,
-  Lock,
-  Mail,
-  KeyRound,
-  AlertCircle,
-  Eye,
-  EyeOff,
-  Timer,
-  ArrowLeft,
-  ArrowRight,
-  Zap,
-  CheckCircle2,
-} from 'lucide-react'
+import { Lock, Eye, EyeOff, ShieldCheck, ArrowLeft, ArrowRight, AlertCircle, RefreshCw, KeyRound, Mail, Zap, Timer } from 'lucide-react'
+import Logo from '../components/Logo'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 
@@ -28,8 +16,15 @@ export default function AdminLogin() {
   const [lockoutSeconds, setLockoutSeconds] = useState(0)
   const lockoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const { adminLogin } = useAuthStore()
+  const { adminLogin, isAdminAuthenticated, user } = useAuthStore()
   const navigate = useNavigate()
+
+  // Redirect if already authenticated as Admin
+  useEffect(() => {
+    if (isAdminAuthenticated || user?.role === 'admin') {
+      navigate('/admin', { replace: true })
+    }
+  }, [isAdminAuthenticated, user, navigate])
 
   // Countdown timer for lockout
   useEffect(() => {
@@ -104,15 +99,10 @@ export default function AdminLogin() {
       {/* Top Header Bar */}
       <header className="relative z-10 w-full px-6 py-5 flex items-center justify-between border-b border-zinc-900 bg-black/80 backdrop-blur-md">
         <Link to="/" className="inline-flex items-center gap-3 group">
-          <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center shadow-md shadow-white/10 group-hover:scale-105 transition-transform">
-            <Zap size={16} className="text-black fill-black" />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-bold tracking-tight text-base text-white">Skills021</span>
-            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-zinc-900 text-zinc-300 border border-zinc-800">
-              Admin Portal
-            </span>
-          </div>
+          <Logo size="sm" asLink={false} />
+          <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-zinc-900 text-zinc-300 border border-zinc-800">
+            Admin Portal
+          </span>
         </Link>
 
         <div className="flex items-center gap-4">

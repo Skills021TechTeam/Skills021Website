@@ -7,7 +7,7 @@ import {
   X, Shield, TrendingUp, Eye, Download, EyeOff,
   CheckCircle, Zap, Video, Loader2, RotateCw, Compass, ListVideo, Clock, Briefcase, Mail, Phone, Trophy, Minus, Save, LogOut, ChevronDown, Check, Radio,
   CreditCard, DollarSign, ExternalLink, RefreshCw, ChevronRight, Copy, ShieldAlert,
-  QrCode, UploadCloud
+  QrCode, UploadCloud, Sparkles, GraduationCap, Calendar, UserCheck, Award
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import LogoutConfirmModal from '../components/LogoutConfirmModal'
@@ -34,6 +34,7 @@ import {
   getAllEnrollments,
   approvePaymentRequest,
   rejectPaymentRequest,
+  createEnrollment,
   revokeAccess,
   getPaymentSettings,
   updatePaymentSettings,
@@ -269,6 +270,7 @@ import type {
 import {
   fetchAllUsersWithEnrollments,
   toggleUserPremiumStatus,
+  upsertUserProfile,
   type UserWithEnrollmentDetails,
   type UserEnrollmentSummary,
 } from '../lib/supabase'
@@ -838,6 +840,168 @@ const isValidUrl = (value?: string | null) => {
   } catch {
     return false
   }
+}
+
+// ─── YouTube Videos Tab Component (Extracted to obey React Rules of Hooks) ────
+function YoutubeVideosTab({ search, setSearch }: { search: string; setSearch: (s: string) => void }) {
+  const videoStore = useVideoStore()
+  const videos = videoStore.videos
+  const [editingVideo, setEditingVideo] = useState<YouTubeVideo | null>(null)
+  const [formData, setFormData] = useState<Partial<YouTubeVideo>>({
+    youtubeUrl: '',
+    title: '',
+    description: '',
+    category: 'DSA',
+    featured: false,
+    status: 'Draft',
+  })
+  const [deleteVideoId, setDeleteVideoId] = useState<string | null>(null)
+
+  const categories: Array<import('../store/videoStore').VideoCategory> = [
+    'DSA', 'JEE', 'NEET', 'AI/ML', 'Counseling', 'Career Guidance', 'Interview Prep', 'Web Development', 'Python', 'Aptitude', 'Study Tips'
+  ]
+
+  const handleAdd = () => {
+    setEditingVideo(null)
+    setFormData({ youtubeUrl: '', title: '', description: '', category: 'DSA', featured: false, status: 'Draft' })
+  }
+
+  const handleEdit = (video: YouTubeVideo) => {
+    setEditingVideo(video)
+    setFormData(video)
+  }
+
+  const handleSave = () => {
+    if (!formData.youtubeUrl || !formData.title) {
+      toast.error('Please fill in required fields')
+      return
+    }
+    if (editingVideo) {
+      videoStore.updateVideo(editingVideo.id, formData as Partial<YouTubeVideo>)
+      toast.success('Video updated successfully')
+    } else {
+      videoStore.addVideo(formData as Omit<YouTubeVideo, 'id' | 'createdAt' | 'videoId' | 'thumbnail'>)
+      toast.success('Video added successfully')
+    }
+    setEditingVideo(null)
+    setFormData({ youtubeUrl: '', title: '', description: '', category: 'DSA', featured: false, status: 'Draft' })
+  }
+
+  const handleDelete = (id: string) => {
+    videoStore.deleteVideo(id)
+    toast.success('Video deleted successfully')
+    setDeleteVideoId(null)
+  }
+
+  const filtered = videos.filter(v => v.title.toLowerCase().includes(search.toLowerCase()))
+
+  return (
+    <div>
+      <SectionHeader title="YouTube Videos" count={videos.length} onAdd={handleAdd} addLabel="Add Video" />
+      <SearchBar value={search} onChange={setSearch} placeholder="Search videos..." />
+
+      {/* Edit Form */}
+      {editingVideo !== null && (
+        <div className="card p-6 mb-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+          <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text mb-4">{editingVideo ? 'Edit Video' : 'Add New Video'}</h3>
+          <div className="grid gap-4">
+            <div>
+              <label className="text-sm font-semibold text-brand-text dark:text-brand-dark-text mb-2 block">YouTube URL *</label>
+              <input type="url" value={formData.youtubeUrl || ''} onChange={(e) => setFormData({ ...formData, youtubeUrl: e.target.value })} placeholder="https://www.youtube.com/watch?v=..." className="w-full px-3 py-2 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text text-sm" />
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-brand-text dark:text-brand-dark-text mb-2 block">Video Title *</label>
+              <input type="text" value={formData.title || ''} onChange={(e) => setFormData({ ...formData, title: e.target.value })} placeholder="Enter video title" className="w-full px-3 py-2 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text text-sm" />
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-brand-text dark:text-brand-dark-text mb-2 block">Description</label>
+              <textarea value={formData.description || ''} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="Enter video description" rows={3} className="w-full px-3 py-2 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text text-sm" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-semibold text-brand-text dark:text-brand-dark-text mb-2 block">Category</label>
+                <select value={formData.category || 'DSA'} onChange={(e) => setFormData({ ...formData, category: e.target.value as any })} className="w-full px-3 py-2 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text text-sm">
+                  {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-brand-text dark:text-brand-dark-text mb-2 block">Status</label>
+                <select value={formData.status || 'Draft'} onChange={(e) => setFormData({ ...formData, status: e.target.value as 'Published' | 'Draft' })} className="w-full px-3 py-2 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text text-sm">
+                  <option value="Draft">Draft</option>
+                  <option value="Published">Published</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="featured" checked={formData.featured || false} onChange={(e) => setFormData({ ...formData, featured: e.target.checked })} className="rounded" />
+              <label htmlFor="featured" className="text-sm font-semibold text-brand-text dark:text-brand-dark-text">Featured Video</label>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={handleSave} className="flex-1 py-2.5 bg-primary-500 text-white rounded-lg font-semibold hover:bg-primary-600">Save Video</button>
+              <button onClick={() => { setEditingVideo(null); setFormData({ youtubeUrl: '', title: '', description: '', category: 'DSA', featured: false, status: 'Draft' }) }} className="flex-1 py-2.5 border border-brand-border dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text rounded-lg font-semibold hover:bg-gray-50 dark:hover:bg-white/5">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Videos List */}
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 dark:bg-white/5">
+              <tr>{['Thumbnail', 'Title', 'Category', 'Status', 'Featured', 'Order', 'Actions'].map(h => (
+                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
+              ))}</tr>
+            </thead>
+            <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
+              {filtered.map((video) => (
+                <tr key={video.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                  <td className="px-4 py-3">
+                    <img src={video.thumbnail} alt={video.title} className="w-16 h-9 rounded object-cover" onError={(e) => { e.currentTarget.src = 'https://via.placeholder.com/64x36?text=Thumbnail' }} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <div>
+                      <div className="font-medium text-brand-text dark:text-brand-dark-text line-clamp-1">{video.title}</div>
+                      <div className="text-xs text-brand-muted dark:text-brand-dark-muted">{video.uploadDate}</div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">{video.category}</span>
+                  </td>
+                  <td className="px-4 py-3"><StatusBadge status={video.status} /></td>
+                  <td className="px-4 py-3">{video.featured ? '⭐ Yes' : 'No'}</td>
+                  <td className="px-4 py-3 text-center">{video.order}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => videoStore.toggleFeatured(video.id)} className="p-1.5 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-900/20 text-yellow-600" title="Toggle featured">⭐</button>
+                      <button onClick={() => videoStore.toggleVideoStatus(video.id)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted"><EyeOff size={14} /></button>
+                      <button onClick={() => handleEdit(video)} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500"><Edit2 size={14} /></button>
+                      <button onClick={() => setDeleteVideoId(video.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 size={14} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-brand-muted text-sm">No videos found.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Delete Modal */}
+      <AnimatePresence>
+        {deleteVideoId && (
+          <DeleteModal
+            title={videos.find(v => v.id === deleteVideoId)?.title || ''}
+            itemType="Video"
+            onConfirm={() => handleDelete(deleteVideoId)}
+            onCancel={() => setDeleteVideoId(null)}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  )
 }
 
 // ─── Admin Dashboard ─────────────────────────────────────────────────────────
@@ -1478,6 +1642,14 @@ export default function AdminDashboard() {
   const [usersLoading, setUsersLoading] = useState(false)
   const [selectedUserDetail, setSelectedUserDetail] = useState<UserWithEnrollmentDetails | null>(null)
   const [userFilter, setUserFilter] = useState<'all' | 'paid' | 'free' | 'none'>('all')
+  const [studentModalTab, setStudentModalTab] = useState<'profile' | 'courses' | 'payments' | 'guidance'>('profile')
+  const [grantItemCategory, setGrantItemCategory] = useState<'course' | 'resource' | 'webinar'>('course')
+  const [grantItemId, setGrantItemId] = useState('')
+  const [grantAccessType, setGrantAccessType] = useState<'paid' | 'free'>('paid')
+  const [isGrantingAccess, setIsGrantingAccess] = useState(false)
+  const [quickLookupQuery, setQuickLookupQuery] = useState('')
+  const [editingAvatarUrl, setEditingAvatarUrl] = useState('')
+  const [savingAvatar, setSavingAvatar] = useState(false)
 
   // ─── Payment Approvals & Verification State ───────────────────────────────
   const [paymentRequests, setPaymentRequests] = useState<Enrollment[]>([])
@@ -1597,6 +1769,20 @@ export default function AdminDashboard() {
       loadMentorship()
     }
   }, [activeTab, loadMentorship])
+
+  // Ensure legacy mock numbers (e.g. 17,900 from initial demo) are sanitized to real data
+  useEffect(() => {
+    content.quizzes.forEach(q => {
+      if (q.participants === 3400 || q.participants === 5600 || q.participants === 8900) {
+        content.updateQuiz(q.id, { participants: 0 })
+      }
+    })
+    content.roadmaps.forEach(r => {
+      if (r.views === 45000 || r.views === 32000 || r.views === 28000) {
+        content.updateRoadmap(r.id, { views: 0 })
+      }
+    })
+  }, [content])
 
   // ─── Load career applications (Join Us form submissions) from Supabase ────
   const [careerApplications, setCareerApplications] = useState<CareerApplication[]>([])
@@ -2263,7 +2449,10 @@ export default function AdminDashboard() {
 
     const totalDownloads = dbResources.reduce((a, r) => a + (r.downloads ?? 0), 0)
     const totalEnrolled = dbCourses.reduce((a, c) => a + (c.enrolled ?? 0), 0)
-    const totalQuizParticipants = content.quizzes.reduce((a, q) => a + (q.participants ?? 0), 0)
+    const totalQuizParticipants = content.quizzes.reduce((a, q) => {
+      const p = (q.participants === 3400 || q.participants === 5600 || q.participants === 8900) ? 0 : (q.participants ?? 0)
+      return a + p
+    }, 0)
     const totalSessions = dbSessions.length
 
     return (
@@ -2509,7 +2698,7 @@ export default function AdminDashboard() {
                     <td className="px-4 py-3"><span className={`badge text-xs ${q.difficulty === 'Easy' ? 'bg-green-50 text-green-600' : q.difficulty === 'Medium' ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600'}`}>{q.difficulty}</span></td>
                     <td className="px-4 py-3 text-center text-brand-muted">{q.questions.length}</td>
                     <td className="px-4 py-3 text-brand-muted">{q.timeLimit}m</td>
-                    <td className="px-4 py-3 text-brand-muted">{(q.participants ?? 0).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-brand-muted">{(q.participants === 3400 || q.participants === 5600 || q.participants === 8900 ? 0 : (q.participants ?? 0)).toLocaleString()}</td>
                     <td className="px-4 py-3"><StatusBadge status={q.status} /></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
@@ -2853,177 +3042,12 @@ export default function AdminDashboard() {
     </div>
   )
 
-  // ─── YouTube Videos ──────────────────────────────────────────────────────────
-  const renderYoutubeVideos = () => {
-    const videoStore = useVideoStore()
-    const videos = videoStore.videos
-    const [editingVideo, setEditingVideo] = useState<YouTubeVideo | null>(null)
-    const [formData, setFormData] = useState<Partial<YouTubeVideo>>({
-      youtubeUrl: '',
-      title: '',
-      description: '',
-      category: 'DSA',
-      featured: false,
-      status: 'Draft',
-    })
-    const [deleteVideoId, setDeleteVideoId] = useState<string | null>(null)
-
-    const categories: Array<import('../store/videoStore').VideoCategory> = [
-      'DSA', 'JEE', 'NEET', 'AI/ML', 'Counseling', 'Career Guidance', 'Interview Prep', 'Web Development', 'Python', 'Aptitude', 'Study Tips'
-    ]
-
-    const handleAdd = () => {
-      setEditingVideo(null)
-      setFormData({ youtubeUrl: '', title: '', description: '', category: 'DSA', featured: false, status: 'Draft' })
-    }
-
-    const handleEdit = (video: YouTubeVideo) => {
-      setEditingVideo(video)
-      setFormData(video)
-    }
-
-    const handleSave = () => {
-      if (!formData.youtubeUrl || !formData.title) {
-        toast.error('Please fill in required fields')
-        return
-      }
-      if (editingVideo) {
-        videoStore.updateVideo(editingVideo.id, formData as Partial<YouTubeVideo>)
-        toast.success('Video updated successfully')
-      } else {
-        videoStore.addVideo(formData as Omit<YouTubeVideo, 'id' | 'createdAt' | 'videoId' | 'thumbnail'>)
-        toast.success('Video added successfully')
-      }
-      setEditingVideo(null)
-      setFormData({ youtubeUrl: '', title: '', description: '', category: 'DSA', featured: false, status: 'Draft' })
-    }
-
-    const handleDelete = (id: string) => {
-      videoStore.deleteVideo(id)
-      toast.success('Video deleted successfully')
-      setDeleteVideoId(null)
-    }
-
-    const filtered = videos.filter(v => v.title.toLowerCase().includes(search.toLowerCase()))
-
-    return (
-      <div>
-        <SectionHeader title="YouTube Videos" count={videos.length} onAdd={handleAdd} addLabel="Add Video" />
-        <SearchBar value={search} onChange={setSearch} placeholder="Search videos..." />
-
-        {/* Edit Form */}
-        {editingVideo !== null && (
-          <div className="card p-6 mb-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
-            <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text mb-4">{editingVideo ? 'Edit Video' : 'Add New Video'}</h3>
-            <div className="grid gap-4">
-              <div>
-                <label className="text-sm font-semibold text-brand-text dark:text-brand-dark-text mb-2 block">YouTube URL *</label>
-                <input type="url" value={formData.youtubeUrl || ''} onChange={(e) => setFormData({ ...formData, youtubeUrl: e.target.value })} placeholder="https://www.youtube.com/watch?v=..." className="w-full px-3 py-2 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text text-sm" />
-              </div>
-              <div>
-                <label className="text-sm font-semibold text-brand-text dark:text-brand-dark-text mb-2 block">Video Title *</label>
-                <input type="text" value={formData.title || ''} onChange={(e) => setFormData({ ...formData, title: e.target.value })} placeholder="Enter video title" className="w-full px-3 py-2 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text text-sm" />
-              </div>
-              <div>
-                <label className="text-sm font-semibold text-brand-text dark:text-brand-dark-text mb-2 block">Description</label>
-                <textarea value={formData.description || ''} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="Enter video description" rows={3} className="w-full px-3 py-2 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text text-sm" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-semibold text-brand-text dark:text-brand-dark-text mb-2 block">Category</label>
-                  <select value={formData.category || 'DSA'} onChange={(e) => setFormData({ ...formData, category: e.target.value as any })} className="w-full px-3 py-2 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text text-sm">
-                    {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm font-semibold text-brand-text dark:text-brand-dark-text mb-2 block">Status</label>
-                  <select value={formData.status || 'Draft'} onChange={(e) => setFormData({ ...formData, status: e.target.value as 'Published' | 'Draft' })} className="w-full px-3 py-2 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text text-sm">
-                    <option value="Draft">Draft</option>
-                    <option value="Published">Published</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="featured" checked={formData.featured || false} onChange={(e) => setFormData({ ...formData, featured: e.target.checked })} className="rounded" />
-                <label htmlFor="featured" className="text-sm font-semibold text-brand-text dark:text-brand-dark-text">Featured Video</label>
-              </div>
-              <div className="flex gap-3">
-                <button onClick={handleSave} className="flex-1 py-2.5 bg-primary-500 text-white rounded-lg font-semibold hover:bg-primary-600">Save Video</button>
-                <button onClick={() => { setEditingVideo(null); setFormData({ youtubeUrl: '', title: '', description: '', category: 'DSA', featured: false, status: 'Draft' }) }} className="flex-1 py-2.5 border border-brand-border dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text rounded-lg font-semibold hover:bg-gray-50 dark:hover:bg-white/5">Cancel</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Videos List */}
-        <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-white/5">
-                <tr>{['Thumbnail', 'Title', 'Category', 'Status', 'Featured', 'Order', 'Actions'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
-                ))}</tr>
-              </thead>
-              <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
-                {filtered.map((video) => (
-                  <tr key={video.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
-                    <td className="px-4 py-3">
-                      <img src={video.thumbnail} alt={video.title} className="w-16 h-9 rounded object-cover" onError={(e) => { e.currentTarget.src = 'https://via.placeholder.com/64x36?text=Thumbnail' }} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div>
-                        <div className="font-medium text-brand-text dark:text-brand-dark-text line-clamp-1">{video.title}</div>
-                        <div className="text-xs text-brand-muted dark:text-brand-dark-muted">{video.uploadDate}</div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">{video.category}</span>
-                    </td>
-                    <td className="px-4 py-3"><StatusBadge status={video.status} /></td>
-                    <td className="px-4 py-3">{video.featured ? '⭐ Yes' : 'No'}</td>
-                    <td className="px-4 py-3 text-center">{video.order}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => videoStore.toggleFeatured(video.id)} className="p-1.5 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-900/20 text-yellow-600" title="Toggle featured">⭐</button>
-                        <button onClick={() => videoStore.toggleVideoStatus(video.id)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted"><EyeOff size={14} /></button>
-                        <button onClick={() => handleEdit(video)} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500"><Edit2 size={14} /></button>
-                        <button onClick={() => setDeleteVideoId(video.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 size={14} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-brand-muted text-sm">No videos found.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Delete Modal */}
-        <AnimatePresence>
-          {deleteVideoId && (
-            <DeleteModal
-              title={videos.find(v => v.id === deleteVideoId)?.title || ''}
-              itemType="Video"
-              onConfirm={() => handleDelete(deleteVideoId)}
-              onCancel={() => setDeleteVideoId(null)}
-            />
-          )}
-        </AnimatePresence>
-      </div>
-    )
-  }
-
-  // ─── Users (Supabase Profiles & Paid Courses) ──────────────────────────────
+  // ─── Users (Supabase Profiles, Avatars & Granular Access Controller) ───────
   const renderUsers = () => {
-    const getInitials = (name: string) =>
-      (name || 'User')
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2)
+    const getStudentAvatarUrl = (name?: string, avatarUrl?: string) => {
+      if (avatarUrl && avatarUrl.trim()) return avatarUrl
+      return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'Student')}&background=6366f1&color=fff&bold=true&font-size=0.45`
+    }
 
     const searchLower = search.toLowerCase()
     const filtered = dbUsers.filter((u) => {
@@ -3031,7 +3055,8 @@ export default function AdminDashboard() {
         (u.name || '').toLowerCase().includes(searchLower) ||
         (u.email || '').toLowerCase().includes(searchLower) ||
         (u.college || '').toLowerCase().includes(searchLower) ||
-        (u.phone || '').toLowerCase().includes(searchLower)
+        (u.phone || '').toLowerCase().includes(searchLower) ||
+        (u.id || '').toLowerCase().includes(searchLower)
       if (!matchText) return false
 
       if (userFilter === 'paid') return u.hasPaidCourses
@@ -3044,44 +3069,248 @@ export default function AdminDashboard() {
     const totalPaidLearners = dbUsers.filter((u) => u.hasPaidCourses).length
     const totalFreeLearners = dbUsers.filter((u) => u.freeCoursesCount > 0 && !u.hasPaidCourses).length
 
+    // Toggle Master All-Access Pass
     const handleTogglePremium = async (u: UserWithEnrollmentDetails) => {
       const newStatus = !u.is_premium
       const ok = await toggleUserPremiumStatus(u.id, newStatus)
       if (ok) {
         toast.success(newStatus ? `Granted All-Access Premium to ${u.name}! ⭐` : `Revoked Premium access for ${u.name}`)
-        setDbUsers(prev => prev.map(item => item.id === u.id ? { ...item, is_premium: newStatus } : item))
+        setDbUsers((prev) => prev.map((item) => (item.id === u.id ? { ...item, is_premium: newStatus } : item)))
         if (selectedUserDetail && selectedUserDetail.id === u.id) {
-          setSelectedUserDetail(prev => prev ? { ...prev, is_premium: newStatus } : null)
+          setSelectedUserDetail((prev) => (prev ? { ...prev, is_premium: newStatus } : null))
         }
       } else {
         toast.error('Failed to update premium membership')
       }
     }
 
+    // Save/Update Custom Student Avatar
+    const handleSaveAvatar = async () => {
+      if (!selectedUserDetail) return
+      if (!editingAvatarUrl.trim()) {
+        toast.error('Please enter a valid avatar image URL')
+        return
+      }
+
+      setSavingAvatar(true)
+      try {
+        await upsertUserProfile({
+          id: selectedUserDetail.id,
+          avatar_url: editingAvatarUrl.trim(),
+        })
+
+        toast.success('Student avatar updated successfully! 🖼️')
+        setSelectedUserDetail((prev) => (prev ? { ...prev, avatar_url: editingAvatarUrl.trim() } : null))
+        setDbUsers((prev) =>
+          prev.map((u) => (u.id === selectedUserDetail.id ? { ...u, avatar_url: editingAvatarUrl.trim() } : u))
+        )
+        setEditingAvatarUrl('')
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to update avatar')
+      } finally {
+        setSavingAvatar(false)
+      }
+    }
+
+    // Grant access to ANY specific item (Course, Study Notes/Resource, Webinar)
+    const handleGrantSpecificAccess = async () => {
+      if (!selectedUserDetail || !grantItemId) {
+        toast.error('Please select an item to grant access to')
+        return
+      }
+
+      let itemTitle = ''
+      let defaultPrice = 0
+
+      if (grantItemCategory === 'course') {
+        const c = dbCourses.find((item) => item.id === grantItemId)
+        if (!c) {
+          toast.error('Course not found')
+          return
+        }
+        itemTitle = c.title
+        defaultPrice = typeof c.price === 'number' ? c.price : 0
+      } else if (grantItemCategory === 'resource') {
+        const r = dbResources.find((item) => String(item.id) === grantItemId)
+        if (!r) {
+          toast.error('Resource not found')
+          return
+        }
+        itemTitle = `[Study Notes] ${r.title}`
+        defaultPrice = r.isPremium ? 99 : 0
+      } else if (grantItemCategory === 'webinar') {
+        const w = liveWebinars.find((item) => item.id === grantItemId)
+        if (!w) {
+          toast.error('Webinar not found')
+          return
+        }
+        itemTitle = `[Webinar] ${w.title}`
+        defaultPrice = 199
+      }
+
+      if (selectedUserDetail.enrollments.some((e) => e.courseId === grantItemId)) {
+        toast.error(`Student already has access to "${itemTitle}"`)
+        return
+      }
+
+      setIsGrantingAccess(true)
+      try {
+        const parts = (selectedUserDetail.name || '').trim().split(' ')
+        const firstName = parts[0] || 'Student'
+        const lastName = parts.slice(1).join(' ') || ''
+        const courseAmount = grantAccessType === 'paid' ? defaultPrice : 0
+
+        const newEnr = await createEnrollment({
+          courseId: grantItemId,
+          userId: selectedUserDetail.id,
+          firstName,
+          lastName,
+          email: selectedUserDetail.email,
+          phone: selectedUserDetail.phone || '',
+          status: grantAccessType,
+          amount: courseAmount,
+          itemTitle,
+          itemType: grantItemCategory,
+          utrNumber: 'Granted by Skills021',
+        })
+
+        toast.success(`Access granted to "${itemTitle}"! 🎉`)
+        setGrantItemId('')
+
+        const summaryItem: UserEnrollmentSummary = {
+          id: newEnr.id,
+          courseId: newEnr.courseId,
+          courseTitle: itemTitle,
+          firstName: newEnr.firstName,
+          lastName: newEnr.lastName,
+          email: newEnr.email,
+          phone: newEnr.phone,
+          amount: newEnr.amount,
+          paymentStatus: (newEnr.status === 'paid' ? 'paid' : 'free') as 'paid' | 'free',
+          status: 'active',
+          createdAt: newEnr.createdAt,
+        }
+
+        setSelectedUserDetail((prev) =>
+          prev
+            ? {
+                ...prev,
+                enrollments: [summaryItem, ...prev.enrollments],
+                totalCoursesCount: prev.totalCoursesCount + 1,
+                paidCoursesCount: grantAccessType === 'paid' ? prev.paidCoursesCount + 1 : prev.paidCoursesCount,
+                freeCoursesCount: grantAccessType === 'free' ? prev.freeCoursesCount + 1 : prev.freeCoursesCount,
+                hasPaidCourses: prev.hasPaidCourses || grantAccessType === 'paid',
+              }
+            : null
+        )
+
+        setDbUsers((prev) =>
+          prev.map((u) =>
+            u.id === selectedUserDetail.id
+              ? {
+                  ...u,
+                  enrollments: [summaryItem, ...u.enrollments],
+                  totalCoursesCount: u.totalCoursesCount + 1,
+                  paidCoursesCount: grantAccessType === 'paid' ? u.paidCoursesCount + 1 : u.paidCoursesCount,
+                  freeCoursesCount: grantAccessType === 'free' ? u.freeCoursesCount + 1 : u.freeCoursesCount,
+                  hasPaidCourses: u.hasPaidCourses || grantAccessType === 'paid',
+                }
+              : u
+          )
+        )
+
+        loadPaymentRequests()
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to grant access')
+      } finally {
+        setIsGrantingAccess(false)
+      }
+    }
+
+    // Revoke / Take Away access to ANY specific item
+    const handleRevokeSpecificAccess = async (enrollmentId: string, itemTitle?: string) => {
+      if (!selectedUserDetail) return
+      try {
+        await revokeAccess(enrollmentId, 'Access revoked by Skills021')
+        toast.success(`Access to "${itemTitle || 'item'}" revoked! 🔒`)
+
+        const enr = selectedUserDetail.enrollments.find((e) => e.id === enrollmentId)
+        const isPaid = enr?.paymentStatus === 'paid' || (enr?.amount ?? 0) > 0
+
+        setSelectedUserDetail((prev) =>
+          prev
+            ? {
+                ...prev,
+                enrollments: prev.enrollments.filter((e) => e.id !== enrollmentId),
+                totalCoursesCount: Math.max(0, prev.totalCoursesCount - 1),
+                paidCoursesCount: Math.max(0, prev.paidCoursesCount - (isPaid ? 1 : 0)),
+                freeCoursesCount: Math.max(0, prev.freeCoursesCount - (!isPaid ? 1 : 0)),
+                hasPaidCourses: prev.enrollments
+                  .filter((e) => e.id !== enrollmentId)
+                  .some((e) => e.paymentStatus === 'paid' || e.amount > 0),
+              }
+            : null
+        )
+
+        setDbUsers((prev) =>
+          prev.map((u) =>
+            u.id === selectedUserDetail.id
+              ? {
+                  ...u,
+                  enrollments: u.enrollments.filter((e) => e.id !== enrollmentId),
+                  totalCoursesCount: Math.max(0, u.totalCoursesCount - 1),
+                  paidCoursesCount: Math.max(0, u.paidCoursesCount - (isPaid ? 1 : 0)),
+                  freeCoursesCount: Math.max(0, u.freeCoursesCount - (!isPaid ? 1 : 0)),
+                  hasPaidCourses: u.enrollments
+                    .filter((e) => e.id !== enrollmentId)
+                    .some((e) => e.paymentStatus === 'paid' || e.amount > 0),
+                }
+              : u
+          )
+        )
+
+        loadPaymentRequests()
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to revoke access')
+      }
+    }
+
     return (
       <div className="space-y-6">
+        {/* Header Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">Manage Users & Enrollments</h2>
+            <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">Student Lookup & Access Control</h2>
             <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">
-              Live user profiles, premium memberships & course purchase records synced
+              Inspect any student's complete dossier, see their avatar, and grant or revoke access to any specific course, notes, or webinar
             </p>
           </div>
 
-          <button
-            onClick={loadDbUsers}
-            disabled={usersLoading}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-brand-border dark:border-brand-dark-border text-xs font-semibold text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-          >
-            <RefreshCw size={13} className={usersLoading ? 'animate-spin' : ''} /> Refresh Data
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={loadDbUsers}
+              disabled={usersLoading}
+              className="btn-secondary text-xs py-2 px-3 flex items-center gap-1.5"
+            >
+              <RefreshCw size={13} className={usersLoading ? 'animate-spin' : ''} /> Refresh Students
+            </button>
+            <span className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-primary-500/10 text-primary-600 dark:text-primary-400 border border-primary-500/20">
+              Total Spend: ₹{totalPaidRevenue.toLocaleString()}
+            </span>
+          </div>
         </div>
 
         {/* Metric Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="card p-4">
-            <p className="text-xs text-brand-muted dark:text-brand-dark-muted font-medium">Total Registered Users</p>
+            <p className="text-xs text-brand-muted dark:text-brand-dark-muted font-medium">Total Registered Students</p>
             <p className="text-2xl font-bold text-brand-text dark:text-brand-dark-text mt-1">{dbUsers.length}</p>
+          </div>
+          <div className="card p-4">
+            <p className="text-xs text-amber-500 font-medium flex items-center gap-1">
+              <Sparkles size={12} /> All-Access Pass Holders
+            </p>
+            <p className="text-2xl font-bold text-amber-500 mt-1">{dbUsers.filter((u) => u.is_premium).length}</p>
           </div>
           <div className="card p-4">
             <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Paid Course Students</p>
@@ -3091,19 +3320,140 @@ export default function AdminDashboard() {
             <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">Free Course Students</p>
             <p className="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">{totalFreeLearners}</p>
           </div>
-          <div className="card p-4">
-            <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">Total Paid Revenue</p>
-            <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">₹{totalPaidRevenue.toLocaleString()}</p>
-          </div>
         </div>
 
-        {/* Search and Filters */}
-        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-          <div className="relative flex-1 max-w-sm">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
+        {/* ─── QUICK STUDENT LOOKUP HUB ────────────────────────────────────────── */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-primary-500/10 via-indigo-500/10 to-amber-500/10 border border-primary-500/30 shadow-sm space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-primary-500 text-white shadow-md">
+                <Search size={16} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-brand-text dark:text-brand-dark-text">
+                  Instant Student Lookup & Quick Access Hub
+                </h3>
+                <p className="text-xs text-brand-muted dark:text-brand-dark-muted">
+                  Search any student by name, email, phone, college, or user ID to instantly inspect and grant/revoke access
+                </p>
+              </div>
+            </div>
+            <span className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border text-brand-muted w-fit">
+              {dbUsers.length} Students Indexed
+            </span>
+          </div>
+
+          <div className="relative">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-primary-500" />
             <input
               type="text"
-              placeholder="Search by name, email, phone or college..."
+              placeholder="Type student name, email (e.g. rahul@...), phone, or college to look up..."
+              value={quickLookupQuery}
+              onChange={(e) => setQuickLookupQuery(e.target.value)}
+              className="input pl-10 pr-10 text-xs py-2.5 bg-white dark:bg-brand-dark-card border-primary-500/30 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 shadow-inner"
+            />
+            {quickLookupQuery && (
+              <button
+                onClick={() => setQuickLookupQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted hover:text-brand-text text-xs p-1"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Real-time Match Results with Avatars */}
+          {quickLookupQuery.trim().length > 0 && (
+            <div className="mt-2 bg-white dark:bg-brand-dark-card rounded-xl border border-primary-500/30 shadow-xl overflow-hidden divide-y divide-brand-border dark:divide-brand-dark-border max-h-80 overflow-y-auto">
+              {(() => {
+                const q = quickLookupQuery.toLowerCase().trim()
+                const matches = dbUsers.filter(
+                  (u) =>
+                    (u.name || '').toLowerCase().includes(q) ||
+                    (u.email || '').toLowerCase().includes(q) ||
+                    (u.phone || '').toLowerCase().includes(q) ||
+                    (u.college || '').toLowerCase().includes(q) ||
+                    (u.id || '').toLowerCase().includes(q)
+                )
+
+                if (matches.length === 0) {
+                  return (
+                    <div className="p-6 text-center text-xs text-brand-muted">
+                      No student found matching "{quickLookupQuery}". Try searching with another email or name.
+                    </div>
+                  )
+                }
+
+                return matches.slice(0, 8).map((u) => (
+                  <div
+                    key={u.id}
+                    className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-primary-50/50 dark:hover:bg-white/5 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      {/* Avatar */}
+                      <div className="w-11 h-11 rounded-xl overflow-hidden ring-2 ring-primary-500/30 shadow-md flex-shrink-0 bg-primary-500/10">
+                        <img
+                          src={getStudentAvatarUrl(u.name, u.avatar_url)}
+                          alt={u.name}
+                          onError={(e) => {
+                            e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name || 'User')}&background=6366f1&color=fff&bold=true`
+                          }}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-bold text-xs text-brand-text dark:text-brand-dark-text truncate">{u.name}</p>
+                          {u.is_premium && (
+                            <span className="badge text-[9px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-bold">
+                              ⭐ ALL-ACCESS PASS
+                            </span>
+                          )}
+                          <span className="badge text-[9px] bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
+                            {u.enrollments.length} Item{u.enrollments.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-brand-muted truncate mt-0.5">
+                          {u.email} • {u.college || 'Institution N/A'} • {u.phone || 'No phone'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => {
+                          setSelectedUserDetail(u)
+                          setStudentModalTab('courses')
+                        }}
+                        className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+                      >
+                        Manage Access
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setSelectedUserDetail(u)
+                          setStudentModalTab('profile')
+                        }}
+                        className="text-[11px] font-bold px-3 py-1.5 rounded-lg bg-primary-500 text-white hover:bg-primary-600 shadow-sm flex items-center gap-1 transition-all"
+                      >
+                        <Eye size={12} /> Inspect Dossier
+                      </button>
+                    </div>
+                  </div>
+                ))
+              })()}
+            </div>
+          )}
+        </div>
+
+        {/* Filter Controls */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="relative flex-1 max-w-sm">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
+            <input
+              type="text"
+              placeholder="Filter table by name, email, phone or college..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="input pl-9 text-xs"
@@ -3112,7 +3462,7 @@ export default function AdminDashboard() {
 
           <div className="flex gap-1.5 flex-wrap">
             {[
-              { id: 'all', label: `All Users (${dbUsers.length})` },
+              { id: 'all', label: `All Students (${dbUsers.length})` },
               { id: 'paid', label: `Paid Students (${totalPaidLearners})` },
               { id: 'free', label: `Free Only (${totalFreeLearners})` },
               { id: 'none', label: `No Enrollments` },
@@ -3120,10 +3470,11 @@ export default function AdminDashboard() {
               <button
                 key={f.id}
                 onClick={() => setUserFilter(f.id as any)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${userFilter === f.id
-                  ? 'bg-primary-500 text-white shadow-sm'
-                  : 'bg-gray-100 dark:bg-white/5 text-brand-muted hover:bg-gray-200 dark:hover:bg-white/10'
-                  }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  userFilter === f.id
+                    ? 'bg-primary-500 text-white shadow-sm'
+                    : 'bg-gray-100 dark:bg-white/5 text-brand-muted hover:bg-gray-200 dark:hover:bg-white/10'
+                }`}
               >
                 {f.label}
               </button>
@@ -3137,14 +3488,16 @@ export default function AdminDashboard() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-white/5">
                 <tr>
-                  {['Student', 'Contact & College', 'Role', 'Membership & Access', 'Paid Courses Taken', 'Total Courses', 'Joined Date', 'Actions'].map((h) => (
-                    <th
-                      key={h}
-                      className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap"
-                    >
-                      {h}
-                    </th>
-                  ))}
+                  {['Student & Avatar', 'Contact & College', 'Role', 'Membership & Access', 'Paid Items Taken', 'Total Granted', 'Joined Date', 'Actions'].map(
+                    (h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider whitespace-nowrap"
+                      >
+                        {h}
+                      </th>
+                    )
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
@@ -3152,22 +3505,27 @@ export default function AdminDashboard() {
                   <tr>
                     <td colSpan={8} className="px-4 py-12 text-center text-brand-muted text-sm">
                       <Loader2 size={24} className="animate-spin mx-auto text-primary-500 mb-2" />
-                      Loading users...
+                      Loading students...
                     </td>
                   </tr>
                 ) : (
                   filtered.map((u) => (
                     <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                      {/* Student */}
+                      {/* Student & Avatar */}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-primary-500/10 dark:bg-primary-500/20 text-primary-600 dark:text-primary-400 font-bold flex items-center justify-center text-xs flex-shrink-0">
-                            {getInitials(u.name || 'U')}
+                          <div className="w-10 h-10 rounded-xl overflow-hidden ring-2 ring-primary-500/20 shadow-sm flex-shrink-0 bg-primary-500/10">
+                            <img
+                              src={getStudentAvatarUrl(u.name, u.avatar_url)}
+                              alt={u.name}
+                              onError={(e) => {
+                                e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name || 'User')}&background=6366f1&color=fff&bold=true`
+                              }}
+                              className="w-full h-full object-cover"
+                            />
                           </div>
                           <div className="min-w-0">
-                            <p className="font-semibold text-brand-text dark:text-brand-dark-text text-sm leading-snug truncate">
-                              {u.name}
-                            </p>
+                            <p className="font-semibold text-brand-text dark:text-brand-dark-text text-sm leading-snug truncate">{u.name}</p>
                             <p className="text-xs text-brand-muted dark:text-brand-dark-muted truncate">{u.email}</p>
                           </div>
                         </div>
@@ -3176,18 +3534,17 @@ export default function AdminDashboard() {
                       {/* Contact & College */}
                       <td className="px-4 py-3 text-xs">
                         <div className="text-brand-text dark:text-brand-dark-text font-medium">{u.college}</div>
-                        <div className="text-brand-muted dark:text-brand-dark-muted text-[11px] mt-0.5">
-                          {u.phone || 'No phone'}
-                        </div>
+                        <div className="text-brand-muted dark:text-brand-dark-muted text-[11px] mt-0.5">{u.phone || 'No phone'}</div>
                       </td>
 
                       {/* Role */}
                       <td className="px-4 py-3">
                         <span
-                          className={`badge text-xs ${u.role === 'admin'
-                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 font-semibold'
-                            : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300'
-                            }`}
+                          className={`badge text-xs ${
+                            u.role === 'admin'
+                              ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 font-semibold'
+                              : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300'
+                          }`}
                         >
                           {u.role}
                         </span>
@@ -3202,20 +3559,17 @@ export default function AdminDashboard() {
                             </span>
                           ) : u.hasPaidCourses ? (
                             <span className="badge text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 font-semibold">
-                              COURSE PURCHASER
+                              PAID MEMBER
                             </span>
                           ) : (
-                            <span className="badge text-[10px] bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400">
-                              Free Standard
-                            </span>
+                            <span className="badge text-[10px] bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400">Free Standard</span>
                           )}
                           <div>
                             <button
                               onClick={() => handleTogglePremium(u)}
-                              className={`text-[10px] font-semibold underline transition-colors ${u.is_premium
-                                ? 'text-red-500 hover:text-red-600'
-                                : 'text-primary-600 dark:text-primary-400 hover:text-primary-700'
-                                }`}
+                              className={`text-[10px] font-semibold underline transition-colors ${
+                                u.is_premium ? 'text-red-500 hover:text-red-600' : 'text-primary-600 dark:text-primary-400 hover:text-primary-700'
+                              }`}
                             >
                               {u.is_premium ? 'Revoke Premium' : '+ Grant All-Access'}
                             </button>
@@ -3223,29 +3577,16 @@ export default function AdminDashboard() {
                         </div>
                       </td>
 
-                      {/* Paid Courses Taken */}
-                      <td className="px-4 py-3">
-                        {u.hasPaidCourses ? (
-                          <div className="space-y-1">
-                            <span className="badge text-[11px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 font-bold">
-                              PAID ({u.paidCoursesCount})
-                            </span>
-                            <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                              ₹{u.totalAmountPaid.toLocaleString()} paid
-                            </p>
-                          </div>
-                        ) : u.freeCoursesCount > 0 ? (
-                          <span className="badge text-[11px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-semibold">
-                            Free Courses ({u.freeCoursesCount})
-                          </span>
-                        ) : (
-                          <span className="text-xs text-brand-muted dark:text-brand-dark-muted italic">None</span>
-                        )}
+                      {/* Paid Items Taken */}
+                      <td className="px-4 py-3 text-xs">
+                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                          {u.paidCoursesCount} items (₹{u.totalAmountPaid.toLocaleString()})
+                        </span>
                       </td>
 
-                      {/* Total Courses */}
+                      {/* Total Granted */}
                       <td className="px-4 py-3 text-xs font-semibold text-brand-text dark:text-brand-dark-text">
-                        {u.totalCoursesCount} course{u.totalCoursesCount !== 1 ? 's' : ''}
+                        {u.totalCoursesCount} item{u.totalCoursesCount !== 1 ? 's' : ''}
                       </td>
 
                       {/* Joined Date */}
@@ -3255,12 +3596,17 @@ export default function AdminDashboard() {
 
                       {/* Actions */}
                       <td className="px-4 py-3">
-                        <button
-                          onClick={() => setSelectedUserDetail(u)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/40 text-xs font-semibold transition-colors"
-                        >
-                          <Eye size={12} /> View Details
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              setSelectedUserDetail(u)
+                              setStudentModalTab('profile')
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/40 text-xs font-semibold transition-colors"
+                          >
+                            <Eye size={12} /> Inspect Dossier
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -3268,7 +3614,7 @@ export default function AdminDashboard() {
                 {!usersLoading && filtered.length === 0 && (
                   <tr>
                     <td colSpan={8} className="px-4 py-12 text-center text-brand-muted text-sm">
-                      No users found matching your search.
+                      No students found matching your search.
                     </td>
                   </tr>
                 )}
@@ -3277,7 +3623,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Selected User Course & Enrollment Details Modal */}
+        {/* ─── 360° STUDENT DOSSIER & GRANULAR ACCESS MANAGEMENT MODAL ────────── */}
         <AnimatePresence>
           {selectedUserDetail && (
             <motion.div
@@ -3285,158 +3631,718 @@ export default function AdminDashboard() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setSelectedUserDetail(null)}
-              className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+              className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4"
             >
               <motion.div
                 initial={{ scale: 0.95, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.95, opacity: 0 }}
                 onClick={(e) => e.stopPropagation()}
-                className="relative w-full max-w-2xl bg-white dark:bg-brand-dark-card rounded-2xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col"
+                className="relative w-full max-w-4xl bg-white dark:bg-brand-dark-card rounded-2xl overflow-hidden shadow-2xl max-h-[92vh] flex flex-col border border-brand-border dark:border-brand-dark-border"
               >
-                {/* Header */}
-                <div className="p-6 border-b border-brand-border dark:border-brand-dark-border flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-primary-500 text-white font-bold flex items-center justify-center text-base">
-                      {getInitials(selectedUserDetail.name || 'U')}
+                {/* Modal Header with Large Avatar Display */}
+                <div className="p-5 sm:p-6 border-b border-brand-border dark:border-brand-dark-border bg-gray-50/50 dark:bg-white/[0.02] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="relative flex-shrink-0">
+                      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden ring-4 ring-primary-500/30 shadow-xl bg-gradient-to-br from-primary-500 to-indigo-600">
+                        <img
+                          src={getStudentAvatarUrl(selectedUserDetail.name, selectedUserDetail.avatar_url)}
+                          alt={selectedUserDetail.name}
+                          onError={(e) => {
+                            e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedUserDetail.name || 'User')}&background=6366f1&color=fff&bold=true`
+                          }}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      {selectedUserDetail.is_premium && (
+                        <span className="absolute -bottom-1 -right-1 p-1 bg-amber-500 text-black rounded-full shadow-md" title="All-Access Premium Active">
+                          <Sparkles size={13} />
+                        </span>
+                      )}
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">
+
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text truncate">
                           {selectedUserDetail.name}
                         </h3>
-                        {selectedUserDetail.is_premium && (
-                          <span className="badge text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-bold">
-                            ⭐ PREMIUM ALL-ACCESS
+                        {selectedUserDetail.is_premium ? (
+                          <span className="badge text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-bold flex items-center gap-1 shadow-sm">
+                            <Sparkles size={11} /> ALL-ACCESS PREMIUM ACTIVE
+                          </span>
+                        ) : (
+                          <span className="badge text-[10px] bg-gray-100 dark:bg-white/10 text-brand-muted">
+                            Standard Student
                           </span>
                         )}
+                        <span className="badge text-[10px] bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                          {selectedUserDetail.role}
+                        </span>
                       </div>
-                      <p className="text-xs text-brand-muted dark:text-brand-dark-muted">{selectedUserDetail.email}</p>
+                      <p className="text-xs text-brand-muted dark:text-brand-dark-muted truncate mt-0.5">
+                        {selectedUserDetail.email} • ID: <span className="font-mono text-[11px]">{selectedUserDetail.id}</span>
+                      </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setSelectedUserDetail(null)}
-                    className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
 
-                {/* User Info Overview */}
-                <div className="p-6 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-gray-50 dark:bg-white/5 border-b border-brand-border dark:border-brand-dark-border">
-                  <div>
-                    <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">Phone</span>
-                    <span className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
-                      {selectedUserDetail.phone || 'N/A'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">College</span>
-                    <span className="text-xs font-semibold text-brand-text dark:text-brand-dark-text truncate block">
-                      {selectedUserDetail.college}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">Paid Courses</span>
-                    <span className="text-xs font-bold text-emerald-500">
-                      {selectedUserDetail.paidCoursesCount} (₹{selectedUserDetail.totalAmountPaid.toLocaleString()})
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">Joined Date</span>
-                    <span className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
-                      {selectedUserDetail.created_at
-                        ? new Date(selectedUserDetail.created_at).toLocaleDateString()
-                        : 'N/A'}
-                    </span>
+                  {/* Header Actions */}
+                  <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
+                    <button
+                      onClick={() => handleTogglePremium(selectedUserDetail)}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ${
+                        selectedUserDetail.is_premium
+                          ? 'bg-red-500/10 text-red-600 border border-red-500/20 hover:bg-red-500 hover:text-white'
+                          : 'bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500'
+                      }`}
+                    >
+                      {selectedUserDetail.is_premium ? (
+                        <>
+                          <ShieldAlert size={14} /> Revoke All-Access Pass
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={14} /> ⭐ Grant All-Access Pass
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() => setSelectedUserDetail(null)}
+                      className="p-2 rounded-xl hover:bg-gray-200 dark:hover:bg-white/10 text-brand-muted transition-colors"
+                      title="Close"
+                    >
+                      <X size={18} />
+                    </button>
                   </div>
                 </div>
 
-                {/* Enrolled Courses List */}
-                <div className="p-6 overflow-y-auto flex-1 space-y-4">
-                  <h4 className="font-bold text-sm text-brand-text dark:text-brand-dark-text flex items-center justify-between">
-                    <span>Courses Taken ({selectedUserDetail.enrollments.length})</span>
-                    <span className="text-xs font-normal text-brand-muted">Active Record</span>
-                  </h4>
+                {/* Modal Navigation Tabs */}
+                <div className="flex items-center gap-1 px-6 border-b border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card overflow-x-auto">
+                  {[
+                    { id: 'profile', label: '📋 Profile & Academics', count: null },
+                    { id: 'courses', label: '🎓 Permissions & Access Control', count: selectedUserDetail.enrollments.length },
+                    {
+                      id: 'payments',
+                      label: '💳 Payments & Proofs',
+                      count: paymentRequests.filter(
+                        (p) => p.userId === selectedUserDetail.id || p.email?.toLowerCase() === selectedUserDetail.email.toLowerCase()
+                      ).length,
+                    },
+                    {
+                      id: 'guidance',
+                      label: '💬 Guidance & Mentorship',
+                      count:
+                        dbGuidanceRequests.filter(
+                          (g) =>
+                            (g.email && g.email.toLowerCase() === selectedUserDetail.email.toLowerCase()) ||
+                            (g.fullName && g.fullName.toLowerCase() === selectedUserDetail.name.toLowerCase())
+                        ).length +
+                        dbSessions.filter(
+                          (s) =>
+                            s.studentEmail?.toLowerCase() === selectedUserDetail.email.toLowerCase() ||
+                            s.studentName?.toLowerCase() === selectedUserDetail.name.toLowerCase()
+                        ).length,
+                    },
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setStudentModalTab(t.id as any)}
+                      className={`px-3.5 py-3 text-xs font-semibold whitespace-nowrap border-b-2 transition-all flex items-center gap-1.5 ${
+                        studentModalTab === t.id
+                          ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                          : 'border-transparent text-brand-muted hover:text-brand-text dark:hover:text-brand-dark-text'
+                      }`}
+                    >
+                      {t.label}
+                      {t.count !== null && t.count > 0 && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-primary-500/10 text-primary-600 dark:text-primary-400 font-bold">
+                          {t.count}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
 
-                  {selectedUserDetail.enrollments.length === 0 ? (
-                    <div className="py-8 text-center text-brand-muted text-xs">
-                      No course enrollments recorded for this user.
-                    </div>
-                  ) : (
-                    <div className="space-y-2.5">
-                      {selectedUserDetail.enrollments.map((enr) => {
-                        const isPaid = enr.paymentStatus === 'paid' || enr.amount > 0
-                        return (
-                          <div
-                            key={enr.id}
-                            className="p-3.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg flex items-center justify-between gap-4"
+                {/* Modal Content Body */}
+                <div className="p-6 overflow-y-auto flex-1 space-y-6">
+                  {/* TAB 1: Profile & Academics */}
+                  {studentModalTab === 'profile' && (
+                    <div className="space-y-6">
+                      {/* Avatar Management Card */}
+                      <div className="p-4 rounded-xl bg-gray-50 dark:bg-white/5 border border-brand-border dark:border-brand-dark-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={getStudentAvatarUrl(selectedUserDetail.name, selectedUserDetail.avatar_url)}
+                            alt={selectedUserDetail.name}
+                            onError={(e) => {
+                              e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedUserDetail.name || 'User')}&background=6366f1&color=fff&bold=true`
+                            }}
+                            className="w-12 h-12 rounded-xl object-cover ring-2 ring-primary-500/30 shadow-sm"
+                          />
+                          <div>
+                            <p className="text-xs font-bold text-brand-text dark:text-brand-dark-text">Student Profile Avatar</p>
+                            <p className="text-[11px] text-brand-muted truncate max-w-xs">
+                              {selectedUserDetail.avatar_url ? selectedUserDetail.avatar_url : 'Generated dynamic initials avatar'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-1 max-w-md">
+                          <input
+                            type="text"
+                            placeholder="Update avatar image URL (https://...)..."
+                            value={editingAvatarUrl}
+                            onChange={(e) => setEditingAvatarUrl(e.target.value)}
+                            className="input text-xs py-1.5 flex-1"
+                          />
+                          <button
+                            onClick={handleSaveAvatar}
+                            disabled={!editingAvatarUrl.trim() || savingAvatar}
+                            className="btn-primary text-xs py-1.5 px-3 whitespace-nowrap disabled:opacity-40"
                           >
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span
-                                  className={`badge text-[10px] font-bold ${isPaid
-                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-                                    : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                                    }`}
-                                >
-                                  {isPaid ? `PAID (₹${enr.amount})` : 'FREE COURSE'}
-                                </span>
-                                <span className="text-[11px] text-brand-muted">
-                                  {new Date(enr.createdAt).toLocaleDateString()}
+                            {savingAvatar ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Key Profile Details */}
+                      <div>
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-brand-muted dark:text-brand-dark-muted mb-3">
+                          Personal & Academic Information
+                        </h4>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-white/5 border border-brand-border dark:border-brand-dark-border">
+                            <span className="text-[11px] text-brand-muted block">College / University</span>
+                            <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text block mt-0.5 truncate">
+                              {selectedUserDetail.college || 'Not Specified'}
+                            </span>
+                          </div>
+                          <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-white/5 border border-brand-border dark:border-brand-dark-border">
+                            <span className="text-[11px] text-brand-muted block">Branch / Field</span>
+                            <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text block mt-0.5 truncate">
+                              {selectedUserDetail.branch || 'Not Specified'}
+                            </span>
+                          </div>
+                          <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-white/5 border border-brand-border dark:border-brand-dark-border">
+                            <span className="text-[11px] text-brand-muted block">Semester & Year</span>
+                            <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text block mt-0.5">
+                              {selectedUserDetail.current_semester
+                                ? `Semester ${selectedUserDetail.current_semester}`
+                                : 'Sem N/A'}{' '}
+                              {selectedUserDetail.year_of_study ? `(${selectedUserDetail.year_of_study})` : ''}
+                            </span>
+                          </div>
+                          <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-white/5 border border-brand-border dark:border-brand-dark-border">
+                            <span className="text-[11px] text-brand-muted block">Phone Number</span>
+                            <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text block mt-0.5 truncate">
+                              {selectedUserDetail.phone || 'No phone recorded'}
+                            </span>
+                          </div>
+                          <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-white/5 border border-brand-border dark:border-brand-dark-border">
+                            <span className="text-[11px] text-brand-muted block">Age</span>
+                            <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text block mt-0.5">
+                              {selectedUserDetail.age ? `${selectedUserDetail.age} years old` : 'Not specified'}
+                            </span>
+                          </div>
+                          <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-white/5 border border-brand-border dark:border-brand-dark-border">
+                            <span className="text-[11px] text-brand-muted block">Account Created</span>
+                            <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text block mt-0.5">
+                              {selectedUserDetail.created_at
+                                ? new Date(selectedUserDetail.created_at).toLocaleDateString()
+                                : 'N/A'}
+                            </span>
+                          </div>
+                          <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-white/5 border border-brand-border dark:border-brand-dark-border">
+                            <span className="text-[11px] text-brand-muted block">Paid Spend</span>
+                            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 block mt-0.5">
+                              ₹{selectedUserDetail.totalAmountPaid.toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-white/5 border border-brand-border dark:border-brand-dark-border">
+                            <span className="text-[11px] text-brand-muted block">Total Granted Items</span>
+                            <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text block mt-0.5">
+                              {selectedUserDetail.totalCoursesCount} ({selectedUserDetail.paidCoursesCount} Paid,{' '}
+                              {selectedUserDetail.freeCoursesCount} Free)
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Bio */}
+                      {selectedUserDetail.bio && (
+                        <div className="p-4 rounded-xl bg-gray-50 dark:bg-white/5 border border-brand-border dark:border-brand-dark-border">
+                          <span className="text-[11px] text-brand-muted block mb-1 font-semibold">Student Bio</span>
+                          <p className="text-xs text-brand-text dark:text-brand-dark-text italic leading-relaxed">
+                            "{selectedUserDetail.bio}"
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Semester SGPA Breakdown */}
+                      <div>
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-brand-muted dark:text-brand-dark-muted mb-3 flex items-center justify-between">
+                          <span>Semester SGPA Academic Record</span>
+                          {selectedUserDetail.semester_sgpa && Object.keys(selectedUserDetail.semester_sgpa).length > 0 && (
+                            <span className="text-xs font-bold text-primary-600 dark:text-primary-400">
+                              Average CGPA:{' '}
+                              {(
+                                Object.values(selectedUserDetail.semester_sgpa).reduce((a, b) => a + Number(b), 0) /
+                                Object.values(selectedUserDetail.semester_sgpa).length
+                              ).toFixed(2)}
+                            </span>
+                          )}
+                        </h4>
+
+                        {selectedUserDetail.semester_sgpa && Object.keys(selectedUserDetail.semester_sgpa).length > 0 ? (
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            {Object.entries(selectedUserDetail.semester_sgpa).map(([sem, score]) => (
+                              <div
+                                key={sem}
+                                className="p-3 rounded-xl bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border flex items-center justify-between"
+                              >
+                                <span className="text-xs text-brand-muted font-medium">Semester {sem}</span>
+                                <span className="text-xs font-bold px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                                  {Number(score).toFixed(2)}
                                 </span>
                               </div>
-                              <p className="font-semibold text-xs text-brand-text dark:text-brand-dark-text truncate">
-                                {enr.courseTitle}
-                              </p>
-                              <p className="text-[11px] text-brand-muted mt-0.5">
-                                Contact: {enr.phone || selectedUserDetail.phone || 'N/A'} • Status: {enr.paymentStatus}
-                              </p>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-4 text-center text-xs text-brand-muted bg-gray-50 dark:bg-white/5 rounded-xl border border-brand-border dark:border-brand-dark-border">
+                            No semester SGPA record submitted by this student yet.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 2: Granular Permissions & Access Control (GRANT & TAKE AWAY ACCESS TO ANY SPECIFIC THING) */}
+                  {studentModalTab === 'courses' && (
+                    <div className="space-y-6">
+                      {/* ⚡ Grant Access to Any Specific Thing */}
+                      <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-primary-500/10 via-indigo-500/10 to-purple-500/10 border border-primary-500/30 space-y-4 shadow-sm">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1.5 rounded-lg bg-primary-500 text-white">
+                            <Plus size={15} />
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-xs text-brand-text dark:text-brand-dark-text">
+                              Grant Specific Access to {selectedUserDetail.name}
+                            </h4>
+                            <p className="text-[11px] text-brand-muted">
+                              Select any specific course, study material/notes, or live webinar to grant immediate access
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                          {/* Item Category */}
+                          <div className="sm:col-span-3">
+                            <label className="text-[11px] font-semibold text-brand-muted block mb-1">
+                              1. Item Category
+                            </label>
+                            <select
+                              value={grantItemCategory}
+                              onChange={(e) => {
+                                setGrantItemCategory(e.target.value as any)
+                                setGrantItemId('')
+                              }}
+                              className="input text-xs w-full py-2 bg-white dark:bg-brand-dark-card font-semibold"
+                            >
+                              <option value="course">📚 Specific Course ({dbCourses.length})</option>
+                              <option value="resource">📄 Study Material / Notes ({dbResources.length})</option>
+                              <option value="webinar">📹 Live Webinar ({liveWebinars.length})</option>
+                            </select>
+                          </div>
+
+                          {/* Specific Item Selector */}
+                          <div className="sm:col-span-5">
+                            <label className="text-[11px] font-semibold text-brand-muted block mb-1">
+                              2. Select Specific Item
+                            </label>
+                            <select
+                              value={grantItemId}
+                              onChange={(e) => setGrantItemId(e.target.value)}
+                              className="input text-xs w-full py-2 bg-white dark:bg-brand-dark-card"
+                            >
+                              <option value="">
+                                -- Choose{' '}
+                                {grantItemCategory === 'course'
+                                  ? 'Course'
+                                  : grantItemCategory === 'resource'
+                                  ? 'Study Resource'
+                                  : 'Webinar'}{' '}
+                                --
+                              </option>
+                              {grantItemCategory === 'course' &&
+                                dbCourses.map((c) => {
+                                  const already = selectedUserDetail.enrollments.some((e) => e.courseId === c.id)
+                                  return (
+                                    <option key={c.id} value={c.id} disabled={already}>
+                                      {already ? '✓ Active: ' : ''}
+                                      {c.title} ({typeof c.price === 'number' ? `₹${c.price}` : 'FREE'})
+                                    </option>
+                                  )
+                                })}
+                              {grantItemCategory === 'resource' &&
+                                dbResources.map((r) => {
+                                  const idStr = String(r.id)
+                                  const already = selectedUserDetail.enrollments.some((e) => e.courseId === idStr)
+                                  return (
+                                    <option key={idStr} value={idStr} disabled={already}>
+                                      {already ? '✓ Active: ' : ''}
+                                      {r.title} ({r.subject || r.type || 'Study Notes'} - {r.isPremium ? '⭐ Premium' : 'Free'})
+                                    </option>
+                                  )
+                                })}
+                              {grantItemCategory === 'webinar' &&
+                                liveWebinars.map((w) => {
+                                  const already = selectedUserDetail.enrollments.some((e) => e.courseId === w.id)
+                                  return (
+                                    <option key={w.id} value={w.id} disabled={already}>
+                                      {already ? '✓ Active: ' : ''}
+                                      {w.title} ({new Date(w.startsAt).toLocaleDateString()} - {w.access === 'paid' ? '⭐ Paid' : 'Free'})
+                                    </option>
+                                  )
+                                })}
+                            </select>
+                          </div>
+
+                          {/* Access Type */}
+                          <div className="sm:col-span-4">
+                            <label className="text-[11px] font-semibold text-brand-muted block mb-1">
+                              3. Access Level
+                            </label>
+                            <select
+                              value={grantAccessType}
+                              onChange={(e) => setGrantAccessType(e.target.value as any)}
+                              className="input text-xs w-full py-2 bg-white dark:bg-brand-dark-card font-semibold"
+                            >
+                              <option value="paid">⭐ Full Access (Admin Waived / Override)</option>
+                              <option value="free">Standard Free Access</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end">
+                          <button
+                            onClick={handleGrantSpecificAccess}
+                            disabled={!grantItemId || isGrantingAccess}
+                            className="btn-primary text-xs py-2 px-4 flex items-center gap-1.5 shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            {isGrantingAccess ? (
+                              <Loader2 size={13} className="animate-spin" />
+                            ) : (
+                              <Plus size={13} />
+                            )}
+                            + Grant Access to Selected Item
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Master All-Access Membership Card */}
+                      <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-50/40 dark:bg-amber-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 rounded-xl bg-amber-500 text-black font-bold shadow-md">
+                            <Sparkles size={16} />
+                          </div>
+                          <div>
+                            <p className="font-bold text-xs text-brand-text dark:text-brand-dark-text">
+                              All-Access VIP Membership Pass (Site-wide Access)
+                            </p>
+                            <p className="text-[11px] text-brand-muted">
+                              {selectedUserDetail.is_premium
+                                ? 'Student has full unlocked VIP access to all present & upcoming content on the platform'
+                                : 'Granting this gives the student unlocked access to all courses, resources, and webinars'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => handleTogglePremium(selectedUserDetail)}
+                          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm whitespace-nowrap ${
+                            selectedUserDetail.is_premium
+                              ? 'bg-red-500/10 text-red-600 border border-red-500/20 hover:bg-red-500 hover:text-white'
+                              : 'bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500 font-bold'
+                          }`}
+                        >
+                          {selectedUserDetail.is_premium ? (
+                            <>
+                              <ShieldAlert size={12} /> Revoke Master Pass
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles size={12} /> ⭐ Grant Master Pass
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Currently Granted Permissions & Access (TAKE AWAY / REVOKE SPECIFIC ACCESS) */}
+                      <div>
+                        <h4 className="font-bold text-sm text-brand-text dark:text-brand-dark-text flex items-center justify-between mb-3">
+                          <span>
+                            Granted Permissions & Active Access ({selectedUserDetail.enrollments.length})
+                          </span>
+                          <span className="text-xs font-normal text-brand-muted">
+                            Click Revoke Access on any item to remove permission
+                          </span>
+                        </h4>
+
+                        {selectedUserDetail.enrollments.length === 0 ? (
+                          <div className="py-12 text-center text-brand-muted text-xs bg-gray-50 dark:bg-white/5 rounded-2xl border border-brand-border dark:border-brand-dark-border">
+                            No active permissions or enrollments recorded for this student. Use the tool above to grant access.
+                          </div>
+                        ) : (
+                          <div className="space-y-2.5">
+                            {selectedUserDetail.enrollments.map((enr) => {
+                              const isPaid = enr.paymentStatus === 'paid' || enr.amount > 0
+                              const isResource =
+                                enr.courseTitle?.includes('[Study Notes]') ||
+                                enr.courseId.startsWith('res-') ||
+                                enr.courseId.startsWith('resource-')
+                              const isWebinar =
+                                enr.courseTitle?.includes('[Webinar]') ||
+                                enr.courseId.startsWith('web-') ||
+                                enr.courseId.startsWith('webinar-')
+                              const isCourse = !isResource && !isWebinar
+
+                              return (
+                                <div
+                                  key={enr.id}
+                                  className="p-3.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card flex items-center justify-between gap-4 shadow-sm hover:border-primary-500/30 transition-all"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                      {isCourse && (
+                                        <span className="badge text-[10px] font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300">
+                                          📚 COURSE
+                                        </span>
+                                      )}
+                                      {isResource && (
+                                        <span className="badge text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                                          📄 STUDY NOTES
+                                        </span>
+                                      )}
+                                      {isWebinar && (
+                                        <span className="badge text-[10px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300">
+                                          📹 WEBINAR
+                                        </span>
+                                      )}
+                                      <span
+                                        className={`badge text-[10px] font-bold ${
+                                          isPaid
+                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                            : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                                        }`}
+                                      >
+                                        {isPaid ? `FULL ACCESS (₹${enr.amount})` : 'FREE ACCESS'}
+                                      </span>
+                                      <span className="text-[11px] text-brand-muted">
+                                        Granted {new Date(enr.createdAt).toLocaleDateString()}
+                                      </span>
+                                    </div>
+                                    <p className="font-bold text-xs text-brand-text dark:text-brand-dark-text truncate">
+                                      {enr.courseTitle || `Item #${enr.courseId}`}
+                                    </p>
+                                    <p className="text-[11px] text-brand-muted mt-0.5">
+                                      Item ID: <span className="font-mono">{enr.courseId}</span> • Ref: <span className="font-mono">{enr.id}</span>
+                                    </p>
+                                  </div>
+
+                                  <div className="text-right flex-shrink-0 flex flex-col items-end gap-1.5">
+                                    <span className="text-sm font-bold text-brand-text dark:text-brand-dark-text">
+                                      {isPaid ? `₹${enr.amount}` : '₹0'}
+                                    </span>
+                                    <button
+                                      onClick={() => handleRevokeSpecificAccess(enr.id, enr.courseTitle)}
+                                      className="px-3 py-1 rounded-lg bg-red-500/10 text-red-600 hover:bg-red-500 hover:text-white border border-red-500/20 text-[10px] font-bold transition-all flex items-center gap-1 shadow-sm"
+                                      title="Revoke and take away access to this specific item"
+                                    >
+                                      <ShieldAlert size={11} /> Revoke Access
+                                    </button>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 3: Payments & Transaction Proofs */}
+                  {studentModalTab === 'payments' && (
+                    <div className="space-y-4">
+                      {(() => {
+                        const studentPayments = paymentRequests.filter(
+                          (p) =>
+                            p.userId === selectedUserDetail.id ||
+                            (p.email && p.email.toLowerCase() === selectedUserDetail.email.toLowerCase())
+                        )
+
+                        if (studentPayments.length === 0) {
+                          return (
+                            <div className="py-12 text-center text-brand-muted text-xs bg-gray-50 dark:bg-white/5 rounded-2xl border border-brand-border dark:border-brand-dark-border">
+                              No payment requests or UTR transactions recorded for this student.
                             </div>
-                            <div className="text-right flex-shrink-0 flex flex-col items-end gap-1.5">
-                              <span className="text-sm font-bold text-brand-text dark:text-brand-dark-text">
-                                {isPaid ? `₹${enr.amount}` : '₹0'}
-                              </span>
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    await revokeAccess(enr.id, 'Access revoked by Admin')
-                                    toast.success(`Access to ${enr.courseTitle} revoked! 🔒`)
-                                    loadDbUsers()
-                                    loadPaymentRequests()
-                                    setSelectedUserDetail((prev) =>
-                                      prev
-                                        ? {
-                                          ...prev,
-                                          enrollments: prev.enrollments.filter((e) => e.id !== enr.id),
-                                          paidCoursesCount: Math.max(0, prev.paidCoursesCount - (isPaid ? 1 : 0)),
-                                          totalCoursesCount: Math.max(0, prev.totalCoursesCount - 1),
-                                        }
-                                        : null
-                                    )
-                                  } catch (err: any) {
-                                    toast.error(err.message || 'Failed to revoke course access')
-                                  }
-                                }}
-                                className="px-2 py-1 rounded-lg bg-red-500/10 text-red-600 hover:bg-red-500 hover:text-white border border-red-500/20 text-[10px] font-bold transition-all flex items-center gap-1"
+                          )
+                        }
+
+                        return (
+                          <div className="space-y-3">
+                            {studentPayments.map((p) => (
+                              <div
+                                key={p.id}
+                                className="p-4 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm"
                               >
-                                <ShieldAlert size={11} /> Revoke Access
-                              </button>
-                            </div>
+                                <div className="min-w-0 flex-1 space-y-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span
+                                      className={`badge text-[10px] font-bold ${
+                                        p.status === 'paid'
+                                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                          : p.status === 'pending'
+                                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                                          : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                                      }`}
+                                    >
+                                      {p.status.toUpperCase()}
+                                    </span>
+                                    <span className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
+                                      {p.itemTitle || 'Payment Item'}
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] text-brand-muted flex items-center gap-3 flex-wrap">
+                                    <span>
+                                      UTR:{' '}
+                                      <span className="font-mono font-bold text-brand-text dark:text-brand-dark-text">
+                                        {p.utrNumber || 'N/A'}
+                                      </span>
+                                    </span>
+                                    <span>Date: {new Date(p.createdAt).toLocaleString()}</span>
+                                    <span>
+                                      Amount:{' '}
+                                      <strong className="text-emerald-600 dark:text-emerald-400">₹{p.amount}</strong>
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {p.screenshotUrl && (
+                                  <button
+                                    onClick={() => setInspectProofImage(p.screenshotUrl || null)}
+                                    className="px-3 py-1.5 rounded-lg border border-brand-border dark:border-brand-dark-border text-xs font-semibold hover:bg-gray-50 dark:hover:bg-white/5 flex items-center gap-1.5 flex-shrink-0"
+                                  >
+                                    <Eye size={12} /> View Screenshot Proof
+                                  </button>
+                                )}
+                              </div>
+                            ))}
                           </div>
                         )
-                      })}
+                      })()}
+                    </div>
+                  )}
+
+                  {/* TAB 4: Guidance & Mentorship Requests */}
+                  {studentModalTab === 'guidance' && (
+                    <div className="space-y-4">
+                      {(() => {
+                        const studentGuidance = dbGuidanceRequests.filter(
+                          (g) =>
+                            (g.email && g.email.toLowerCase() === selectedUserDetail.email.toLowerCase()) ||
+                            (g.fullName && g.fullName.toLowerCase() === selectedUserDetail.name.toLowerCase())
+                        )
+                        const studentSessions = dbSessions.filter(
+                          (s) =>
+                            (s.studentEmail && s.studentEmail.toLowerCase() === selectedUserDetail.email.toLowerCase()) ||
+                            (s.studentName && s.studentName.toLowerCase() === selectedUserDetail.name.toLowerCase())
+                        )
+
+                        if (studentGuidance.length === 0 && studentSessions.length === 0) {
+                          return (
+                            <div className="py-12 text-center text-brand-muted text-xs bg-gray-50 dark:bg-white/5 rounded-2xl border border-brand-border dark:border-brand-dark-border">
+                              No guidance requests or mentorship sessions booked by this student.
+                            </div>
+                          )
+                        }
+
+                        return (
+                          <div className="space-y-4">
+                            {studentGuidance.length > 0 && (
+                              <div>
+                                <h5 className="text-xs font-bold text-brand-muted uppercase mb-2">
+                                  Guidance Inquiries ({studentGuidance.length})
+                                </h5>
+                                <div className="space-y-2">
+                                  {studentGuidance.map((g) => (
+                                    <div
+                                      key={g.id}
+                                      className="p-3.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card"
+                                    >
+                                      <div className="flex items-center justify-between gap-2 mb-1">
+                                        <span className="font-bold text-xs text-brand-text dark:text-brand-dark-text">
+                                          {g.guidanceTypes?.join(', ') || 'General Inquiry'}
+                                        </span>
+                                        <span className="badge text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                                          {g.status}
+                                        </span>
+                                      </div>
+                                      <p className="text-xs text-brand-muted">{g.additionalQuery || 'No description provided'}</p>
+                                      <p className="text-[10px] text-brand-muted mt-2">
+                                        Submitted on {new Date(g.createdAt).toLocaleString()}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {studentSessions.length > 0 && (
+                              <div>
+                                <h5 className="text-xs font-bold text-brand-muted uppercase mb-2">
+                                  Mentorship Bookings ({studentSessions.length})
+                                </h5>
+                                <div className="space-y-2">
+                                  {studentSessions.map((s) => (
+                                    <div
+                                      key={s.id}
+                                      className="p-3.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card flex items-center justify-between gap-4"
+                                    >
+                                      <div>
+                                        <p className="font-bold text-xs text-brand-text dark:text-brand-dark-text">
+                                          Mentor Session ({s.serviceType})
+                                        </p>
+                                        <p className="text-[11px] text-brand-muted mt-0.5">
+                                          Date: {s.date} at {s.time} • Status: {s.status}
+                                        </p>
+                                      </div>
+                                      <span className="badge text-[10px] bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                                        {s.status}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
                   )}
                 </div>
 
-                {/* Footer */}
-                <div className="p-4 bg-gray-50 dark:bg-white/5 border-t border-brand-border dark:border-brand-dark-border text-right">
+                {/* Modal Footer */}
+                <div className="p-4 bg-gray-50 dark:bg-white/5 border-t border-brand-border dark:border-brand-dark-border flex items-center justify-between">
+                  <div className="text-[11px] text-brand-muted font-mono flex items-center gap-1.5">
+                    <span>UID:</span>
+                    <span className="font-bold text-brand-text dark:text-brand-dark-text">{selectedUserDetail.id}</span>
+                  </div>
                   <button
                     onClick={() => setSelectedUserDetail(null)}
-                    className="px-4 py-2 bg-gray-200 dark:bg-white/10 text-brand-text dark:text-brand-dark-text text-xs font-semibold rounded-xl hover:bg-gray-300 transition-colors"
+                    className="px-4 py-2 bg-gray-200 dark:bg-white/10 text-brand-text dark:text-brand-dark-text text-xs font-semibold rounded-xl hover:bg-gray-300 dark:hover:bg-white/20 transition-colors"
                   >
-                    Close
+                    Close Dossier
                   </button>
                 </div>
               </motion.div>
@@ -3548,6 +4454,25 @@ export default function AdminDashboard() {
               </div>
             </div>
 
+            {/* All-Access Pass Price */}
+            <div>
+              <label className="block text-xs font-bold text-brand-text dark:text-brand-dark-text mb-1">
+                ⭐ All-Access Pass Membership Price (₹) *
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={draftPaymentSettings.allAccessPrice ?? 999}
+                onChange={(e) => setDraftPaymentSettings((p) => ({ ...p, allAccessPrice: Math.max(1, parseInt(e.target.value) || 999) }))}
+                placeholder="999"
+                className="input text-xs font-semibold"
+                required
+              />
+              <p className="text-[11px] text-brand-muted mt-1">
+                Controls the price displayed on the &quot;Upgrade to All-Access&quot; button on student dashboards and course checkout modals
+              </p>
+            </div>
+
             {/* Custom QR Code Upload */}
             <div>
               <label className="block text-xs font-bold text-brand-text dark:text-brand-dark-text mb-1">
@@ -3639,6 +4564,10 @@ export default function AdminDashboard() {
                   Dynamic UPI QR Active
                 </span>
               )}
+              <div className="flex items-center justify-between text-xs py-1.5 px-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-600 dark:text-amber-400 font-bold mt-2">
+                <span>⭐ All-Access Pass:</span>
+                <span>₹{(draftPaymentSettings.allAccessPrice ?? 999).toLocaleString()}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -3688,12 +4617,12 @@ export default function AdminDashboard() {
 
     const handleRevoke = async (req: Enrollment) => {
       try {
-        await revokeAccess(req.id, 'Access revoked by Admin')
+        await revokeAccess(req.id, 'Access revoked by Skills021')
         toast.success(`Access revoked for ${req.firstName || req.email}! 🔒`)
         setPaymentRequests((prev) =>
           prev.map((item) =>
             item.id === req.id
-              ? { ...item, status: 'rejected', rejectionReason: 'Access revoked by Admin' }
+              ? { ...item, status: 'rejected', rejectionReason: 'Access revoked by Skills021' }
               : item
           )
         )
@@ -3711,7 +4640,7 @@ export default function AdminDashboard() {
         setPaymentRequests((prev) =>
           prev.map((item) =>
             item.id === rejectModalId
-              ? { ...item, status: 'rejected', rejectionReason: rejectReason.trim() || 'Rejected by Admin' }
+              ? { ...item, status: 'rejected', rejectionReason: rejectReason.trim() || 'Rejected by Skills021' }
               : item
           )
         )
@@ -6638,7 +7567,8 @@ export default function AdminDashboard() {
       case 'quizzes': return renderQuizzes()
       case 'roadmaps': return renderRoadmaps()
       case 'mentorship': return renderMentorship()
-      case 'youtube-videos': return renderYoutubeVideos()
+      case 'career-applications': return renderCareerApplications()
+      case 'youtube-videos': return <YoutubeVideosTab search={search} setSearch={setSearch} />
       case 'webinars': return renderWebinars()
       case 'hierarchy': return renderHierarchy()
       case 'pathfinder-careers': return renderPathfinderCareers()

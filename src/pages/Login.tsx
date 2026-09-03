@@ -371,6 +371,22 @@ export default function Login() {
                   </p>
                 </div>
 
+                {(location.state as any)?.from && (
+                  <div className="mb-4 rounded-xl border border-violet-200/80 bg-violet-50/70 p-3 text-left dark:border-violet-900/40 dark:bg-violet-950/25 flex items-start gap-2.5">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-white shadow-sm">
+                      <ShieldCheck size={15} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold text-violet-900 dark:text-violet-200 uppercase tracking-wider">
+                        Sign in required
+                      </div>
+                      <div className="mt-0.5 text-xs text-violet-700 dark:text-violet-300/80">
+                        Sign in with your Skills021 account to access this section.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <form onSubmit={handleEmailNext} className="space-y-3.5" noValidate>
                   <div>
                     <div className="flex items-center justify-between mb-1.5">

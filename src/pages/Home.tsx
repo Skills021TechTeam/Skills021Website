@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, useInView, AnimatePresence } from 'framer-motion'
-import { ArrowRight, X, Sparkles, Radio, PlayCircle, ExternalLink, CalendarDays, Video, Bell, Zap } from 'lucide-react'
+import { ArrowRight, X, Sparkles, Radio, PlayCircle, ExternalLink, CalendarDays, Video, Bell, Zap, Clock } from 'lucide-react'
 
 // New design components
 import BackgroundEffects from '../components/BackgroundEffects'
@@ -273,6 +273,32 @@ function WebinarSection() {
                 {live ? 'Join the live session and learn directly with the speaker.' : next ? `Save your seat for ${new Date(next.startsAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}.` : 'Live sessions, expert conversations, and useful replays for students.'}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
+                {next && (
+                  <div className="rounded-xl border border-violet-200 bg-violet-100/90 px-3 py-2 dark:border-violet-500/40 dark:bg-violet-950/60 shadow-sm">
+                    <div className="text-[9px] font-black uppercase tracking-wider text-violet-700 dark:text-violet-300">Schedule Time</div>
+                    <div className="mt-0.5 text-xs font-black text-violet-900 dark:text-violet-100 flex items-center gap-1.5">
+                      <CalendarDays size={13} className="text-violet-600 dark:text-violet-400" />
+                      {new Date(next.startsAt).toLocaleString('en-US', {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true,
+                      })}
+                    </div>
+                  </div>
+                )}
+                {live && (
+                  <div className="rounded-xl border border-red-200 bg-red-100/90 px-3 py-2 dark:border-red-900/40 dark:bg-red-950/60 shadow-sm">
+                    <div className="text-[9px] font-black uppercase tracking-wider text-red-600 dark:text-red-300">Live Schedule</div>
+                    <div className="mt-0.5 text-xs font-black text-red-700 dark:text-red-200 flex items-center gap-1.5">
+                      <Clock size={13} className="text-red-500" />
+                      Started {new Date(live.startsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                      {live.endsAt && ` · Ends ${new Date(live.endsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`}
+                    </div>
+                  </div>
+                )}
                 <div className="rounded-xl border border-violet-100 bg-violet-50/70 px-3 py-2 dark:border-white/10 dark:bg-white/5">
                   <div className="text-[9px] font-semibold uppercase tracking-wider text-violet-500">Format</div>
                   <div className="mt-0.5 text-xs font-bold text-brand-text dark:text-white">Live Session</div>
@@ -365,13 +391,13 @@ function FooterCTABanner() {
             Your future is <span className="gradient-text">one cohort away</span>.
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-brand-muted dark:text-brand-dark-muted">
-            Join 12,000+ students turning skills into careers. No fluff, no lectures — just build,
+            Join 12,000+ students turning skills into careers. No fluff, no lectures. Just build,
             ship, get hired.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link to="/register">
               <MagneticButton className="group">
-                Get Started — It's Free
+                Get Started
                 <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
               </MagneticButton>
             </Link>

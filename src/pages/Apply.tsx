@@ -9,6 +9,7 @@ import {
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 import { submitCareerApplication, uploadResume, ApplicationType } from '../lib/careerApplicationService'
+import { showAuthRequiredToast } from '../components/AuthRequiredToast'
 import PanelSpotlightCard from '../components/PanelSpotlightCard'
 import { Sparkles } from 'lucide-react'
 
@@ -70,8 +71,11 @@ export default function Apply() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!isAuthenticated) {
-      toast.error('Please log in to apply')
-      navigate('/login')
+      showAuthRequiredToast({
+        title: 'Sign In Required',
+        message: 'Please sign in with your Skills021 account before submitting your application.',
+      })
+      navigate('/login', { state: { from: location } })
       return
     }
     if (!form.fullName.trim() || !form.email.trim() || !form.phone.trim() || !form.role.trim()) {

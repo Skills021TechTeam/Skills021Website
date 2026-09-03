@@ -38,7 +38,7 @@ export default function Footer() {
           <div className="lg:col-span-1">
             <Logo size="md" showTagline={true} className="mb-5" />
             <p className="text-sm text-gray-400 leading-relaxed mb-6">
-              India's premier EdTech platform — quality courses, study resources, and expert mentorship for students across India.
+              India's premier EdTech platform with quality courses, study resources, and expert mentorship for students across India.
             </p>
             {/* Quick nav pills */}
             <div className="flex flex-wrap gap-1.5 mb-6">
@@ -119,7 +119,7 @@ export default function Footer() {
         {/* Bottom Bar */}
         <div className="mt-12 pt-8 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm text-gray-500">
-            © 2025 Skill021. All rights reserved. Made with ❤️ for Indian students.
+            © 2025 Skill021. All rights reserved.
           </p>
           <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-xs text-gray-500">
             <span>🇮🇳 India</span>

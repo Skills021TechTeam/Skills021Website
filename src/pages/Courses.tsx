@@ -24,6 +24,7 @@ import VideoPlayerModal from '../components/VideoPlayerModal'
 import CourseRatingMenu from '../components/CourseRatingMenu'
 import { getLiveWebinars, getWebinarRecordings, resolveWebinarRecordingVideo, type LiveWebinar, type WebinarRecording } from '../lib/webinarService'
 import PanelSpotlightCard from '../components/PanelSpotlightCard'
+import { showAuthRequiredToast } from '../components/AuthRequiredToast'
 
 const GROUPS: { label: CourseGroup }[] = [
   { label: 'Competitive Exams' },
@@ -248,8 +249,11 @@ export default function Courses() {
   const [allAccessPrice, setAllAccessPrice] = useState(999)
 
   const requireLogin = () => {
-    toast.error('Please log in to continue')
-    navigate('/login')
+    showAuthRequiredToast({
+      title: 'Sign In Required',
+      message: 'Please sign in with your Skills021 account to enroll and access course content.',
+    })
+    navigate('/login', { state: { from: { pathname: '/courses' } } })
   }
 
   useEffect(() => {
@@ -728,6 +732,7 @@ export default function Courses() {
                       <div className="flex items-center gap-2 mb-3"><span className="relative flex h-3 w-3"><span className="absolute inset-0 rounded-full bg-red-500 animate-ping"/><span className="relative h-3 w-3 rounded-full bg-red-500"/></span><span className="text-xs font-black uppercase tracking-widest text-red-500">Live now · {activeWebinar.provider}</span></div>
                       <h3 className="text-2xl font-black text-brand-text dark:text-white">{activeWebinar.title}</h3>
                       <p className="mt-2 text-sm text-brand-muted dark:text-brand-dark-muted max-w-2xl">{activeWebinar.description}</p>
+                      <p className="mt-2 text-xs font-bold text-red-600 dark:text-red-400 flex items-center gap-1.5"><Clock size={13}/> Started at {new Date(activeWebinar.startsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}{activeWebinar.endsAt && ` · Ends at ${new Date(activeWebinar.endsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`}</p>
                     </div>
                     <a href={activeWebinar.joinUrl} target="_blank" rel="noreferrer" className="shrink-0 inline-flex items-center justify-center gap-2 rounded-xl bg-red-500 px-5 py-3 text-sm font-bold text-white hover:bg-red-600"><Video size={16}/> Join Live <ExternalLink size={14}/></a>
                   </div>
@@ -735,7 +740,15 @@ export default function Courses() {
               ) : upcomingWebinar ? (
                 <div className="rounded-3xl border border-violet-100 dark:border-white/10 bg-white dark:bg-brand-dark-card p-5 sm:p-7 shadow-sm mb-10">
                   <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
-                    <div><div className="text-xs font-black uppercase tracking-widest text-violet-500 mb-2">Next webinar · {upcomingWebinar.provider}</div><h3 className="text-xl font-black text-brand-text dark:text-white">{upcomingWebinar.title}</h3><p className="text-sm text-brand-muted mt-1">{new Date(upcomingWebinar.startsAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p></div>
+                    <div>
+                      <div className="text-xs font-black uppercase tracking-widest text-violet-500 mb-2">Next webinar · {upcomingWebinar.provider}</div>
+                      <h3 className="text-xl font-black text-brand-text dark:text-white">{upcomingWebinar.title}</h3>
+                      <p className="text-sm text-brand-muted mt-1">{upcomingWebinar.description}</p>
+                      <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-violet-50 dark:bg-violet-950/40 border border-violet-100 dark:border-violet-900/30 text-xs font-bold text-violet-700 dark:text-violet-300">
+                        <CalendarDays size={14} className="text-violet-500" />
+                        {new Date(upcomingWebinar.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
+                      </div>
+                    </div>
                     <div className="inline-flex items-center gap-2 rounded-xl bg-violet-50 dark:bg-violet-500/10 px-4 py-3 text-sm font-bold text-violet-600 dark:text-violet-300"><CalendarDays size={16}/> Coming soon</div>
                   </div>
                 </div>

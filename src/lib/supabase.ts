@@ -67,6 +67,18 @@ function splitName(fullName: string) {
 }
 
 /** Supabase Auth Helpers **/
+/**
+ * Resolves the application URL for auth redirects.
+ * Prefers VITE_SITE_URL if configured in .env, otherwise uses the current browser origin.
+ */
+export function getAuthRedirectUrl(path: string = '/login?verified=true'): string {
+  const configured = (import.meta.env.VITE_SITE_URL as string | undefined)?.trim()
+  const origin = configured || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173')
+  const cleanOrigin = origin.replace(/\/+$/, '')
+  const cleanPath = path.startsWith('/') ? path : `/${path}`
+  return `${cleanOrigin}${cleanPath}`
+}
+
 export async function signUpUser(
   email: string,
   password: string,
@@ -76,7 +88,7 @@ export async function signUpUser(
   avatarUrl: string = ''
 ) {
   const { firstName, lastName } = splitName(name)
-  const redirectTo = `${window.location.origin}/login?verified=true`
+  const redirectTo = getAuthRedirectUrl('/login?verified=true')
 
   const { data, error } = await supabase.auth.signUp({
     email,
@@ -125,7 +137,7 @@ export async function signUpUser(
  * Resends a sign-up verification email to the user's address.
  */
 export async function resendVerificationEmail(email: string): Promise<void> {
-  const redirectTo = `${window.location.origin}/login?verified=true`
+  const redirectTo = getAuthRedirectUrl('/login?verified=true')
   const { error } = await supabase.auth.resend({
     type: 'signup',
     email: email.trim(),
@@ -186,7 +198,7 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
   try {
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
+      .select('id, email, name, first_name, last_name, college, phone, role, avatar_url, is_premium, age, branch, current_semester, semester_sgpa, year_of_study, bio, created_at, updated_at')
       .eq('id', userId)
       .maybeSingle()
 
@@ -271,7 +283,7 @@ export async function upsertUserProfile(
     const { data, error } = await supabase
       .from('profiles')
       .upsert(payload, { onConflict: 'id' })
-      .select('*')
+      .select('id, email, name, first_name, last_name, college, phone, role, avatar_url, is_premium, age, branch, current_semester, semester_sgpa, year_of_study, bio, created_at, updated_at')
       .maybeSingle()
 
     if (error) {
@@ -282,7 +294,7 @@ export async function upsertUserProfile(
         const { data: fallbackData } = await supabase
           .from('profiles')
           .upsert(fallbackPayload, { onConflict: 'id' })
-          .select('*')
+          .select('id, email, name, first_name, last_name, college, phone, role, avatar_url, is_premium, age, branch, current_semester, semester_sgpa, year_of_study, bio, created_at, updated_at')
           .maybeSingle()
 
         return {
@@ -403,7 +415,7 @@ export async function updateUserAuthPassword(newPassword: string): Promise<void>
  * The link in the email redirects to the app's /reset-password route.
  */
 export async function resetPasswordForEmail(email: string): Promise<void> {
-  const redirectTo = `${window.location.origin}/reset-password`
+  const redirectTo = getAuthRedirectUrl('/reset-password')
   const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
   if (error) throw error
 }
@@ -439,7 +451,7 @@ export async function fetchAllUsersWithEnrollments(): Promise<UserWithEnrollment
     // 1. Fetch all profiles
     const { data: profilesData, error: profilesError } = await supabase
       .from('profiles')
-      .select('*')
+      .select('id, email, name, first_name, last_name, avatar_url, college, phone, branch, current_semester, semester_sgpa, year_of_study, bio, age, role, is_premium, created_at, updated_at')
       .order('created_at', { ascending: false })
 
     if (profilesError) {
@@ -449,7 +461,7 @@ export async function fetchAllUsersWithEnrollments(): Promise<UserWithEnrollment
     // 2. Fetch all enrollments
     const { data: enrollmentsData, error: enrollmentsError } = await supabase
       .from('enrollments')
-      .select('*')
+      .select('id, item_id, item_type, item_title, user_id, first_name, last_name, email, phone, payment_status, amount, status, created_at')
       .order('created_at', { ascending: false })
 
     if (enrollmentsError) {
@@ -531,7 +543,7 @@ export async function fetchAllUsersWithEnrollments(): Promise<UserWithEnrollment
         name: fullName,
         first_name: p.first_name || '',
         last_name: p.last_name || '',
-        avatar_url: p.avatar_url || p.avatarUrl || '',
+        avatar_url: p.avatar_url || '',
         college: p.college || 'Student Institution',
         phone: p.phone || (userEnrolls[0]?.phone ?? ''),
         branch: p.branch || '',

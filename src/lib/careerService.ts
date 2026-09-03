@@ -33,7 +33,7 @@ function stringifyList(value: any): string | null {
 export async function getCareerPaths(): Promise<CareerPathRow[]> {
   const { data, error } = await supabase
     .from('career_paths')
-    .select('*')
+    .select('id, icon, title, short_description, full_description, average_salary, career_growth, education_required, required_skills, industries, future_scope, created_at, updated_at')
     .order('created_at', { ascending: false })
 
   if (error) {
@@ -51,7 +51,7 @@ export async function getCareerPaths(): Promise<CareerPathRow[]> {
 export async function getCareerPath(id: string): Promise<CareerPathRow> {
   const { data, error } = await supabase
     .from('career_paths')
-    .select('*')
+    .select('id, icon, title, short_description, full_description, average_salary, career_growth, education_required, required_skills, industries, future_scope, created_at, updated_at')
     .eq('id', id)
     .single()
 
@@ -76,7 +76,7 @@ export async function createCareerPath(input: CareerPathInput): Promise<CareerPa
   const { data, error } = await supabase
     .from('career_paths')
     .insert(dbInput)
-    .select('*')
+    .select('id, icon, title, short_description, full_description, average_salary, career_growth, education_required, required_skills, industries, future_scope, created_at, updated_at')
     .single()
 
   if (error) {
@@ -101,7 +101,7 @@ export async function updateCareerPath(id: string, input: Partial<CareerPathInpu
     .from('career_paths')
     .update(dbInput)
     .eq('id', id)
-    .select('*')
+    .select('id, icon, title, short_description, full_description, average_salary, career_growth, education_required, required_skills, industries, future_scope, created_at, updated_at')
     .single()
 
   if (error) {

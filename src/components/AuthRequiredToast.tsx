@@ -1,5 +1,5 @@
 import toast from 'react-hot-toast'
-import { ShieldCheck, X } from 'lucide-react'
+import { ShieldCheck } from 'lucide-react'
 
 interface ShowAuthToastOptions {
   title?: string
@@ -38,34 +38,10 @@ export function showAuthRequiredToast(options?: ShowAuthToastOptions) {
 
             {/* Notification Text */}
             <div className="min-w-0 flex-1 pr-1">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400">
-                  Authentication
-                </span>
-                <span className="text-slate-300 dark:text-zinc-600">•</span>
-                <span className="text-[10px] font-medium text-slate-400 dark:text-zinc-400">
-                  Skills021
-                </span>
-              </div>
-
-              <h4 className="text-xs font-bold text-slate-900 dark:text-white tracking-tight">
-                {title}
-              </h4>
-
-              <p className="mt-0.5 text-[11px] leading-snug text-slate-500 dark:text-zinc-400">
+              <p className="text-[11px] leading-snug text-slate-500 dark:text-zinc-400">
                 {message}
               </p>
             </div>
-
-            {/* Close Button */}
-            <button
-              type="button"
-              onClick={() => toast.dismiss(t.id)}
-              aria-label="Dismiss notification"
-              className="shrink-0 flex h-6 w-6 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/10 dark:hover:text-white transition-colors"
-            >
-              <X size={14} />
-            </button>
           </div>
         </div>
       </div>

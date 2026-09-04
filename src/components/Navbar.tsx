@@ -9,7 +9,6 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import LogoutConfirmModal from './LogoutConfirmModal'
-import Logo from './Logo'
 import toast from 'react-hot-toast'
 import { haptic } from '../lib/haptics'
 
@@ -75,7 +74,7 @@ const NAV_ITEMS = [
   },
   {
     id: 'pathfinder',
-    label: 'Pathfinder',
+    label: 'Path Finder',
     path: '/pathfinder',
     icon: Compass,
     description: 'Discover careers, exams and future-ready roadmaps',
@@ -356,15 +355,20 @@ export default function Navbar() {
     <nav
       ref={navRef}
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled
-          ? 'bg-white/95 dark:bg-brand-dark-bg/95 backdrop-blur-md shadow-sm border-b border-gray-200 dark:border-brand-dark-border'
-          : 'bg-white dark:bg-brand-dark-bg border-b border-gray-200 dark:border-brand-dark-border'
+        ? 'bg-white/95 dark:bg-brand-dark-bg/95 backdrop-blur-md shadow-sm border-b border-gray-200 dark:border-brand-dark-border'
+        : 'bg-white dark:bg-brand-dark-bg border-b border-gray-200 dark:border-brand-dark-border'
         }`}
     >
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
 
-          {/* ── Official Brand Logo ── */}
-          <Logo size="sm" />
+          {/* ── Brand Text ── */}
+          <Link to="/" className="inline-flex items-center select-none focus:outline-none shrink-0" aria-label="Skills021 Home">
+            <span className="font-black tracking-tight text-lg sm:text-xl flex items-baseline">
+              <span className="text-[#0A0A0A] dark:text-white transition-colors">SKILLS</span>
+              <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 bg-clip-text text-transparent ml-0.5">021</span>
+            </span>
+          </Link>
 
           {/* ── Desktop Navigation ── */}
           <div className="hidden xl:flex items-center gap-0.5">
@@ -379,8 +383,8 @@ export default function Navbar() {
                 <Link
                   to={item.path}
                   className={`flex items-center gap-1 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 ${isActive(item.path)
-                      ? 'text-[#0A0A0A] dark:text-white bg-gray-100 dark:bg-white/10'
-                      : 'text-gray-500 dark:text-gray-400 hover:text-[#0A0A0A] dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/8'
+                    ? 'text-[#0A0A0A] dark:text-white bg-gray-100 dark:bg-white/10'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-[#0A0A0A] dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/8'
                     }`}
                 >
                   {item.label}
@@ -428,8 +432,8 @@ export default function Navbar() {
                 key={item.id}
                 to={item.path}
                 className={`px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 ${isActive(item.path)
-                    ? 'text-[#0A0A0A] dark:text-white bg-gray-100 dark:bg-white/10'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-[#0A0A0A] dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/8'
+                  ? 'text-[#0A0A0A] dark:text-white bg-gray-100 dark:bg-white/10'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-[#0A0A0A] dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/8'
                   }`}
               >
                 {item.label}
@@ -580,8 +584,8 @@ export default function Navbar() {
                       <Link
                         to={item.path}
                         className={`flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded-l-xl text-sm font-semibold transition-colors ${isActive(item.path)
-                            ? 'bg-gray-100 dark:bg-white/10 text-[#0A0A0A] dark:text-white'
-                            : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'
+                          ? 'bg-gray-100 dark:bg-white/10 text-[#0A0A0A] dark:text-white'
+                          : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5'
                           }`}
                       >
                         <item.icon size={15} className={isActive(item.path) ? 'text-primary-500' : 'text-gray-400'} />

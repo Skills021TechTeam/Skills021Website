@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Toaster } from 'react-hot-toast'
+import CustomToaster from './components/CustomToaster'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -209,20 +209,7 @@ export default function App() {
       <MobileBottomNav />
       <WebinarVisitPopup />
       <CookieBanner />
-      <Toaster
-        position="top-right"
-        toastOptions={{
-          style: {
-            background: '#1A1A2E',
-            color: '#F1F1FF',
-            borderRadius: '12px',
-            border: '1px solid #2A2A3D',
-            fontSize: '14px',
-          },
-          success: { iconTheme: { primary: '#00BFA6', secondary: '#fff' } },
-          error: { iconTheme: { primary: '#EF4444', secondary: '#fff' } },
-        }}
-      />
+      <CustomToaster />
     </BrowserRouter>
   )
 }

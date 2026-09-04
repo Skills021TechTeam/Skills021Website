@@ -173,27 +173,44 @@ export interface SubmitPaymentProofInput {
   amount: number
   utrNumber: string
   screenshotUrl: string
+  // Pricing snapshot — stored for audit trail and admin review
+  originalAmount?: number
+  productDiscountAmount?: number
+  couponCode?: string | null
+  couponDiscountAmount?: number
+  appliedDiscountId?: string | null
+  appliedCouponId?: string | null
 }
 
 export async function submitPaymentProof(input: SubmitPaymentProofInput): Promise<Enrollment> {
+  const payload: Record<string, unknown> = {
+    item_type: input.itemType,
+    item_id: input.itemId,
+    item_title: input.itemTitle,
+    user_id: input.userId,
+    first_name: input.firstName,
+    last_name: input.lastName,
+    email: input.email,
+    phone: input.phone,
+    payment_status: 'pending',
+    amount: input.amount,
+    utr_number: input.utrNumber.trim(),
+    screenshot_url: input.screenshotUrl,
+    status: 'active',
+  }
+
+  // Store pricing snapshot if provided
+  if (input.originalAmount !== undefined)       payload.original_amount         = input.originalAmount
+  if (input.productDiscountAmount !== undefined) payload.product_discount_amount = input.productDiscountAmount
+  if (input.couponCode !== undefined)           payload.coupon_code             = input.couponCode
+  if (input.couponDiscountAmount !== undefined)  payload.coupon_discount_amount  = input.couponDiscountAmount
+  if (input.appliedDiscountId !== undefined)    payload.applied_discount_id     = input.appliedDiscountId
+  if (input.appliedCouponId !== undefined)      payload.applied_coupon_id       = input.appliedCouponId
+
   const { data, error } = await supabase
     .from('enrollments')
     .upsert(
-      {
-        item_type: input.itemType,
-        item_id: input.itemId,
-        item_title: input.itemTitle,
-        user_id: input.userId,
-        first_name: input.firstName,
-        last_name: input.lastName,
-        email: input.email,
-        phone: input.phone,
-        payment_status: 'pending',
-        amount: input.amount,
-        utr_number: input.utrNumber.trim(),
-        screenshot_url: input.screenshotUrl,
-        status: 'active',
-      },
+      payload,
       { onConflict: 'user_id,item_type,item_id' }
     )
     .select('id, item_type, item_id, item_title, user_id, first_name, last_name, email, phone, payment_status, amount, utr_number, screenshot_url, rejection_reason, reviewed_at, created_at, status')

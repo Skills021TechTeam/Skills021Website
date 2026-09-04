@@ -42,3 +42,5 @@ supabase/migrations/20260819_user_profile_avatar.sql
 gsm.ino
 supabase/migrations/20260829_public_profile_preview_rpc.sql
 .env
+supabase/migrations/20260904_fix_pricing_coupons_rls.sql
+supabase/migrations/20260904_pricing_discounts_coupons.sql

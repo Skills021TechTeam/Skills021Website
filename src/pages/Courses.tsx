@@ -25,6 +25,7 @@ import CourseRatingMenu from '../components/CourseRatingMenu'
 import { getLiveWebinars, getWebinarRecordings, resolveWebinarRecordingVideo, type LiveWebinar, type WebinarRecording } from '../lib/webinarService'
 import PanelSpotlightCard from '../components/PanelSpotlightCard'
 import { showAuthRequiredToast } from '../components/AuthRequiredToast'
+import drAjayPhoto from '../dr-ajay-kumar.jpeg'
 
 const GROUPS: { label: CourseGroup }[] = [
   { label: 'Competitive Exams' },
@@ -725,6 +726,87 @@ export default function Courses() {
 
           {webinarsLoading ? <div className="py-16 text-center text-sm text-brand-muted"><Loader2 className="animate-spin mx-auto mb-3"/>Loading webinars...</div> : (
             <>
+              {/* Featured Speaker & Registration */}
+              <div className="rounded-[28px] border border-violet-100 dark:border-white/10 bg-white dark:bg-brand-dark-card overflow-hidden shadow-sm mb-10">
+                <div className="flex flex-col md:flex-row">
+                  <div className="relative min-h-72 md:min-h-0 md:w-72 lg:w-80 shrink-0 overflow-hidden bg-gray-100 dark:bg-black/20">
+                    <img
+                      src={drAjayPhoto}
+                      alt="Dr. Ajay Kumar"
+                      className="absolute inset-0 h-full w-full object-cover object-top"
+                      onError={(event) => { event.currentTarget.style.display = 'none' }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center text-center text-xs font-bold uppercase tracking-widest text-brand-muted dark:text-brand-dark-muted" aria-hidden="true">
+                      .
+                    </div>
+                  </div>
+                  <div className="p-6 sm:p-8 flex-1">
+                    <div className="inline-flex items-center gap-2 rounded-full bg-violet-50 dark:bg-violet-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-violet-600 dark:text-violet-300 mb-4">
+                      <Sparkles size={12} /> Featured Speaker
+                    </div>
+                    <h3 className="text-2xl sm:text-3xl font-black text-brand-text dark:text-white mb-2">
+                      Dr. Ajay Kumar
+                    </h3>
+                    <div className="text-sm leading-relaxed text-brand-muted dark:text-brand-dark-muted mb-6 space-y-3">
+                      <p>
+                        Dr. Ajay Kumar is an experienced Computer Science & Engineering academic, researcher, and technology professional with <strong>17+ years of experience</strong> in teaching, research, and industry. He holds <strong>B.E., M.E., and Ph.D. qualifications</strong>, along with <strong>Post-Doctorate experience</strong>, and has contributed to <strong>32+ research papers</strong>.
+                      </p>
+                      <p>
+                        His areas of expertise include Artificial Intelligence, Machine Learning, Data Science, Generative AI, Software Development, and emerging technologies. Through his academic and professional experience, Dr. Ajay Kumar focuses on connecting theoretical knowledge with practical, real-world applications.
+                      </p>
+                      <p>
+                        He is passionate about helping students and professionals understand emerging technologies, develop relevant skills, and prepare themselves for the rapidly evolving AI-driven future.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mb-8">
+                      {['AI', 'Machine Learning', 'Data Science', 'Generative AI', 'Software Development', 'Research & Innovation'].map(tag => (
+                        <span key={tag} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 text-brand-text dark:text-brand-dark-text">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+
+
+                  </div>
+                  
+                  <div className="bg-gray-50 dark:bg-black/20 p-6 sm:p-8 md:w-72 lg:w-80 flex flex-col justify-center border-t md:border-t-0 md:border-l border-gray-100 dark:border-white/10">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-brand-muted dark:text-brand-dark-muted mb-5">
+                      Speaker Highlights
+                    </h4>
+                    <ul className="space-y-5">
+                      <li className="flex items-start gap-3">
+                        <div className="mt-0.5 rounded-full bg-violet-100 dark:bg-violet-900/40 p-2 text-violet-600 dark:text-violet-400">
+                          <Trophy size={16} />
+                        </div>
+                        <div>
+                          <div className="text-sm font-bold text-brand-text dark:text-white">17+ Years Experience</div>
+                          <div className="text-xs text-brand-muted dark:text-brand-dark-muted mt-0.5">Teaching, Research & Industry</div>
+                        </div>
+                      </li>
+                      <li className="flex items-start gap-3">
+                        <div className="mt-0.5 rounded-full bg-cyan-100 dark:bg-cyan-900/40 p-2 text-cyan-600 dark:text-cyan-400">
+                          <GraduationCap size={16} />
+                        </div>
+                        <div>
+                          <div className="text-sm font-bold text-brand-text dark:text-white">Ph.D. & Post-Doctorate</div>
+                          <div className="text-xs text-brand-muted dark:text-brand-dark-muted mt-0.5">Advanced Academic Qualifications</div>
+                        </div>
+                      </li>
+                      <li className="flex items-start gap-3">
+                        <div className="mt-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 p-2 text-amber-600 dark:text-amber-400">
+                          <BookOpen size={16} />
+                        </div>
+                        <div>
+                          <div className="text-sm font-bold text-brand-text dark:text-white">32+ Research Papers</div>
+                          <div className="text-xs text-brand-muted dark:text-brand-dark-muted mt-0.5">Significant Academic Contributions</div>
+                        </div>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
               {activeWebinar ? (
                 <div className="rounded-3xl border border-red-200 dark:border-red-900/40 bg-white dark:bg-brand-dark-card p-5 sm:p-7 shadow-lg mb-10">
                   <div className="flex flex-col lg:flex-row lg:items-center gap-6">
@@ -749,7 +831,7 @@ export default function Courses() {
                         {new Date(upcomingWebinar.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
                       </div>
                     </div>
-                    <div className="inline-flex items-center gap-2 rounded-xl bg-violet-50 dark:bg-violet-500/10 px-4 py-3 text-sm font-bold text-violet-600 dark:text-violet-300"><CalendarDays size={16}/> Coming soon</div>
+                    <a href="https://forms.gle/zwvivsCrV2ez28jv7" target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-500/20 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-500/25"><CalendarDays size={16}/> Register for Webinar <ExternalLink size={14} /></a>
                   </div>
                 </div>
               ) : (

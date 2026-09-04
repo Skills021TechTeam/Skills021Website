@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
-import { BookOpen, Clock, Users, Star, Search, Play, SlidersHorizontal, ChevronDown, X, Loader2, Lock, CheckCircle2, Sparkles, GraduationCap, Radio, Video, ExternalLink, CalendarDays, MonitorPlay, Trophy, TrendingUp, Zap, ArrowRight } from 'lucide-react'
+import { BookOpen, Clock, Users, Star, Search, Play, SlidersHorizontal, ChevronDown, X, Loader2, Lock, CheckCircle2, Sparkles, GraduationCap, Radio, Video, ExternalLink, CalendarDays, MonitorPlay, Trophy, TrendingUp, Zap, ArrowRight, BadgePercent } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Course, CourseGroup, CourseSubcategory } from '../store/contentStore'
 import { fetchPublishedSiteCourses } from '../lib/courseService'
@@ -51,6 +51,10 @@ const ALL_SUBCATEGORIES: { label: CourseSubcategory; group: CourseGroup }[] =
 const LEVELS = ['All Levels', 'Beginner', 'Intermediate', 'Advanced']
 const PRICES = ['All', 'Free', 'Paid']
 
+import type { ProductDiscount } from '../lib/pricingTypes'
+import { applyDiscountToPrice, formatDiscountLabel } from '../lib/discountService'
+import { fetchAllDiscounts } from '../lib/discountService'
+
 interface CourseCardProps {
   course: Course
   userId: string | null
@@ -61,11 +65,21 @@ interface CourseCardProps {
   onPlay: (course: Course) => void
   onEnroll: (course: Course) => void
   onRated: (courseId: string, average: number, count: number) => void
+  /** Active product discount for this course, if any */
+  activeDiscount?: ProductDiscount | null
 }
 
-function CourseCard({ course, userId, isAdmin, isPremium, isEnrolled, isPending, onPlay, onEnroll, onRated }: CourseCardProps) {
+function CourseCard({ course, userId, isAdmin, isPremium, isEnrolled, isPending, onPlay, onEnroll, onRated, activeDiscount }: CourseCardProps) {
   const isFreeCourse = course.price === 'FREE' || course.price === 0
   const canWatch = isAdmin || isPremium || isEnrolled || isFreeCourse
+
+  // Compute sale price if a discount is active
+  const originalNumericPrice = typeof course.price === 'number' ? course.price : 0
+  const salePrice = activeDiscount && !isFreeCourse
+    ? applyDiscountToPrice(originalNumericPrice, activeDiscount)
+    : null
+  const discountLabel = activeDiscount && !isFreeCourse ? formatDiscountLabel(activeDiscount) : null
+  const hasSale = salePrice != null && salePrice < originalNumericPrice
 
   return (
     <motion.div
@@ -96,6 +110,12 @@ function CourseCard({ course, userId, isAdmin, isPremium, isEnrolled, isPending,
           </span>
           {course.price === 'FREE' && (
             <span className="px-2.5 py-1 text-xs font-semibold bg-primary-500 text-white rounded-lg">FREE</span>
+          )}
+          {/* Sale badge */}
+          {hasSale && discountLabel && (
+            <span className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold bg-red-500 text-white rounded-lg">
+              <BadgePercent size={10} /> {discountLabel}
+            </span>
           )}
         </div>
         {canWatch ? (
@@ -140,6 +160,11 @@ function CourseCard({ course, userId, isAdmin, isPremium, isEnrolled, isPending,
           <div>
             {course.price === 'FREE' ? (
               <span className="text-lg font-bold text-primary-500">FREE</span>
+            ) : hasSale ? (
+              <div className="flex flex-col">
+                <span className="text-xs line-through text-brand-muted dark:text-brand-dark-muted">₹{originalNumericPrice}</span>
+                <span className="text-lg font-bold text-red-500">₹{salePrice}</span>
+              </div>
             ) : (
               <span className="text-lg font-bold text-brand-text dark:text-brand-dark-text">₹{course.price}</span>
             )}
@@ -248,6 +273,8 @@ export default function Courses() {
   const [showPremiumModal, setShowPremiumModal] = useState(false)
   const [playCourse, setPlayCourse] = useState<Course | null>(null)
   const [allAccessPrice, setAllAccessPrice] = useState(999)
+  // Map of courseId -> active ProductDiscount (null means no active discount)
+  const [courseDiscountsMap, setCourseDiscountsMap] = useState<Map<string, ProductDiscount>>(new Map())
 
   const requireLogin = () => {
     showAuthRequiredToast({
@@ -265,6 +292,24 @@ export default function Courses() {
       try {
         const data = await fetchPublishedSiteCourses()
         setCourses(data)
+
+        // Load all active course discounts in a single query for all courses
+        // and build a Map for O(1) lookup per card. Avoids N+1 fetches.
+        try {
+          const discounts = await fetchAllDiscounts('course')
+          const now = new Date()
+          const map = new Map<string, ProductDiscount>()
+          for (const d of discounts) {
+            if (!d.isActive) continue
+            if (d.startsAt && new Date(d.startsAt) > now) continue
+            if (d.expiresAt && new Date(d.expiresAt) <= now) continue
+            // Only store the first (most recent) active discount per product
+            if (!map.has(d.productId)) map.set(d.productId, d)
+          }
+          setCourseDiscountsMap(map)
+        } catch {
+          // Discount fetch failure is non-critical — don't block page
+        }
       } catch (err) {
         console.error('Failed to load courses:', err)
       } finally {
@@ -1052,6 +1097,7 @@ export default function Courses() {
                   onPlay={handlePlay}
                   onEnroll={handleEnroll}
                   onRated={handleCourseRated}
+                  activeDiscount={courseDiscountsMap.get(course.id) ?? null}
                 />
               ))}
             </div>

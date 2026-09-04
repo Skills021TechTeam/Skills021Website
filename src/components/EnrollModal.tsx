@@ -1,12 +1,20 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Loader2, CheckCircle2, QrCode, Copy, Check,
-  UploadCloud, AlertCircle, Phone, GraduationCap, Sparkles, Clock
+  UploadCloud, AlertCircle, Phone, GraduationCap, Sparkles, Clock,
+  Tag, ChevronRight, BadgePercent, XCircle
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Course } from '../store/contentStore'
 import { submitPaymentProof, createEnrollment, getPaymentSettings, PaymentSettings } from '../lib/videoEngagementService'
+import {
+  fetchCheckoutPrice,
+  initialCheckoutPricing,
+  toCheckoutPricing,
+  formatPrice,
+} from '../lib/pricingService'
+import type { CheckoutPricing, ProductType } from '../lib/pricingTypes'
 
 export interface EnrollModalProps {
   course?: Course | null
@@ -48,25 +56,90 @@ export default function EnrollModal({
     qrCodeUrl: '',
   })
 
-  useEffect(() => {
-    getPaymentSettings().then((s) => {
-      if (s) setPaymentSettings(s)
-    })
-  }, [])
-
+  // ─── Pricing state ────────────────────────────────────────────────────────
   const isFree = !isPremiumMembership && course?.price === 'FREE'
   const title = isPremiumMembership ? 'All-Access Premium Membership' : (course?.title || 'Course Access')
-  const effectivePremiumAmount = paymentSettings.allAccessPrice || premiumAmount
-  const amount = isPremiumMembership ? effectivePremiumAmount : (isFree ? 0 : (typeof course?.price === 'number' ? course.price : 499))
   const itemId = isPremiumMembership ? 'premium_all_access' : (course?.id || 'course_generic')
-  const itemType = isPremiumMembership ? 'premium_membership' : 'course'
+  const itemType: ProductType = isPremiumMembership
+    ? 'premium_membership'
+    : 'course'
+
+  // Server-verified pricing (the source of truth for the payment amount)
+  const [pricing, setPricing] = useState<CheckoutPricing>(
+    initialCheckoutPricing(
+      isPremiumMembership ? premiumAmount : (typeof course?.price === 'number' ? course.price : 0)
+    )
+  )
+
+  // Coupon input UI state
+  const [couponInput, setCouponInput] = useState('')
+  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null)
+  const [couponLoading, setCouponLoading] = useState(false)
+  const [couponError, setCouponError] = useState<string | null>(null)
+
+  const pricingFetchRef = useRef<number>(0)
+
+  // ─── Load authoritative pricing from server ───────────────────────────────
+  const loadPricing = async (couponCode?: string | null) => {
+    if (isFree) {
+      setPricing({
+        originalPrice:         0,
+        productDiscountAmount: 0,
+        couponDiscountAmount:  0,
+        couponCode:            null,
+        finalAmount:           0,
+        isFree:                true,
+        discountId:            null,
+        couponId:              null,
+        isLoading:             false,
+        error:                 null,
+      })
+      return
+    }
+
+    const token = ++pricingFetchRef.current
+    try {
+      const breakdown = await fetchCheckoutPrice(
+        itemType,
+        itemId,
+        couponCode,
+        userId || null
+      )
+      if (token !== pricingFetchRef.current) return // Stale response — discard
+      const p = toCheckoutPricing(breakdown)
+
+      if (couponCode && p.couponError) {
+        setCouponError(p.couponError)
+        // Pricing without coupon
+        const base = await fetchCheckoutPrice(itemType, itemId, null, userId || null)
+        if (token !== pricingFetchRef.current) return
+        setPricing({ ...toCheckoutPricing(base), isLoading: false })
+      } else {
+        setCouponError(null)
+        setPricing({ ...p, isLoading: false })
+      }
+    } catch (err) {
+      if (token !== pricingFetchRef.current) return
+      setPricing(prev => ({ ...prev, isLoading: false, error: 'Failed to load pricing.' }))
+    }
+  }
+
+  useEffect(() => {
+    getPaymentSettings().then((s) => { if (s) setPaymentSettings(s) })
+    loadPricing(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const effectivePremiumAmount = paymentSettings.allAccessPrice || premiumAmount
+  // Always use server-calculated amount — NEVER trust a frontend-derived amount
+  const displayAmount = pricing.isLoading
+    ? (isPremiumMembership ? effectivePremiumAmount : (isFree ? 0 : (typeof course?.price === 'number' ? course.price : 499)))
+    : pricing.finalAmount
 
   const activeUpiId = paymentSettings.upiId || 'skills021@upi'
   const activePayeeName = paymentSettings.upiName || 'Skills021'
-
-  // If admin uploaded a custom QR code image, use it directly! Otherwise, generate dynamic UPI QR code
-  const upiIntentUrl = `upi://pay?pa=${activeUpiId}&pn=${encodeURIComponent(activePayeeName)}&am=${amount}&cu=INR&tn=${encodeURIComponent(`Skills021 - ${title.slice(0, 30)}`)}`
-  const qrDisplayUrl = paymentSettings.qrCodeUrl && paymentSettings.qrCodeUrl.trim() !== ''
+  const upiIntentUrl = `upi://pay?pa=${activeUpiId}&pn=${encodeURIComponent(activePayeeName)}&am=${displayAmount}&cu=INR&tn=${encodeURIComponent(`Skills021 - ${title.slice(0, 30)}`)}`
+  const qrDisplayUrl = paymentSettings.qrCodeUrl?.trim()
     ? paymentSettings.qrCodeUrl
     : `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(upiIntentUrl)}&size=240x240&margin=10`
 
@@ -81,24 +154,68 @@ export default function EnrollModal({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-
     if (!file.type.startsWith('image/')) {
       toast.error('Please upload an image file (PNG, JPG, or WEBP)')
       return
     }
-
     if (file.size > 5 * 1024 * 1024) {
       toast.error('Image size must be under 5 MB')
       return
     }
-
     const reader = new FileReader()
-    reader.onload = () => {
-      setScreenshotBase64(reader.result as string)
-    }
+    reader.onload = () => setScreenshotBase64(reader.result as string)
     reader.readAsDataURL(file)
   }
 
+  // ─── Coupon Handlers ──────────────────────────────────────────────────────
+  const handleApplyCoupon = async () => {
+    const code = couponInput.trim()
+    if (!code) {
+      setCouponError('Please enter a coupon code.')
+      return
+    }
+
+    setCouponLoading(true)
+    setCouponError(null)
+
+    try {
+      await loadPricing(code)
+      // After loadPricing completes, check if pricing has the coupon applied
+      // We check the ref via a fresh fetch to get the state
+      const breakdown = await fetchCheckoutPrice(itemType, itemId, code, userId || null)
+      const result = toCheckoutPricing(breakdown)
+
+      if (result.couponError) {
+        setCouponError(result.couponError)
+        setAppliedCoupon(null)
+      } else if (result.couponCode) {
+        setAppliedCoupon(result.couponCode)
+        setCouponError(null)
+        setPricing({ ...result, isLoading: false })
+        toast.success(`Coupon "${result.couponCode}" applied! 🎉`)
+      } else {
+        // Coupon may have been rejected in favor of product discount
+        if (pricing.productDiscountAmount > 0) {
+          toast.success('Product discount is already better than this coupon.')
+        }
+        setAppliedCoupon(null)
+      }
+    } catch {
+      setCouponError('Unable to validate coupon. Please try again.')
+    } finally {
+      setCouponLoading(false)
+    }
+  }
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null)
+    setCouponInput('')
+    setCouponError(null)
+    loadPricing(null)
+    toast.success('Coupon removed.')
+  }
+
+  // ─── Step handlers ────────────────────────────────────────────────────────
   const handleDetailsSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!firstName.trim() || !lastName.trim() || !email.trim() || !phone.trim()) {
@@ -131,15 +248,19 @@ export default function EnrollModal({
         toast.success('Enrolled successfully for Free! 🎉')
         setStep('free_success')
         onEnrolled(course.id)
-      } catch (err: any) {
-        toast.error(err.message || 'Failed to enroll')
+      } catch (err: unknown) {
+        toast.error((err as Error).message || 'Failed to enroll')
       } finally {
         setSubmitting(false)
       }
       return
     }
 
-    // Move to UPI payment step
+    // Re-fetch authoritative price before proceeding to payment
+    if (!pricing.isLoading) {
+      await loadPricing(appliedCoupon)
+    }
+
     setStep('upi_payment')
   }
 
@@ -150,7 +271,6 @@ export default function EnrollModal({
       toast.error('Please enter a valid 12-digit UTR / Transaction Reference Number')
       return
     }
-
     if (!screenshotBase64) {
       toast.error('Please upload your payment screenshot / receipt')
       return
@@ -158,30 +278,51 @@ export default function EnrollModal({
 
     setSubmitting(true)
     try {
+      // Re-fetch authoritative pricing one final time to get the server-confirmed amount
+      const finalBreakdown = await fetchCheckoutPrice(
+        itemType,
+        itemId,
+        appliedCoupon,
+        userId || null
+      )
+      const confirmedAmount = finalBreakdown.finalAmount
+
       await submitPaymentProof({
         userId,
-        itemType,
+        itemType: itemType === 'premium_membership' ? 'premium_membership' : 'course',
         itemId,
         itemTitle: title,
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: email.trim(),
         phone: phone.trim(),
-        amount,
+        amount: confirmedAmount,
         utrNumber: trimmedUtr,
         screenshotUrl: screenshotBase64,
+        // Pricing snapshot fields
+        originalAmount: finalBreakdown.originalPrice,
+        productDiscountAmount: finalBreakdown.productDiscountAmount,
+        couponCode: finalBreakdown.couponCode,
+        couponDiscountAmount: finalBreakdown.couponDiscountAmount,
+        appliedDiscountId: finalBreakdown.discountId,
+        appliedCouponId: finalBreakdown.couponId,
       })
 
       toast.success('Payment proof submitted for admin review! ⏳')
       setStep('submitted')
       onEnrolled(itemId)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err)
-      toast.error(err.message || 'Failed to submit payment proof')
+      toast.error((err as Error).message || 'Failed to submit payment proof')
     } finally {
       setSubmitting(false)
     }
   }
+
+  // ─── Pricing Breakdown Display ────────────────────────────────────────────
+  const hasProductDiscount = !pricing.isLoading && pricing.productDiscountAmount > 0
+  const hasCouponDiscount = !pricing.isLoading && pricing.couponDiscountAmount > 0
+  const showBreakdown = hasProductDiscount || hasCouponDiscount
 
   return (
     <AnimatePresence>
@@ -221,20 +362,135 @@ export default function EnrollModal({
           </div>
 
           <div className="overflow-y-auto p-6 flex-1">
-            {/* ─── STEP 1: Contact Details ─────────────────────────────────────── */}
+            {/* ─── STEP 1: Contact Details ───────────────────────────────────── */}
             {step === 'details' && (
               <form onSubmit={handleDetailsSubmit} className="space-y-4">
-                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-primary-50 to-teal-50 dark:from-primary-950/30 dark:to-teal-950/30 border border-primary-100 dark:border-primary-900/30 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-brand-muted dark:text-brand-dark-muted font-medium">Selected Item</p>
-                    <p className="text-sm font-bold text-brand-text dark:text-brand-dark-text">{title}</p>
+                {/* ── Pricing Summary Card ── */}
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-primary-50 to-teal-50 dark:from-primary-950/30 dark:to-teal-950/30 border border-primary-100 dark:border-primary-900/30">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-xs text-brand-muted dark:text-brand-dark-muted font-medium">Selected Item</p>
+                      <p className="text-sm font-bold text-brand-text dark:text-brand-dark-text">{title}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-brand-muted dark:text-brand-dark-muted font-medium">Payable Amount</p>
+                      {pricing.isLoading ? (
+                        <Loader2 size={16} className="animate-spin text-primary-500 ml-auto mt-1" />
+                      ) : isFree ? (
+                        <p className="text-lg font-black text-primary-500">FREE</p>
+                      ) : (
+                        <div className="text-right">
+                          {hasProductDiscount && (
+                            <p className="text-xs line-through text-brand-muted dark:text-brand-dark-muted">
+                              {formatPrice(pricing.originalPrice)}
+                            </p>
+                          )}
+                          <p className="text-lg font-black text-primary-500">{formatPrice(displayAmount)}</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs text-brand-muted dark:text-brand-dark-muted font-medium">Payable Amount</p>
-                    <p className="text-lg font-black text-primary-500">{isFree ? 'FREE' : `₹${amount}`}</p>
-                  </div>
+
+                  {/* Pricing breakdown (shown when discounts apply) */}
+                  {showBreakdown && (
+                    <div className="mt-3 pt-3 border-t border-primary-100 dark:border-primary-900/30 space-y-1.5">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-brand-muted dark:text-brand-dark-muted">Original Price</span>
+                        <span className="font-medium text-brand-text dark:text-brand-dark-text">
+                          {formatPrice(pricing.originalPrice)}
+                        </span>
+                      </div>
+                      {hasProductDiscount && (
+                        <div className="flex justify-between text-xs">
+                          <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                            <BadgePercent size={11} /> Sale Discount
+                          </span>
+                          <span className="font-semibold text-green-600 dark:text-green-400">
+                            −{formatPrice(pricing.productDiscountAmount)}
+                          </span>
+                        </div>
+                      )}
+                      {hasCouponDiscount && (
+                        <div className="flex justify-between text-xs">
+                          <span className="flex items-center gap-1 text-violet-600 dark:text-violet-400">
+                            <Tag size={11} /> Coupon ({pricing.couponCode})
+                          </span>
+                          <span className="font-semibold text-violet-600 dark:text-violet-400">
+                            −{formatPrice(pricing.couponDiscountAmount)}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-xs border-t border-primary-100 dark:border-primary-900/30 pt-1.5 mt-1">
+                        <span className="font-bold text-brand-text dark:text-brand-dark-text">Total</span>
+                        <span className="font-black text-primary-500">{formatPrice(pricing.finalAmount)}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
+                {/* ── Coupon Input (only for paid items) ── */}
+                {!isFree && !pricing.isLoading && (
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold text-brand-muted dark:text-brand-dark-muted">
+                      Coupon Code (Optional)
+                    </label>
+                    {appliedCoupon ? (
+                      <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-violet-300 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30">
+                        <Tag size={14} className="text-violet-500 flex-shrink-0" />
+                        <span className="text-xs font-bold text-violet-700 dark:text-violet-300 flex-1 font-mono">
+                          {appliedCoupon}
+                        </span>
+                        <span className="text-xs font-semibold text-green-600 dark:text-green-400">
+                          −{formatPrice(pricing.couponDiscountAmount)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleRemoveCoupon}
+                          className="p-1 text-brand-muted hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20"
+                          title="Remove coupon"
+                        >
+                          <XCircle size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={couponInput}
+                          onChange={(e) => {
+                            setCouponInput(e.target.value.toUpperCase())
+                            setCouponError(null)
+                          }}
+                          onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleApplyCoupon())}
+                          placeholder="Enter code e.g. SKILLS50"
+                          className="input text-xs flex-1 font-mono uppercase"
+                          maxLength={50}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleApplyCoupon}
+                          disabled={couponLoading || !couponInput.trim()}
+                          className="flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                        >
+                          {couponLoading ? (
+                            <Loader2 size={13} className="animate-spin" />
+                          ) : (
+                            <>
+                              <ChevronRight size={13} /> Apply
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                    {couponError && (
+                      <p className="flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400">
+                        <XCircle size={12} /> {couponError}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Contact form fields */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-brand-muted dark:text-brand-dark-muted mb-1">First Name *</label>
@@ -287,15 +543,17 @@ export default function EnrollModal({
 
                 <button
                   type="submit"
-                  disabled={submitting}
-                  className="w-full mt-2 py-3 bg-primary-500 text-white font-bold text-sm rounded-xl hover:bg-primary-600 transition-colors flex items-center justify-center gap-2 shadow-md shadow-primary-500/20"
+                  disabled={submitting || pricing.isLoading}
+                  className="w-full mt-2 py-3 bg-primary-500 text-white font-bold text-sm rounded-xl hover:bg-primary-600 transition-colors flex items-center justify-center gap-2 shadow-md shadow-primary-500/20 disabled:opacity-60"
                 >
                   {submitting ? (
                     <Loader2 size={18} className="animate-spin" />
                   ) : isFree ? (
                     'Enroll Instantly for Free'
+                  ) : pricing.isLoading ? (
+                    <><Loader2 size={16} className="animate-spin" /> Loading price…</>
                   ) : (
-                    'Proceed to UPI Payment (₹' + amount + ')'
+                    `Proceed to UPI Payment (${formatPrice(displayAmount)})`
                   )}
                 </button>
               </form>
@@ -306,11 +564,35 @@ export default function EnrollModal({
               <form onSubmit={handlePaymentProofSubmit} className="space-y-4">
                 <div className="text-center">
                   <p className="text-xs font-semibold uppercase tracking-wider text-primary-500 mb-1">UPI Payment Portal</p>
-                  <h4 className="text-xl font-bold text-brand-text dark:text-brand-dark-text">Scan & Pay ₹{amount}</h4>
+                  <h4 className="text-xl font-bold text-brand-text dark:text-brand-dark-text">
+                    Scan &amp; Pay {formatPrice(displayAmount)}
+                  </h4>
                   <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-0.5">
                     Use Google Pay, PhonePe, Paytm, BHIM, or any UPI App
                   </p>
                 </div>
+
+                {/* Price breakdown on payment step */}
+                {showBreakdown && (
+                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-brand-dark-border text-xs space-y-1">
+                    {hasProductDiscount && (
+                      <div className="flex justify-between">
+                        <span className="text-brand-muted">Sale Discount</span>
+                        <span className="text-green-600 dark:text-green-400 font-semibold">−{formatPrice(pricing.productDiscountAmount)}</span>
+                      </div>
+                    )}
+                    {hasCouponDiscount && (
+                      <div className="flex justify-between">
+                        <span className="text-brand-muted">Coupon ({pricing.couponCode})</span>
+                        <span className="text-violet-600 dark:text-violet-400 font-semibold">−{formatPrice(pricing.couponDiscountAmount)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-bold border-t border-gray-200 dark:border-white/10 pt-1">
+                      <span className="text-brand-text dark:text-brand-dark-text">Final Amount</span>
+                      <span className="text-primary-500">{formatPrice(pricing.finalAmount)}</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* QR Code Container */}
                 <div className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-200 dark:border-brand-dark-border">
@@ -321,8 +603,6 @@ export default function EnrollModal({
                       className="w-44 h-44 object-contain rounded-lg"
                     />
                   </div>
-
-                  {/* Copy UPI ID */}
                   <div className="mt-3 flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border rounded-xl text-xs">
                     <span className="text-brand-muted dark:text-brand-dark-muted font-mono">{activeUpiId}</span>
                     <button
@@ -342,7 +622,7 @@ export default function EnrollModal({
                     <AlertCircle size={14} /> Verification Instructions:
                   </p>
                   <ol className="list-decimal list-inside space-y-0.5 text-[11px] opacity-90">
-                    <li>Make the payment of <strong>₹{amount}</strong> to the UPI ID above.</li>
+                    <li>Make the payment of <strong>{formatPrice(displayAmount)}</strong> to the UPI ID above.</li>
                     <li>Copy the <strong>12-digit UTR / Reference ID</strong> from your UPI app receipt.</li>
                     <li>Upload your payment screenshot below and click Submit.</li>
                   </ol>
@@ -429,9 +709,21 @@ export default function EnrollModal({
                     <span className="text-brand-muted">Item:</span>
                     <span className="font-semibold text-brand-text dark:text-brand-dark-text">{title}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-brand-muted">Amount:</span>
-                    <span className="font-bold text-primary-500">₹{amount}</span>
+                  {pricing.productDiscountAmount > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-brand-muted">Sale Discount:</span>
+                      <span className="text-green-600 dark:text-green-400 font-semibold">−{formatPrice(pricing.productDiscountAmount)}</span>
+                    </div>
+                  )}
+                  {pricing.couponDiscountAmount > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-brand-muted">Coupon ({pricing.couponCode}):</span>
+                      <span className="text-violet-600 dark:text-violet-400 font-semibold">−{formatPrice(pricing.couponDiscountAmount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between border-t border-gray-200 dark:border-white/10 pt-1.5">
+                    <span className="text-brand-muted">Amount Paid:</span>
+                    <span className="font-bold text-primary-500">{formatPrice(pricing.finalAmount)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-brand-muted">Status:</span>

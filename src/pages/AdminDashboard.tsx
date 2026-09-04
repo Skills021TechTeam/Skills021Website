@@ -1685,10 +1685,10 @@ export default function AdminDashboard() {
   }, [])
 
   useEffect(() => {
-    if (activeTab === 'users' || activeTab === 'overview') {
+    if (activeTab === 'users') {
       loadDbUsers()
     }
-    if (activeTab === 'payment-approvals' || activeTab === 'overview') {
+    if (activeTab === 'payment-approvals') {
       loadPaymentRequests()
     }
   }, [activeTab, loadDbUsers, loadPaymentRequests])
@@ -1709,9 +1709,9 @@ export default function AdminDashboard() {
     }
   }, [])
 
-  // Load resources when switching to resources/overview tab
+  // Load resources when switching to resources tab
   useEffect(() => {
-    if (activeTab === 'resources' || activeTab === 'overview') {
+    if (activeTab === 'resources') {
       loadDbResources()
     }
   }, [activeTab, loadDbResources])
@@ -1730,9 +1730,9 @@ export default function AdminDashboard() {
     }
   }, [])
 
-  // Load courses when switching to courses/overview tab
+  // Load courses when switching to courses tab
   useEffect(() => {
-    if (activeTab === 'courses' || activeTab === 'overview') {
+    if (activeTab === 'courses') {
       loadDbCourses()
     }
   }, [activeTab, loadDbCourses])
@@ -1763,9 +1763,9 @@ export default function AdminDashboard() {
     }
   }, [])
 
-  // Load mentorship data when switching to mentorship/overview tab
+  // Load mentorship data when switching to mentorship tab
   useEffect(() => {
-    if (activeTab === 'mentorship' || activeTab === 'overview') {
+    if (activeTab === 'mentorship') {
       loadMentorship()
     }
   }, [activeTab, loadMentorship])
@@ -1801,7 +1801,7 @@ export default function AdminDashboard() {
   }, [])
 
   useEffect(() => {
-    if (activeTab === 'career-applications' || activeTab === 'overview') {
+    if (activeTab === 'career-applications') {
       loadCareerApplications()
     }
   }, [activeTab, loadCareerApplications])

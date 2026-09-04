@@ -51,7 +51,7 @@ function mapRow(row: WebinarRecordingRow): WebinarRecording {
 export async function getWebinarRecordings(resolveVideo = true): Promise<WebinarRecording[]> {
   const { data, error } = await supabase
     .from('webinar_recordings')
-    .select('*')
+    .select('id, title, description, session_date, video_url, thumbnail_url, duration, status, access_type, price, created_at')
     .order('session_date', { ascending: false })
 
   if (error) throw new Error(`Failed to load webinar recordings: ${error.message}`)
@@ -189,7 +189,7 @@ function mapLiveRow(row: LiveWebinarRow): LiveWebinar {
 }
 
 export async function getLiveWebinars(): Promise<LiveWebinar[]> {
-  const { data, error } = await supabase.from('live_webinars').select('*').order('starts_at', { ascending: true })
+  const { data, error } = await supabase.from('live_webinars').select('id, title, description, provider, join_url, starts_at, ends_at, access_type, price, created_at').order('starts_at', { ascending: true })
   if (error) throw new Error(`Failed to load live webinars: ${error.message}`)
   return (data as unknown as LiveWebinarRow[]).map(mapLiveRow)
 }

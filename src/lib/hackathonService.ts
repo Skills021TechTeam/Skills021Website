@@ -88,7 +88,7 @@ export async function fetchHackathons(): Promise<Hackathon[]> {
   try {
     const { data, error } = await supabase
       .from('hackathons')
-      .select('*')
+      .select('id, title, description, start_date, end_date, registration_deadline, venue, banner_url, min_team_size, max_team_size, max_teams, current_teams, number_of_days, current_day, number_of_rounds, current_round, is_registration_open, status, rules, created_at')
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -107,7 +107,7 @@ export async function fetchHackathonById(id: string): Promise<Hackathon | null> 
   try {
     const { data, error } = await supabase
       .from('hackathons')
-      .select('*')
+      .select('id, title, description, start_date, end_date, registration_deadline, venue, banner_url, min_team_size, max_team_size, max_teams, current_teams, number_of_days, current_day, number_of_rounds, current_round, is_registration_open, status, rules, created_at')
       .eq('id', id)
       .maybeSingle()
 
@@ -197,7 +197,7 @@ export async function fetchTeams(hackathonId: string): Promise<HackathonTeam[]> 
   try {
     const { data, error } = await supabase
       .from('hackathon_teams')
-      .select('*')
+      .select('id, hackathon_id, team_code, team_name, leader_name, leader_email, leader_college, leader_branch, members, position, qualifications, day_attendance, created_at')
       .eq('hackathon_id', hackathonId)
       .order('created_at', { ascending: true })
 

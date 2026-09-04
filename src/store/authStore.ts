@@ -549,22 +549,14 @@ export const useAuthStore = create<AuthState>()(
           const adminEmail = configuredAdminId.includes('@') ? configuredAdminId : `${configuredAdminId}@skills021.com`
           let adminUid = 'admin-1'
 
-          // Seamlessly establish a Supabase Auth session for RLS access
+          // Seamlessly establish a Supabase Auth session for RLS access if user exists in Supabase
           try {
             const res = await signInUser(adminEmail, adminPassword)
             if (res?.user) {
               adminUid = res.user.id
             }
           } catch (authErr) {
-            // Auto-provision admin user in Supabase Auth if not yet created
-            try {
-              const res = await signUpUser(adminEmail, adminPassword, 'System Administrator', 'Skills021 Central HQ', '', '')
-              if (res?.user) {
-                adminUid = res.user.id
-              }
-            } catch (signupErr) {
-              console.warn('Supabase Auth auto-signup notice:', signupErr)
-            }
+            console.warn('Supabase Auth admin session notice (continuing with local admin credentials):', authErr)
           }
 
           // Ensure profile has role: 'admin'

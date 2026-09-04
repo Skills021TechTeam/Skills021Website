@@ -88,7 +88,7 @@ function toItemRatingType(t: RatingType): 'course' | 'teacher' {
 export async function getEnrollment(courseId: string, userId: string): Promise<Enrollment | null> {
   const { data, error } = await supabase
     .from('enrollments')
-    .select('*')
+    .select('id, item_type, item_id, item_title, user_id, first_name, last_name, email, phone, payment_status, amount, utr_number, screenshot_url, rejection_reason, reviewed_at, created_at')
     .eq('item_type', 'course')
     .eq('item_id', courseId)
     .eq('user_id', userId)
@@ -102,7 +102,7 @@ export async function getEnrollment(courseId: string, userId: string): Promise<E
 export async function getEnrollmentsForUser(userId: string): Promise<Enrollment[]> {
   const { data, error } = await supabase
     .from('enrollments')
-    .select('*')
+    .select('id, item_type, item_id, item_title, user_id, first_name, last_name, email, phone, payment_status, amount, utr_number, screenshot_url, rejection_reason, reviewed_at, created_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
 
@@ -113,7 +113,7 @@ export async function getEnrollmentsForUser(userId: string): Promise<Enrollment[
 export async function getAllEnrollments(): Promise<Enrollment[]> {
   const { data, error } = await supabase
     .from('enrollments')
-    .select('*')
+    .select('id, item_type, item_id, item_title, user_id, first_name, last_name, email, phone, payment_status, amount, utr_number, screenshot_url, rejection_reason, reviewed_at, created_at')
     .order('created_at', { ascending: false })
 
   if (error) throw new Error(`Failed to load enrollments: ${error.message}`)
@@ -154,7 +154,7 @@ export async function createEnrollment(input: EnrollInput): Promise<Enrollment> 
       screenshot_url: input.screenshotUrl || '',
       status: 'active',
     }, { onConflict: 'user_id,item_type,item_id' })
-    .select('*')
+    .select('id, item_type, item_id, item_title, user_id, first_name, last_name, email, phone, payment_status, amount, utr_number, screenshot_url, rejection_reason, reviewed_at, created_at, status')
     .single()
 
   if (error) throw new Error(`Failed to submit enrollment: ${error.message}`)
@@ -196,7 +196,7 @@ export async function submitPaymentProof(input: SubmitPaymentProofInput): Promis
       },
       { onConflict: 'user_id,item_type,item_id' }
     )
-    .select('*')
+    .select('id, item_type, item_id, item_title, user_id, first_name, last_name, email, phone, payment_status, amount, utr_number, screenshot_url, rejection_reason, reviewed_at, created_at, status')
     .single()
 
   if (error) throw new Error(`Failed to submit payment verification proof: ${error.message}`)
@@ -212,7 +212,7 @@ export async function approvePaymentRequest(enrollmentId: string): Promise<Enrol
       rejection_reason: '',
     })
     .eq('id', enrollmentId)
-    .select('*')
+    .select('id, item_type, item_id, item_title, user_id, first_name, last_name, email, phone, payment_status, amount, utr_number, screenshot_url, rejection_reason, reviewed_at, created_at, status')
     .single()
 
   if (error) throw new Error(`Failed to approve payment: ${error.message}`)
@@ -258,7 +258,7 @@ export async function rejectPaymentRequest(enrollmentId: string, reason: string)
       reviewed_at: new Date().toISOString(),
     })
     .eq('id', enrollmentId)
-    .select('*')
+    .select('id, item_type, item_id, item_title, user_id, first_name, last_name, email, phone, payment_status, amount, utr_number, screenshot_url, rejection_reason, reviewed_at, created_at, status')
     .single()
 
   if (error) throw new Error(`Failed to reject payment: ${error.message}`)
@@ -274,7 +274,7 @@ export async function revokeAccess(enrollmentId: string, reason = 'Access revoke
       reviewed_at: new Date().toISOString(),
     })
     .eq('id', enrollmentId)
-    .select('*')
+    .select('id, item_type, item_id, item_title, user_id, first_name, last_name, email, phone, payment_status, amount, utr_number, screenshot_url, rejection_reason, reviewed_at, created_at, status')
     .single()
 
   if (error) throw new Error(`Failed to revoke access: ${error.message}`)
@@ -370,7 +370,7 @@ export async function submitRating(
 export async function getComments(courseId: string): Promise<VideoComment[]> {
   const { data, error } = await supabase
     .from('item_comments')
-    .select('*')
+    .select('id, item_id, user_id, user_name, comment_text, created_at')
     .eq('item_type', 'course')
     .eq('item_id', courseId)
     .order('created_at', { ascending: false })
@@ -396,7 +396,7 @@ export async function addComment(courseId: string, userId: string, userName: str
       user_name: userName,
       comment_text: comment.trim(),
     })
-    .select('*')
+    .select('id, item_id, user_id, user_name, comment_text, created_at')
     .single()
 
   if (error) throw new Error(`Failed to post comment: ${error.message}`)
@@ -424,7 +424,7 @@ export async function deleteComment(commentId: string, userId?: string): Promise
 export async function getTimestamps(courseId: string): Promise<VideoTimestamp[]> {
   const { data, error } = await supabase
     .from('item_timestamps')
-    .select('*')
+    .select('id, item_id, time_seconds, label, sort_order')
     .eq('item_type', 'course')
     .eq('item_id', courseId)
     .order('sort_order', { ascending: true })
@@ -454,7 +454,7 @@ export async function addTimestamp(
       label: label.trim(),
       sort_order: sortOrder ?? 0,
     })
-    .select('*')
+    .select('id, item_id, time_seconds, label, sort_order')
     .single()
 
   if (error) throw new Error(`Failed to add timestamp: ${error.message}`)
@@ -542,7 +542,7 @@ export async function getPaymentSettings(): Promise<PaymentSettings> {
   try {
     const { data, error } = await supabase
       .from('payment_settings')
-      .select('*')
+      .select('id, upi_id, upi_name, qr_code_url, instructions, updated_at')
       .eq('id', 'default')
       .maybeSingle()
 
@@ -600,7 +600,7 @@ export async function updatePaymentSettings(settings: Partial<PaymentSettings>):
         instructions: payloadInstructions,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'id' })
-      .select('*')
+      .select('id, upi_id, upi_name, qr_code_url, instructions, updated_at')
       .single()
 
     if (error) throw error

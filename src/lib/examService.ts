@@ -4,7 +4,7 @@ import type { ExamInput, ExamRow } from './pathfinderTypes'
 export async function getExams(): Promise<ExamRow[]> {
   const { data, error } = await supabase
     .from('exams')
-    .select('*')
+    .select('id, title, conducting_body, description, exam_type, official_website, registration_start, registration_end, exam_date, result_date, application_fee, selection_process, eligibility, course, branch, minimum_semester, maximum_age, minimum_percentage, average_salary, status, created_at')
     .order('created_at', { ascending: false })
 
   if (error) {
@@ -20,7 +20,7 @@ export async function getExams(): Promise<ExamRow[]> {
 export async function getExam(id: string): Promise<ExamRow> {
   const { data, error } = await supabase
     .from('exams')
-    .select('*')
+    .select('id, title, conducting_body, description, exam_type, official_website, registration_start, registration_end, exam_date, result_date, application_fee, selection_process, eligibility, course, branch, minimum_semester, maximum_age, minimum_percentage, average_salary, status, created_at')
     .eq('id', id)
     .single()
 
@@ -38,7 +38,7 @@ export async function createExam(input: ExamInput): Promise<ExamRow> {
   const { data, error } = await supabase
     .from('exams')
     .insert(input)
-    .select('*')
+    .select('id, title, conducting_body, description, exam_type, official_website, registration_start, registration_end, exam_date, result_date, application_fee, selection_process, eligibility, course, branch, minimum_semester, maximum_age, minimum_percentage, average_salary, status, created_at')
     .single()
 
   if (error) {
@@ -56,7 +56,7 @@ export async function updateExam(id: string, input: Partial<ExamInput>): Promise
     .from('exams')
     .update(input)
     .eq('id', id)
-    .select('*')
+    .select('id, title, conducting_body, description, exam_type, official_website, registration_start, registration_end, exam_date, result_date, application_fee, selection_process, eligibility, course, branch, minimum_semester, maximum_age, minimum_percentage, average_salary, status, created_at')
     .single()
 
   if (error) {

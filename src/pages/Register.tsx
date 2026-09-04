@@ -127,7 +127,7 @@ export default function Register() {
     if (!form.email) errs.email = 'Email is required'
     else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = 'Enter a valid email address'
     if (!form.phone.trim()) errs.phone = 'Phone number is required'
-    else if (!/^[+]?[\d\s()-]{7,15}$/.test(form.phone.trim())) errs.phone = 'Enter a valid phone number'
+    else if (!/^\d{10}$/.test(form.phone.trim())) errs.phone = 'Enter a valid 10-digit phone number'
     if (!form.password) errs.password = 'Password is required'
     else if (form.password.length < 8) errs.password = 'Password must be at least 8 characters'
     else if (!/[A-Z]/.test(form.password)) errs.password = 'Password must contain at least one uppercase letter'
@@ -141,7 +141,13 @@ export default function Register() {
   }
 
   const handleChange = (field: string, value: string | boolean) => {
-    setForm((prev) => ({ ...prev, [field]: value }))
+    let nextValue = value
+
+    if (field === 'phone' && typeof value === 'string') {
+      nextValue = value.replace(/\D/g, '').slice(0, 10)
+    }
+
+    setForm((prev) => ({ ...prev, [field]: nextValue }))
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: '' }))
   }
 
@@ -359,9 +365,11 @@ export default function Register() {
                       <input
                         id="reg-phone"
                         type="tel"
+                        inputMode="numeric"
+                        maxLength={10}
                         value={form.phone}
                         onChange={(e) => handleChange('phone', e.target.value)}
-                        placeholder="+91 98765 43210"
+                        placeholder="9876543210"
                         className={`w-full pl-10 pr-4 py-3 rounded-xl border text-sm bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${errors.phone ? 'border-red-400' : 'border-brand-border dark:border-brand-dark-border'}`}
                       />
                     </div>

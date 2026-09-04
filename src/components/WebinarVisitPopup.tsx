@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Bell, CalendarDays, ExternalLink, Radio, Video, X, ArrowRight } from 'lucide-react'
+import { Bell, CalendarDays, ExternalLink, Radio, Video, X, ArrowRight, Clock } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { getLiveWebinars, type LiveWebinar } from '../lib/webinarService'
@@ -121,8 +121,10 @@ export default function WebinarVisitPopup() {
               <div className="mt-4 rounded-2xl border border-violet-100 bg-violet-50/70 p-4 dark:border-white/10 dark:bg-white/5">
                 <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-brand-muted dark:text-brand-dark-muted">
                   <span className="inline-flex items-center gap-1.5"><Video size={13} className="text-violet-500" /> {notice.webinar.provider}</span>
-                  {notice.type === 'upcoming' && (
-                    <span className="inline-flex items-center gap-1.5"><CalendarDays size={13} className="text-cyan-500" /> {new Date(notice.webinar.startsAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                  {notice.type === 'upcoming' ? (
+                    <span className="inline-flex items-center gap-1.5 text-cyan-600 dark:text-cyan-400 font-bold"><CalendarDays size={13} className="text-cyan-500" /> {new Date(notice.webinar.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}</span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-red-600 dark:text-red-400 font-bold"><Clock size={13} className="text-red-500" /> Started at {new Date(notice.webinar.startsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}</span>
                   )}
                 </div>
                 {notice.webinar.description && (

@@ -41,7 +41,7 @@ export const Footer = () => {
             Your future is <span className=\"gradient-text\">one cohort away</span>.
           </h2>
           <p className=\"mx-auto mt-4 max-w-xl text-muted-foreground\">
-            Join 12,000+ students turning skills into careers. No fluff, no lectures — just build, ship, get hired.
+            Join 12,000+ students turning skills into careers. No fluff, no lectures. Just build, ship, get hired.
           </p>
           <div className=\"mt-8 flex flex-wrap items-center justify-center gap-3\">
             <MagneticButton data-testid=\"footer-cta\" className=\"group\">

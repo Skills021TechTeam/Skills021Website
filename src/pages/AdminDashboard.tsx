@@ -7369,45 +7369,103 @@ export default function AdminDashboard() {
     period: 'AM' | 'PM',
     setPeriod: (v: 'AM' | 'PM') => void,
     optional = false
-  ) => (
-    <div className="rounded-xl border border-brand-border dark:border-brand-dark-border p-3">
-      <div className="flex items-center justify-between mb-3">
-        <label className="text-sm font-semibold text-brand-text dark:text-brand-dark-text">{label}</label>
-        {optional && <span className="text-xs font-medium text-brand-muted">Optional</span>}
-      </div>
-      <div className="grid grid-cols-[1.2fr_0.8fr] gap-3">
-        <div>
-          <label className="block text-xs font-medium text-brand-muted mb-1">Date</label>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className={inputCls} />
+  ) => {
+    const selectedPreview = date && hour ? (() => {
+      try {
+        const d = new Date(`${date}T12:00:00`)
+        const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+        const minStr = (minute || '00').padStart(2, '0')
+        return `${dateStr} at ${hour}:${minStr} ${period}`
+      } catch {
+        return null
+      }
+    })() : null
+
+    return (
+      <div className="rounded-xl border border-brand-border dark:border-brand-dark-border p-4 bg-gray-50/50 dark:bg-white/[0.02]">
+        <div className="flex items-center justify-between mb-3">
+          <label className="text-sm font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-2">
+            <Clock size={15} className="text-violet-500" />
+            {label}
+          </label>
+          {optional && <span className="text-xs font-medium text-brand-muted bg-gray-200/60 dark:bg-white/10 px-2 py-0.5 rounded-full">Optional</span>}
         </div>
-        <div>
-          <label className="block text-xs font-medium text-brand-muted mb-1">Time</label>
-          <div className="grid grid-cols-[1fr_1fr_0.9fr] gap-2">
-            <div>
-              <label className="block text-[11px] font-medium text-brand-muted mb-1">Hours</label>
-              <select value={hour} onChange={e => setHour(e.target.value)} className={inputCls}>
-                <option value="">--</option>
-                {Array.from({ length: 12 }, (_, i) => i + 1).map(h => <option key={h} value={String(h)}>{h}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-[11px] font-medium text-brand-muted mb-1">Minutes</label>
-              <select value={minute} onChange={e => setMinute(e.target.value)} className={inputCls}>
-                <option value="">--</option>
-                {Array.from({ length: 60 }, (_, i) => <option key={i} value={String(i).padStart(2, '0')}>{String(i).padStart(2, '0')}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-[11px] font-medium text-brand-muted mb-1">AM / PM</label>
-              <select value={period} onChange={e => setPeriod(e.target.value as 'AM' | 'PM')} className={inputCls}>
-                <option>AM</option><option>PM</option>
-              </select>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-brand-muted mb-1.5 flex items-center gap-1.5">
+              <Calendar size={13} className="text-violet-500" /> Date
+            </label>
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-sm font-medium text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-brand-muted mb-1.5 flex items-center gap-1.5">
+              <Clock size={13} className="text-violet-500" /> Time (12-Hour)
+            </label>
+            <div className="grid grid-cols-3 gap-1.5">
+              <div>
+                <select
+                  value={hour}
+                  onChange={e => setHour(e.target.value)}
+                  className="w-full px-2 py-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-sm font-semibold text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500 text-center"
+                >
+                  <option value="">Hour</option>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map(h => (
+                    <option key={h} value={String(h)}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <select
+                  value={minute}
+                  onChange={e => setMinute(e.target.value)}
+                  className="w-full px-2 py-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-sm font-semibold text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-2 focus:ring-primary-500 text-center"
+                >
+                  <option value="00">:00</option>
+                  <option value="05">:05</option>
+                  <option value="10">:10</option>
+                  <option value="15">:15</option>
+                  <option value="20">:20</option>
+                  <option value="25">:25</option>
+                  <option value="30">:30</option>
+                  <option value="35">:35</option>
+                  <option value="40">:40</option>
+                  <option value="45">:45</option>
+                  <option value="50">:50</option>
+                  <option value="55">:55</option>
+                </select>
+              </div>
+              <div>
+                <select
+                  value={period}
+                  onChange={e => setPeriod(e.target.value as 'AM' | 'PM')}
+                  className="w-full px-2 py-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-sm font-bold text-violet-600 dark:text-violet-400 focus:outline-none focus:ring-2 focus:ring-primary-500 text-center"
+                >
+                  <option value="AM">AM</option>
+                  <option value="PM">PM</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
+
+        {selectedPreview && (
+          <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-50/80 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800/60 text-xs text-violet-900 dark:text-violet-200">
+            <CheckCircle size={14} className="text-emerald-500 shrink-0" />
+            <span>
+              Selected Schedule: <strong>{selectedPreview}</strong>
+            </span>
+          </div>
+        )}
       </div>
-    </div>
-  )
+    )
+  }
 
   const loadWebinarIntoForm = (webinar: LiveWebinar) => {
     const start = new Date(webinar.startsAt)
@@ -7546,7 +7604,7 @@ export default function AdminDashboard() {
 
         <div className="card overflow-hidden">
           <div className="p-5 border-b border-brand-border dark:border-brand-dark-border"><h3 className="font-bold">Scheduled sessions</h3></div>
-          {liveWebinars.length === 0 ? <p className="p-6 text-sm text-brand-muted">No live sessions scheduled.</p> : <div className="divide-y divide-brand-border dark:divide-brand-dark-border">{liveWebinars.map(w => { const ongoing = new Date(w.startsAt) <= new Date() && (!w.endsAt || new Date(w.endsAt) > new Date()); return <div key={w.id} className="p-4 flex items-center justify-between gap-4"><div><div className="flex items-center gap-2"><span className="font-semibold">{w.title}</span>{ongoing && <StatusBadge status="Ongoing" />}</div><p className="text-xs text-brand-muted mt-1">{w.provider} · {new Date(w.startsAt).toLocaleString()} · {w.access === 'free' ? 'Free' : w.access === 'enrolled_free' ? `Enrolled free · ₹${w.price}` : `Paid · ₹${w.price}`}</p></div><div className="flex items-center gap-2">{new Date(w.startsAt).getTime() > Date.now() && <button onClick={() => loadWebinarIntoForm(w)} className="p-2 text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg" title="Edit upcoming webinar"><Edit2 size={15} /></button>}<a href={w.joinUrl} target="_blank" rel="noreferrer" className="p-2 text-primary-500"><ExternalLink size={15} /></a><button onClick={async () => { try { await deleteLiveWebinar(w.id); setLiveWebinars(prev => prev.filter(x => x.id !== w.id)); toast.success('Webinar deleted') } catch (e) { toast.error(e instanceof Error ? e.message : 'Delete failed') } }} className="p-2 text-red-500"><Trash2 size={15} /></button></div></div> })}</div>}
+          {liveWebinars.length === 0 ? <p className="p-6 text-sm text-brand-muted">No live sessions scheduled.</p> : <div className="divide-y divide-brand-border dark:divide-brand-dark-border">{liveWebinars.map(w => { const ongoing = new Date(w.startsAt) <= new Date() && (!w.endsAt || new Date(w.endsAt) > new Date()); return <div key={w.id} className="p-4 flex items-center justify-between gap-4"><div><div className="flex items-center gap-2"><span className="font-semibold">{w.title}</span>{ongoing && <StatusBadge status="Ongoing" />}</div><div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs"><span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 font-bold border border-violet-200 dark:border-violet-800"><Clock size={12} className="text-violet-500" />{new Date(w.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}{w.endsAt && ` to ${new Date(w.endsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`}</span><span className="text-brand-muted">·</span><span className="text-brand-muted">{w.provider}</span><span className="text-brand-muted">·</span><span className={`font-semibold ${w.access === 'free' ? 'text-emerald-600' : 'text-amber-600'}`}>{w.access === 'free' ? 'Free' : w.access === 'enrolled_free' ? `Enrolled free (₹${w.price})` : `Paid · ₹${w.price}`}</span></div></div><div className="flex items-center gap-2">{new Date(w.startsAt).getTime() > Date.now() && <button onClick={() => loadWebinarIntoForm(w)} className="p-2 text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg" title="Edit upcoming webinar"><Edit2 size={15} /></button>}<a href={w.joinUrl} target="_blank" rel="noreferrer" className="p-2 text-primary-500"><ExternalLink size={15} /></a><button onClick={async () => { try { await deleteLiveWebinar(w.id); setLiveWebinars(prev => prev.filter(x => x.id !== w.id)); toast.success('Webinar deleted') } catch (e) { toast.error(e instanceof Error ? e.message : 'Delete failed') } }} className="p-2 text-red-500"><Trash2 size={15} /></button></div></div> })}</div>}
         </div>
 
         <div className="card overflow-hidden">

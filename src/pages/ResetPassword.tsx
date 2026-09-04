@@ -15,7 +15,6 @@ import {
 import toast from 'react-hot-toast'
 import { supabase, updateUserAuthPassword } from '../lib/supabase'
 import { clearRateLimit } from '../store/authStore'
-import Logo from '../components/Logo'
 
 export default function ResetPassword() {
   const [newPassword, setNewPassword] = useState('')
@@ -121,11 +120,6 @@ export default function ResetPassword() {
         className="w-full max-w-[400px]"
       >
         <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800/90 rounded-2xl p-6 sm:p-8 shadow-xl shadow-slate-200/40 dark:shadow-none">
-          {/* Logo */}
-          <div className="flex items-center justify-between mb-5">
-            <Logo size="sm" />
-          </div>
-
           {/* Header */}
           <div className="mb-5">
             <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">

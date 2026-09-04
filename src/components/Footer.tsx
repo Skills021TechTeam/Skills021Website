@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Play, Globe, Link2, Mail, BookOpen, FileText, HelpCircle, Cookie, ShieldCheck } from 'lucide-react'
 import { openCookieSettings } from '../lib/cookieService'
-import Logo from './Logo'
 
 const footerLinks = [
 
@@ -36,7 +35,6 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10">
           {/* Brand */}
           <div className="lg:col-span-1">
-            <Logo size="md" showTagline={true} className="mb-5" />
             <p className="text-sm text-gray-400 leading-relaxed mb-6">
               India's premier EdTech platform with quality courses, study resources, and expert mentorship for students across India.
             </p>

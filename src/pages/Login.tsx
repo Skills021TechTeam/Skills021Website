@@ -21,7 +21,6 @@ import { useAuthStore, checkRateLimit, clearRateLimit } from '../store/authStore
 import { resetPasswordForEmail, resendVerificationEmail } from '../lib/supabase'
 import { lookupUserPublicProfile } from '../lib/accountLookup'
 import ForgotPasswordModal from '../components/ForgotPasswordModal'
-import Logo from '../components/Logo'
 
 type LoginStep = 'email' | 'password'
 
@@ -343,8 +342,6 @@ export default function Login() {
         <div className="bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800/90 rounded-2xl p-6 sm:p-8 shadow-xl shadow-slate-200/40 dark:shadow-none">
           {/* Brand Header */}
           <div className="flex items-center justify-between mb-5">
-            <Logo size="sm" />
-
             <span className="text-[11px] font-medium text-slate-400 dark:text-zinc-500">
               {step === 'email' ? '1 of 2' : '2 of 2'}
             </span>

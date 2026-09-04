@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Lock, Eye, EyeOff, ShieldCheck, ArrowLeft, ArrowRight, AlertCircle, RefreshCw, KeyRound, Mail, Zap, Timer } from 'lucide-react'
-import Logo from '../components/Logo'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 
@@ -99,7 +98,6 @@ export default function AdminLogin() {
       {/* Top Header Bar */}
       <header className="relative z-10 w-full px-6 py-5 flex items-center justify-between border-b border-zinc-900 bg-black/80 backdrop-blur-md">
         <Link to="/" className="inline-flex items-center gap-3 group">
-          <Logo size="sm" asLink={false} />
           <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-zinc-900 text-zinc-300 border border-zinc-800">
             Admin Portal
           </span>

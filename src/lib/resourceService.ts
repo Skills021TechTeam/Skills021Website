@@ -13,37 +13,37 @@ export interface ResourceTypeRow { id: number; name: string }
 // ─── Hierarchy Lookup Functions ─────────────────────────────────────────────
 
 export async function fetchColleges(): Promise<College[]> {
-  const { data, error } = await supabase.from('colleges').select('*').order('name')
+  const { data, error } = await supabase.from('colleges').select('id, name, short_name, city, state').order('name')
   if (error) throw new Error(`Failed to fetch colleges: ${error.message}`)
   return data as College[]
 }
 
 export async function fetchCourses(collegeId: number): Promise<Course[]> {
-  const { data, error } = await supabase.from('courses').select('*').eq('college_id', collegeId).order('name')
+  const { data, error } = await supabase.from('courses').select('id, college_id, name, duration').eq('college_id', collegeId).order('name')
   if (error) throw new Error(`Failed to fetch courses: ${error.message}`)
   return data as Course[]
 }
 
 export async function fetchBranches(courseId: number): Promise<Branch[]> {
-  const { data, error } = await supabase.from('branches').select('*').eq('course_id', courseId).order('name')
+  const { data, error } = await supabase.from('branches').select('id, course_id, name, code').eq('course_id', courseId).order('name')
   if (error) throw new Error(`Failed to fetch branches: ${error.message}`)
   return data as Branch[]
 }
 
 export async function fetchSemesters(branchId: number): Promise<Semester[]> {
-  const { data, error } = await supabase.from('semesters').select('*').eq('branch_id', branchId).order('semester_number')
+  const { data, error } = await supabase.from('semesters').select('id, branch_id, semester_number').eq('branch_id', branchId).order('semester_number')
   if (error) throw new Error(`Failed to fetch semesters: ${error.message}`)
   return data as Semester[]
 }
 
 export async function fetchSubjects(semesterId: number): Promise<Subject[]> {
-  const { data, error } = await supabase.from('subjects').select('*').eq('semester_id', semesterId).order('name')
+  const { data, error } = await supabase.from('subjects').select('id, semester_id, name, code').eq('semester_id', semesterId).order('name')
   if (error) throw new Error(`Failed to fetch subjects: ${error.message}`)
   return data as Subject[]
 }
 
 export async function fetchResourceTypes(): Promise<ResourceTypeRow[]> {
-  const { data, error } = await supabase.from('resource_types').select('*').order('name')
+  const { data, error } = await supabase.from('resource_types').select('id, name').order('name')
   if (error) throw new Error(`Failed to fetch resource types: ${error.message}`)
   return data as ResourceTypeRow[]
 }
@@ -117,19 +117,68 @@ export async function fetchPublishedResources(): Promise<Resource[]> {
   return (data ?? []).map(mapRowToResource)
 }
 
-// ─── Fetch "Notes" resources linked to a course (via matching subject/title) ─
-// Used by the Courses panel's video player to surface the actual notes
-// documents uploaded in the Resources panel for that course's subject.
-// Matches automatically against the Resources panel's Subject name — no
-// database schema change required.
+// Uses a server-side join filter instead of fetching all resources client-side.
 export async function fetchNotesForSubject(subjectName: string): Promise<Resource[]> {
   const trimmed = subjectName.trim()
   if (!trimmed) return []
 
-  const resources = await fetchPublishedResources()
-  return resources.filter(r =>
-    r.type.toLowerCase() === 'notes' && r.subject.trim().toLowerCase() === trimmed.toLowerCase()
-  )
+  // Build a targeted query: join resources → subjects, filter by subject name and resource type 'notes'
+  // This avoids fetching the entire published resources table just to find matching notes.
+  const NOTES_RESOURCE_SELECT = `
+    id, title, description, file_url, thumbnail_url, author,
+    is_premium, price, downloads, status, created_at, updated_at,
+    resource_types ( id, name ),
+    subjects (
+      id, name, code,
+      semesters (
+        id, semester_number,
+        branches (
+          id, name, code,
+          courses (
+            id, name, duration,
+            colleges ( id, name, short_name, city, state )
+          )
+        )
+      )
+    )
+  `
+
+  try {
+    // Step 1: find subject IDs that match the name (case-insensitive)
+    const { data: subjectRows, error: subjErr } = await supabase
+      .from('subjects')
+      .select('id')
+      .ilike('name', trimmed)
+
+    if (subjErr || !subjectRows || subjectRows.length === 0) return []
+
+    const subjectIds = subjectRows.map((s: any) => s.id)
+
+    // Step 2: find resource_type id for 'notes'
+    const { data: typeRows } = await supabase
+      .from('resource_types')
+      .select('id')
+      .ilike('name', 'notes')
+      .limit(1)
+
+    // Step 3: fetch only the matching published notes resources
+    let query = supabase
+      .from('resources')
+      .select(NOTES_RESOURCE_SELECT)
+      .eq('status', 'Published')
+      .in('subject_id', subjectIds)
+      .order('created_at', { ascending: false })
+
+    if (typeRows && typeRows.length > 0) {
+      query = query.eq('resource_type_id', typeRows[0].id)
+    }
+
+    const { data, error } = await query
+    if (error) return []
+    return (data ?? []).map(mapRowToResource)
+  } catch {
+    return []
+  }
 }
 
 // ─── Fetch All Resources (Admin) ────────────────────────────────────────────

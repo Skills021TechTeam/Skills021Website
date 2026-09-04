@@ -141,13 +141,13 @@ const mapGuidanceRequest = (r: GuidanceRequestRow): GuidanceRequest => ({
 
 // ─── Mentors ────────────────────────────────────────────────────────────────────
 export async function fetchAllMentors(): Promise<Mentor[]> {
-  const { data, error } = await supabase.from('mentors').select('*').order('created_at', { ascending: false })
+  const { data, error } = await supabase.from('mentors').select('id, name, designation, company, expertise, experience, rating, reviews, sessions, photo, bio, services, fees, linked_in, status, created_at').order('created_at', { ascending: false })
   if (error) throw new Error(`Failed to fetch mentors: ${error.message}`)
   return ((data ?? []) as unknown as MentorRow[]).map(mapMentor)
 }
 
 export async function fetchActiveMentors(): Promise<Mentor[]> {
-  const { data, error } = await supabase.from('mentors').select('*').eq('status', 'Active').order('created_at', { ascending: false })
+  const { data, error } = await supabase.from('mentors').select('id, name, designation, company, expertise, experience, rating, reviews, sessions, photo, bio, services, fees, linked_in, status, created_at').eq('status', 'Active').order('created_at', { ascending: false })
   if (error) throw new Error(`Failed to fetch mentors: ${error.message}`)
   return ((data ?? []) as unknown as MentorRow[]).map(mapMentor)
 }
@@ -185,7 +185,7 @@ export async function createMentor(input: MentorInput): Promise<Mentor> {
       reviews: 0,
       sessions: 0,
     })
-    .select('*')
+    .select('id, name, designation, company, expertise, experience, rating, reviews, sessions, photo, bio, services, fees, linked_in, status, created_at')
     .single()
   if (error) throw new Error(`Failed to create mentor: ${error.message}`)
   return mapMentor(data as unknown as MentorRow)
@@ -206,7 +206,7 @@ export async function updateMentor(id: string, input: Partial<MentorInput>): Pro
   if (input.linkedIn !== undefined) payload.linked_in = input.linkedIn
   if (input.status !== undefined) payload.status = input.status
 
-  const { data, error } = await supabase.from('mentors').update(payload).eq('id', id).select('*').single()
+  const { data, error } = await supabase.from('mentors').update(payload).eq('id', id).select('id, name, designation, company, expertise, experience, rating, reviews, sessions, photo, bio, services, fees, linked_in, status, created_at').single()
   if (error) throw new Error(`Failed to update mentor: ${error.message}`)
   return mapMentor(data as unknown as MentorRow)
 }
@@ -239,7 +239,7 @@ export async function deleteMentorPhoto(fileUrl: string): Promise<void> {
 
 // ─── Sessions ────────────────────────────────────────────────────────────────────
 export async function fetchAllSessions(): Promise<MentorSession[]> {
-  const { data, error } = await supabase.from('mentor_sessions').select('*').order('created_at', { ascending: false })
+  const { data, error } = await supabase.from('mentor_sessions').select('id, student_name, student_email, mentor_id, service_type, session_date, session_time, duration, fee, status, notes, created_at').order('created_at', { ascending: false })
   if (error) throw new Error(`Failed to fetch sessions: ${error.message}`)
   return ((data ?? []) as unknown as SessionRow[]).map(mapSession)
 }
@@ -272,7 +272,7 @@ export async function createSession(input: SessionInput): Promise<MentorSession>
       status: input.status || 'Pending',
       notes: input.notes || '',
     })
-    .select('*')
+    .select('id, student_name, student_email, mentor_id, service_type, session_date, session_time, duration, fee, status, notes, created_at')
     .single()
   if (error) throw new Error(`Failed to create session: ${error.message}`)
   return mapSession(data as unknown as SessionRow)
@@ -292,7 +292,7 @@ export async function updateSession(id: string, input: Partial<SessionInput>): P
   if (input.status !== undefined) payload.status = input.status
   if (input.notes !== undefined) payload.notes = input.notes
 
-  const { data, error } = await supabase.from('mentor_sessions').update(payload).eq('id', id).select('*').single()
+  const { data, error } = await supabase.from('mentor_sessions').update(payload).eq('id', id).select('id, student_name, student_email, mentor_id, service_type, session_date, session_time, duration, fee, status, notes, created_at').single()
   if (error) throw new Error(`Failed to update session: ${error.message}`)
   return mapSession(data as unknown as SessionRow)
 }
@@ -308,7 +308,7 @@ export async function deleteSession(id: string): Promise<void> {
 
 // ─── Guidance Requests ─────────────────────────────────────────────────────────
 export async function fetchAllGuidanceRequests(): Promise<GuidanceRequest[]> {
-  const { data, error } = await supabase.from('guidance_requests').select('*').order('created_at', { ascending: false })
+  const { data, error } = await supabase.from('guidance_requests').select('id, full_name, mobile, whatsapp, email, city, state, class_year, school_college, board_university, stream, percentage, guidance_types, preferred_mentors, additional_query, status, created_at').order('created_at', { ascending: false })
   if (error) throw new Error(`Failed to fetch guidance requests: ${error.message}`)
   return ((data ?? []) as unknown as GuidanceRequestRow[]).map(mapGuidanceRequest)
 }
@@ -350,14 +350,14 @@ export async function createGuidanceRequest(input: GuidanceRequestInput): Promis
       additional_query: input.additionalQuery,
       status: 'New',
     })
-    .select('*')
+    .select('id, full_name, mobile, whatsapp, email, city, state, class_year, school_college, board_university, stream, percentage, guidance_types, preferred_mentors, additional_query, status, created_at')
     .single()
   if (error) throw new Error(`Failed to submit guidance request: ${error.message}`)
   return mapGuidanceRequest(data as unknown as GuidanceRequestRow)
 }
 
 export async function updateGuidanceRequestStatus(id: string, status: GuidanceRequestStatus): Promise<GuidanceRequest> {
-  const { data, error } = await supabase.from('guidance_requests').update({ status }).eq('id', id).select('*').single()
+  const { data, error } = await supabase.from('guidance_requests').update({ status }).eq('id', id).select('id, full_name, mobile, whatsapp, email, city, state, class_year, school_college, board_university, stream, percentage, guidance_types, preferred_mentors, additional_query, status, created_at').single()
   if (error) throw new Error(`Failed to update guidance request: ${error.message}`)
   return mapGuidanceRequest(data as unknown as GuidanceRequestRow)
 }

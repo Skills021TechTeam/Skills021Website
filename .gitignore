@@ -41,3 +41,4 @@ supabase/migrations/20260816_user_profiles_and_paid_courses.sql
 supabase/migrations/20260819_user_profile_avatar.sql
 gsm.ino
 supabase/migrations/20260829_public_profile_preview_rpc.sql
+.env

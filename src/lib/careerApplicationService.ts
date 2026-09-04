@@ -87,7 +87,7 @@ export async function submitCareerApplication(input: CareerApplicationInput): Pr
       cover_message: input.coverMessage,
       status: 'New',
     })
-    .select('*')
+    .select('id, application_type, full_name, email, phone, role, department, college_or_organization, experience_level, portfolio_url, resume_url, cover_message, status, created_at')
     .single()
 
   if (error) throw new Error(`Failed to submit application: ${error.message}`)
@@ -143,7 +143,7 @@ export async function getResumeSignedUrl(pathOrUrl: string, expiresIn = 3600): P
 export async function fetchAllCareerApplications(): Promise<CareerApplication[]> {
   const { data, error } = await supabase
     .from('career_applications')
-    .select('*')
+    .select('id, application_type, full_name, email, phone, role, department, college_or_organization, experience_level, portfolio_url, resume_url, status, created_at')
     .order('created_at', { ascending: false })
 
   if (error) throw new Error(`Failed to fetch applications: ${error.message}`)
@@ -156,7 +156,7 @@ export async function updateCareerApplicationStatus(id: string, status: Applicat
     .from('career_applications')
     .update({ status })
     .eq('id', id)
-    .select('*')
+    .select('id, application_type, full_name, email, phone, role, department, college_or_organization, experience_level, portfolio_url, resume_url, status, created_at')
     .single()
 
   if (error) throw new Error(`Failed to update application: ${error.message}`)

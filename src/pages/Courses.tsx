@@ -803,6 +803,7 @@ export default function Courses() {
                         </div>
                       </li>
                     </ul>
+                    <a href="https://forms.gle/zwvivsCrV2ez28jv7" target="_blank" rel="noopener noreferrer" className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-500/20 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-500/25"><CalendarDays size={16}/> Register for Webinar <ExternalLink size={14} /></a>
                   </div>
                 </div>
               </div>
@@ -848,7 +849,6 @@ export default function Courses() {
                         {new Date(upcomingWebinar.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
                       </div>
                     </div>
-                    <a href="https://forms.gle/zwvivsCrV2ez28jv7" target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-500/20 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-500/25"><CalendarDays size={16}/> Register for Webinar <ExternalLink size={14} /></a>
                   </div>
                 </div>
               ) : (

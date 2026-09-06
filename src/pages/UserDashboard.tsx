@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   LayoutDashboard, BookOpen, Settings,
   Clock, CheckCircle, TrendingUp, Play, Save,
   User, Phone, School, Lock, AlertCircle, CreditCard, ShieldCheck, Loader2, Sparkles, Copy, Camera, Image as ImageIcon, LogOut,
   GraduationCap, Calendar, BookMarked, FileText, ChevronDown, ChevronUp, BarChart3, Target,
-  Smartphone, Volume2, Download
+  Smartphone, Volume2, Download, ArrowRight, CheckCircle2, Layers, Package, ExternalLink
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import LogoutConfirmModal from '../components/LogoutConfirmModal'
@@ -13,6 +14,9 @@ import { fetchPublishedSiteCourses } from '../lib/courseService'
 import { fetchPublishedResources, type Resource, triggerResourceDownload } from '../lib/resourceService'
 import { Course } from '../store/contentStore'
 import { getEnrollmentsForUser, Enrollment, getPaymentSettings } from '../lib/videoEngagementService'
+import { fetchSemesterBundle, fetchPublishedSemesterBundles } from '../lib/semesterBundleService'
+import type { SemesterBundle } from '../lib/semesterBundleTypes'
+import { fetchUserEntitlements } from '../lib/bundleAuthorizationService'
 import { updateUserAuthPassword } from '../lib/supabase'
 import VideoPlayerModal from '../components/VideoPlayerModal'
 import EnrollModal from '../components/EnrollModal'
@@ -72,6 +76,7 @@ export default function UserDashboard() {
   const [coursesList, setCoursesList] = useState<Course[]>([])
   const [resourcesList, setResourcesList] = useState<Resource[]>([])
   const [enrollments, setEnrollments] = useState<Enrollment[]>([])
+  const [enrolledSemesterBundles, setEnrolledSemesterBundles] = useState<SemesterBundle[]>([])
   const [loading, setLoading] = useState(true)
   const [activePlayCourse, setActivePlayCourse] = useState<Course | null>(null)
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
@@ -176,14 +181,74 @@ export default function UserDashboard() {
     if (!user?.id) return
     setLoading(true)
     try {
-      const [allCourses, allResources, userEnrollments] = await Promise.all([
+      const [allCourses, allResources, userEnrollments, userEntitlements] = await Promise.all([
         fetchPublishedSiteCourses().catch(() => []),
         fetchPublishedResources().catch(() => []),
         getEnrollmentsForUser(user.id).catch(() => []),
+        fetchUserEntitlements(user.id).catch(() => null),
       ])
       setCoursesList(allCourses)
       setResourcesList(allResources)
       setEnrollments(userEnrollments)
+
+      // Identify active semester bundles
+      const semBundleIds = new Set<string>()
+      const semBundleKeywords: string[] = []
+
+      userEnrollments.forEach((enr) => {
+        if (
+          (enr.status === 'paid' || enr.status === 'free') &&
+          (enr.itemType === 'semester_bundle' || enr.itemTitle?.toLowerCase().includes('semester bundle'))
+        ) {
+          const rawId = String(enr.courseId).split(':')[0]
+          if (rawId && rawId !== 'undefined' && rawId !== 'null') {
+            semBundleIds.add(rawId)
+          }
+          if (enr.itemTitle) {
+            semBundleKeywords.push(enr.itemTitle.toLowerCase())
+          }
+        }
+      })
+      if (userEntitlements?.semesterBundleIds) {
+        userEntitlements.semesterBundleIds.forEach((id) => semBundleIds.add(String(id)))
+      }
+      if (userEntitlements?.semesterBundleSemesterIds) {
+        userEntitlements.semesterBundleSemesterIds.forEach((id) => semBundleIds.add(String(id)))
+      }
+
+      const loadedBundles: SemesterBundle[] = []
+      for (const bId of semBundleIds) {
+        try {
+          const b = await fetchSemesterBundle(bId)
+          if (b && !loadedBundles.some((existing) => existing.id === b.id)) {
+            loadedBundles.push(b)
+          }
+        } catch (e) {
+          console.warn('Failed to load semester bundle:', bId, e)
+        }
+      }
+
+      // Fallback: If semester bundle enrollment exists but bundle wasn't resolved by direct ID, match published bundles
+      if (loadedBundles.length === 0 && semBundleKeywords.length > 0) {
+        try {
+          const published = await fetchPublishedSemesterBundles()
+          for (const pb of published) {
+            const matches = semBundleKeywords.some((kw) => {
+              const semMatch = kw.match(/semester\s*(\d+)/i)
+              if (semMatch && Number(semMatch[1]) === pb.semesterNumber) return true
+              if (pb.title && kw.includes(pb.title.toLowerCase())) return true
+              return false
+            })
+            if (matches && !loadedBundles.some((existing) => existing.id === pb.id)) {
+              loadedBundles.push(pb)
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to load fallback published semester bundles:', e)
+        }
+      }
+
+      setEnrolledSemesterBundles(loadedBundles)
     } catch (err) {
       console.error('Failed to load user dashboard data:', err)
     } finally {
@@ -206,6 +271,45 @@ export default function UserDashboard() {
       .toUpperCase()
       .slice(0, 2)
 
+  // Memoize all individual semester courses/subjects unlocked via semester bundles
+  const semesterCourses = useMemo(() => {
+    const list: {
+      subjectId: number
+      subjectName: string
+      subjectCode?: string
+      thumbnailUrl?: string
+      videoCount: number
+      resourceCount: number
+      semesterBundleId: string
+      semesterBundleTitle: string
+      semesterNumber?: number
+      academicCourseName?: string
+      branchName?: string
+    }[] = []
+
+    enrolledSemesterBundles.forEach((b) => {
+      b.subjects?.forEach((s) => {
+        if (s.subjectId && !list.some((existing) => existing.subjectId === s.subjectId)) {
+          list.push({
+            subjectId: s.subjectId,
+            subjectName: s.subjectName,
+            subjectCode: s.subjectCode,
+            thumbnailUrl: s.thumbnailUrl || b.thumbnailUrl,
+            videoCount: s.videoCount || 0,
+            resourceCount: s.resourceCount || 0,
+            semesterBundleId: b.id,
+            semesterBundleTitle: b.title,
+            semesterNumber: b.semesterNumber,
+            academicCourseName: b.academicCourseName,
+            branchName: b.branchName,
+          })
+        }
+      })
+    })
+
+    return list
+  }, [enrolledSemesterBundles])
+
   // Filter only active courses (approved 'paid' or 'free', strictly excluding resources and memberships)
   const activeCourseEnrollments = enrollments.filter(
     (enr) =>
@@ -218,18 +322,34 @@ export default function UserDashboard() {
 
   // Map active enrolled courses
   const enrolledCoursesWithMeta = activeCourseEnrollments.map((enr) => {
+    const isSemesterBundle =
+      enr.itemType === 'semester_bundle' ||
+      enr.itemTitle?.toLowerCase().includes('semester bundle') ||
+      String(enr.courseId).startsWith('sem_')
+    const isSubjectBundle =
+      enr.itemType === 'subject_bundle' ||
+      enr.itemTitle?.toLowerCase().includes('subject bundle')
+    const cleanId = String(enr.courseId).split(':')[0]
+    const matchedSemBundle = isSemesterBundle ? enrolledSemesterBundles.find((b) => b.id === cleanId) : null
     const matchedCourse = coursesList.find((c) => String(c.id) === String(enr.courseId))
+
     return {
       enrollment: enr,
+      isSemesterBundle,
+      isSubjectBundle,
+      semesterBundle: matchedSemBundle,
+      cleanId,
       course: (matchedCourse || {
         id: enr.courseId,
-        title: enr.itemTitle || `Course #${enr.courseId}`,
-        description: 'Enrolled via Skills021 Platform',
+        title: enr.itemTitle || (isSemesterBundle ? 'Semester Bundle' : `Course #${enr.courseId}`),
+        description: isSemesterBundle
+          ? `${matchedSemBundle?.subjects?.length || 6} Complete Subjects Included with Full Video Masterclasses`
+          : 'Enrolled via Skills021 Platform',
         group: 'College & Tech Courses',
-        subcategory: 'Web Development',
+        subcategory: isSemesterBundle ? 'Semester Package' : 'Web Development',
         instructor: 'Skills021 Faculty',
         duration: 'Self-paced',
-        lectures: 1,
+        lectures: matchedSemBundle?.totalVideos || 1,
         level: 'All Levels',
         rating: 4.8,
         reviews: 12,
@@ -238,12 +358,28 @@ export default function UserDashboard() {
         modules: [],
         status: 'Published',
         enrolled: 1,
-        gradientFrom: '#00BFA6',
-        gradientTo: '#00897B',
+        gradientFrom: isSemesterBundle ? '#8B5CF6' : '#00BFA6',
+        gradientTo: isSemesterBundle ? '#6366F1' : '#00897B',
         createdAt: enr.createdAt,
       }) as Course,
     }
   })
+
+  // Separate non-semester-bundle courses so semester bundles can be rendered as full semester packs
+  const otherCourses = useMemo(() => {
+    return enrolledCoursesWithMeta.filter((item) => !item.isSemesterBundle)
+  }, [enrolledCoursesWithMeta])
+
+  // Total courses count aggregating semester subjects and individual courses
+  const totalCoursesCount = useMemo(() => {
+    if (semesterCourses.length > 0) {
+      return otherCourses.length + semesterCourses.length
+    }
+    if (enrolledSemesterBundles.length > 0) {
+      return otherCourses.length + enrolledSemesterBundles.reduce((acc, b) => acc + (b.subjects?.length || 1), 0)
+    }
+    return activeCourseEnrollments.length
+  }, [semesterCourses, otherCourses, enrolledSemesterBundles, activeCourseEnrollments])
 
   // Filter and map active purchased resources
   const activeResourceEnrollments = enrollments.filter(
@@ -387,7 +523,7 @@ export default function UserDashboard() {
               {[
                 {
                   label: 'Total Enrolled Courses',
-                  value: activeCourseEnrollments.length.toString(),
+                  value: totalCoursesCount.toString(),
                   icon: BookOpen,
                   color: 'text-primary-500',
                   bg: 'bg-primary-50 dark:bg-primary-900/20',
@@ -429,24 +565,24 @@ export default function UserDashboard() {
               ))}
             </div>
 
-            {/* Continue Learning */}
+            {/* Active Courses & Semester Packs */}
             <div>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-2">
                   <TrendingUp size={18} className="text-primary-500" />
-                  Your Active Courses
+                  Your Active Courses & Semester Packs
                 </h3>
-                {enrolledCoursesWithMeta.length > 2 && (
+                {(enrolledSemesterBundles.length > 0 || otherCourses.length > 0) && (
                   <button
                     onClick={() => setActiveTab('courses')}
                     className="text-xs font-semibold text-primary-500 hover:underline"
                   >
-                    View All ({enrolledCoursesWithMeta.length})
+                    View All ({totalCoursesCount})
                   </button>
                 )}
               </div>
 
-              {enrolledCoursesWithMeta.length === 0 ? (
+              {enrolledSemesterBundles.length === 0 && otherCourses.length === 0 ? (
                 <div className="card p-8 text-center">
                   <BookOpen size={36} className="mx-auto text-brand-muted dark:text-brand-dark-muted mb-2 opacity-50" />
                   <p className="font-semibold text-brand-text dark:text-brand-dark-text">No courses enrolled yet</p>
@@ -461,8 +597,95 @@ export default function UserDashboard() {
                   </a>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {enrolledCoursesWithMeta.slice(0, 3).map(({ enrollment, course }) => (
+                <div className="space-y-4">
+                  {/* Semester Packs In Overview */}
+                  {enrolledSemesterBundles.map((semBundle) => (
+                    <div
+                      key={semBundle.id}
+                      className="card p-5 border border-violet-500/30 bg-gradient-to-r from-violet-500/10 via-purple-500/5 to-transparent flex flex-col md:flex-row md:items-center justify-between gap-4"
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center flex-shrink-0 text-white shadow-md shadow-violet-500/20">
+                          <Layers size={22} />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="badge text-[10px] px-2 py-0.5 bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 font-bold">
+                              Semester {semBundle.semesterNumber || 5} Pack
+                            </span>
+                            <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted">
+                              {semBundle.subjects?.length || 0} Semester Courses Unlocked
+                            </span>
+                          </div>
+                          <p className="font-bold text-sm text-brand-text dark:text-brand-dark-text truncate">
+                            {semBundle.title}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => setActiveTab('courses')}
+                          className="px-3 py-2 text-xs font-semibold rounded-xl bg-gray-100 dark:bg-white/10 text-brand-text dark:text-brand-dark-text hover:bg-gray-200 transition-colors"
+                        >
+                          View Subjects
+                        </button>
+                        <Link
+                          to={`/courses/semester-bundles/${semBundle.id}`}
+                          className="px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-xl transition-colors inline-flex items-center gap-1.5 shadow-sm"
+                        >
+                          <Layers size={13} /> Open Semester Hub
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Top Semester Courses Quick Access */}
+                  {semesterCourses.length > 0 && (
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-wider text-brand-muted dark:text-brand-dark-muted">
+                          Semester Subjects ({semesterCourses.length})
+                        </span>
+                        <button
+                          onClick={() => setActiveTab('courses')}
+                          className="text-xs text-primary-500 hover:underline font-semibold"
+                        >
+                          See all subjects →
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {semesterCourses.slice(0, 3).map((subj) => (
+                          <div
+                            key={subj.subjectId}
+                            className="p-3.5 rounded-2xl bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border flex flex-col justify-between"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between gap-1 mb-1.5">
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/10 text-brand-text dark:text-brand-dark-text">
+                                  {subj.subjectCode || 'SEM'}
+                                </span>
+                                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                                  {subj.videoCount} Lectures
+                                </span>
+                              </div>
+                              <h5 className="font-semibold text-xs text-brand-text dark:text-brand-dark-text line-clamp-1 mb-2">
+                                {subj.subjectName}
+                              </h5>
+                            </div>
+                            <Link
+                              to={`/subject-bundles/${subj.subjectId}`}
+                              className="w-full inline-flex items-center justify-center gap-1 py-1.5 px-2 bg-violet-50 dark:bg-violet-950/40 hover:bg-violet-600 text-violet-700 dark:text-violet-300 hover:text-white dark:hover:text-white text-xs font-semibold rounded-lg transition-colors mt-2"
+                            >
+                              <Play size={11} /> Study Subject
+                            </Link>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Other standalone enrolled courses */}
+                  {otherCourses.slice(0, 2).map(({ enrollment, course, isSubjectBundle, cleanId }) => (
                     <div key={enrollment.id} className="card p-4 flex flex-col sm:flex-row sm:items-center gap-4">
                       <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-teal-500 flex items-center justify-center flex-shrink-0 text-white font-bold">
                         <BookOpen size={22} />
@@ -487,12 +710,21 @@ export default function UserDashboard() {
                           {course.title}
                         </p>
                       </div>
-                      <button
-                        onClick={() => setActivePlayCourse(course)}
-                        className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-primary-500 text-white text-xs font-semibold rounded-xl hover:bg-primary-600 transition-colors flex-shrink-0"
-                      >
-                        <Play size={12} /> Watch Video
-                      </button>
+                      {isSubjectBundle ? (
+                        <Link
+                          to={`/subject-bundles/${cleanId}`}
+                          className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-primary-500 text-white text-xs font-semibold rounded-xl hover:bg-primary-600 transition-colors flex-shrink-0"
+                        >
+                          <Play size={12} /> Study Subject
+                        </Link>
+                      ) : (
+                        <button
+                          onClick={() => setActivePlayCourse(course)}
+                          className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-primary-500 text-white text-xs font-semibold rounded-xl hover:bg-primary-600 transition-colors flex-shrink-0"
+                        >
+                          <Play size={12} /> Watch Video
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -551,23 +783,214 @@ export default function UserDashboard() {
 
       case 'courses':
         return (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
+          <div className="space-y-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
-                <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">My Enrolled Courses</h2>
+                <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-2">
+                  <BookOpen className="text-primary-500" size={24} />
+                  My Enrolled Courses & Subjects
+                </h2>
                 <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">
-                  All courses saved to your account
+                  All active semester bundles, semester subjects, and courses saved to your account
                 </p>
               </div>
               <a
                 href="/courses"
-                className="text-xs font-semibold px-3 py-2 rounded-xl bg-gray-100 dark:bg-white/10 text-brand-text dark:text-brand-dark-text hover:bg-gray-200 transition-colors"
+                className="inline-flex items-center gap-2 text-xs font-semibold px-4 py-2.5 rounded-xl bg-gray-100 dark:bg-white/10 text-brand-text dark:text-brand-dark-text hover:bg-gray-200 dark:hover:bg-white/15 transition-colors self-start sm:self-auto"
               >
                 + Explore More Courses
               </a>
             </div>
 
-            {enrolledCoursesWithMeta.length === 0 ? (
+            {/* Enrolled Semester Packs */}
+            {enrolledSemesterBundles.length > 0 && (
+              <div className="space-y-6">
+                {enrolledSemesterBundles.map((semBundle) => {
+                  const semEnrollment = enrollments.find(
+                    (e) =>
+                      (e.status === 'paid' || e.status === 'free') &&
+                      (String(e.courseId).startsWith(semBundle.id) ||
+                        e.itemTitle?.toLowerCase().includes(semBundle.title.toLowerCase()) ||
+                        (semBundle.semesterNumber && e.itemTitle?.toLowerCase().includes(`semester ${semBundle.semesterNumber}`)))
+                  )
+
+                  return (
+                    <div
+                      key={semBundle.id}
+                      className="card p-6 border-2 border-violet-500/20 dark:border-violet-500/30 bg-gradient-to-b from-violet-500/5 via-transparent to-transparent relative overflow-hidden"
+                    >
+                      {/* Top banner of Semester Pack */}
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-brand-border dark:border-brand-dark-border">
+                        <div className="flex items-start gap-3.5">
+                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center flex-shrink-0 text-white shadow-lg shadow-violet-500/25">
+                            <Layers size={24} />
+                          </div>
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                              <span className="badge text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                                Semester {semBundle.semesterNumber || 5} Pack
+                              </span>
+                              <span className="badge text-[10px] font-semibold px-2 py-0.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 flex items-center gap-1">
+                                <CheckCircle2 size={11} /> All Subjects Unlocked
+                              </span>
+                              {semEnrollment && (
+                                <span className="badge text-[10px] px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-semibold">
+                                  {semEnrollment.amount > 0 ? `PAID — ₹${semEnrollment.amount}` : 'FREE BUNDLE'}
+                                </span>
+                              )}
+                            </div>
+                            <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">
+                              {semBundle.title}
+                            </h3>
+                            <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-0.5">
+                              {semBundle.academicCourseName || 'Engineering'} • {semBundle.branchName || 'CSE/IT'} • {semBundle.subjects?.length || 0} Semester Courses
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-start md:self-auto flex-shrink-0">
+                          <Link
+                            to={`/courses/semester-bundles/${semBundle.id}`}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-violet-600/20"
+                          >
+                            <ExternalLink size={13} /> Open Semester Hub
+                          </Link>
+                        </div>
+                      </div>
+
+                      {/* Included Semester Courses */}
+                      <div className="pt-5">
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-brand-muted dark:text-brand-dark-muted flex items-center gap-1.5">
+                            <BookMarked size={14} className="text-violet-500" />
+                            Included Semester Courses ({semBundle.subjects?.length || 0})
+                          </h4>
+                          <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted">
+                            Click any subject to access video lectures & notes
+                          </span>
+                        </div>
+
+                        {semBundle.subjects && semBundle.subjects.length > 0 ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {semBundle.subjects.map((subj) => (
+                              <div
+                                key={subj.id || subj.subjectId}
+                                className="p-4 rounded-2xl bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border hover:border-violet-500/50 dark:hover:border-violet-500/50 transition-all flex flex-col justify-between group shadow-xs hover:shadow-md"
+                              >
+                                <div>
+                                  <div className="flex items-center justify-between gap-2 mb-2">
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-gray-100 dark:bg-white/10 text-brand-text dark:text-brand-dark-text">
+                                      {subj.subjectCode || `SEM-${semBundle.semesterNumber || 5}`}
+                                    </span>
+                                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                                      <CheckCircle size={10} /> Full Access
+                                    </span>
+                                  </div>
+
+                                  <h5 className="font-bold text-sm text-brand-text dark:text-brand-dark-text group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors line-clamp-2 mb-2">
+                                    {subj.subjectName}
+                                  </h5>
+
+                                  <div className="flex items-center gap-3 text-[11px] text-brand-muted dark:text-brand-dark-muted mb-4">
+                                    <span className="flex items-center gap-1">
+                                      <Play size={11} className="text-violet-500" />
+                                      {subj.videoCount || 0} Lectures
+                                    </span>
+                                    <span>•</span>
+                                    <span className="flex items-center gap-1">
+                                      <FileText size={11} className="text-indigo-500" />
+                                      {subj.resourceCount || 0} Notes
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <Link
+                                  to={`/subject-bundles/${subj.subjectId}`}
+                                  className="w-full inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-violet-50 dark:bg-violet-950/40 hover:bg-violet-600 text-violet-700 dark:text-violet-300 hover:text-white dark:hover:text-white text-xs font-bold rounded-xl transition-all"
+                                >
+                                  Study Subject & Watch Lectures <ArrowRight size={12} />
+                                </Link>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-4 rounded-xl bg-violet-50/50 dark:bg-violet-950/20 text-center">
+                            <p className="text-xs text-brand-muted">Loading semester subjects...</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Other Enrolled Courses Section */}
+            {otherCourses.length > 0 && (
+              <div className="space-y-4">
+                {enrolledSemesterBundles.length > 0 && (
+                  <h3 className="text-base font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-2">
+                    <Package size={18} className="text-primary-500" />
+                    Other Enrolled Courses ({otherCourses.length})
+                  </h3>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {otherCourses.map(({ enrollment, course, isSubjectBundle, cleanId }) => (
+                    <div key={enrollment.id} className="card overflow-hidden flex flex-col justify-between">
+                      <div className="p-5">
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <span
+                            className={`badge text-xs ${enrollment.status === 'paid' || enrollment.amount > 0
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                              : 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                              }`}
+                          >
+                            {enrollment.status === 'paid' || enrollment.amount > 0
+                              ? `PAID COURSE — ₹${enrollment.amount}`
+                              : 'FREE COURSE'}
+                          </span>
+                          <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted">
+                            {new Date(enrollment.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+
+                        <h3 className="font-bold text-base text-brand-text dark:text-brand-dark-text mb-2 line-clamp-2">
+                          {course.title}
+                        </h3>
+                        <p className="text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-2 mb-4">
+                          {course.description}
+                        </p>
+                      </div>
+
+                      <div className="p-5 pt-0 border-t border-brand-border dark:border-brand-dark-border mt-auto">
+                        <div className="flex items-center justify-between text-xs text-brand-muted dark:text-brand-dark-muted py-3">
+                          <span>Instructor: {course.instructor || 'Skills021'}</span>
+                          <span className="font-semibold">{course.duration || 'Full Access'}</span>
+                        </div>
+                        {isSubjectBundle ? (
+                          <Link
+                            to={`/subject-bundles/${cleanId}`}
+                            className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary-500 text-white text-xs font-bold rounded-xl hover:bg-primary-600 transition-colors"
+                          >
+                            <Play size={13} /> Study Subject & Watch Lectures
+                          </Link>
+                        ) : (
+                          <button
+                            onClick={() => setActivePlayCourse(course)}
+                            className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary-500 text-white text-xs font-bold rounded-xl hover:bg-primary-600 transition-colors"
+                          >
+                            <Play size={13} /> Watch Course Video
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Empty state when no semester bundles and no other courses */}
+            {enrolledSemesterBundles.length === 0 && otherCourses.length === 0 && (
               <div className="card p-12 text-center">
                 <BookOpen size={48} className="mx-auto text-brand-muted dark:text-brand-dark-muted mb-3 opacity-40" />
                 <h3 className="text-base font-bold text-brand-text dark:text-brand-dark-text">You haven't enrolled in any courses yet</h3>
@@ -577,50 +1000,6 @@ export default function UserDashboard() {
                 <a href="/courses" className="btn-primary inline-flex text-xs px-5 py-2.5">
                   Browse Courses Catalog
                 </a>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {enrolledCoursesWithMeta.map(({ enrollment, course }) => (
-                  <div key={enrollment.id} className="card overflow-hidden flex flex-col justify-between">
-                    <div className="p-5">
-                      <div className="flex items-center justify-between gap-2 mb-3">
-                        <span
-                          className={`badge text-xs ${enrollment.status === 'paid' || enrollment.amount > 0
-                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                            : 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
-                            }`}
-                        >
-                          {enrollment.status === 'paid' || enrollment.amount > 0
-                            ? `PAID COURSE — ₹${enrollment.amount}`
-                            : 'FREE COURSE'}
-                        </span>
-                        <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted">
-                          {new Date(enrollment.createdAt).toLocaleDateString()}
-                        </span>
-                      </div>
-
-                      <h3 className="font-bold text-base text-brand-text dark:text-brand-dark-text mb-2 line-clamp-2">
-                        {course.title}
-                      </h3>
-                      <p className="text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-2 mb-4">
-                        {course.description}
-                      </p>
-                    </div>
-
-                    <div className="p-5 pt-0 border-t border-brand-border dark:border-brand-dark-border mt-auto">
-                      <div className="flex items-center justify-between text-xs text-brand-muted dark:text-brand-dark-muted py-3">
-                        <span>Instructor: {course.instructor || 'Skills021'}</span>
-                        <span className="font-semibold">{course.duration || 'Full Access'}</span>
-                      </div>
-                      <button
-                        onClick={() => setActivePlayCourse(course)}
-                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary-500 text-white text-xs font-bold rounded-xl hover:bg-primary-600 transition-colors"
-                      >
-                        <Play size={13} /> Watch Course Video
-                      </button>
-                    </div>
-                  </div>
-                ))}
               </div>
             )}
           </div>

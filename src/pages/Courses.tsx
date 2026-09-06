@@ -22,6 +22,8 @@ import { supabase } from '../lib/supabase'
 import { getEnrollmentsForUser, getPaymentSettings } from '../lib/videoEngagementService'
 import { fetchSubjectBundle, fetchPublishedSubjectBundles } from '../lib/subjectBundleService'
 import type { SubjectBundle } from '../lib/subjectBundleTypes'
+import { fetchPublishedSemesterBundles } from '../lib/semesterBundleService'
+import type { SemesterBundle } from '../lib/semesterBundleTypes'
 import { fetchResourceBundleBySubject } from '../lib/resourceBundleService'
 import type { ResourceBundle } from '../lib/resourceBundleTypes'
 import { fetchUserEntitlements } from '../lib/bundleAuthorizationService'
@@ -60,6 +62,213 @@ const PRICES = ['All', 'Free', 'Paid']
 import type { ProductDiscount } from '../lib/pricingTypes'
 import { applyDiscountToPrice, formatDiscountLabel } from '../lib/discountService'
 import { fetchAllDiscounts } from '../lib/discountService'
+
+interface SemesterBundleCardProps {
+  bundle: SemesterBundle
+  isUnlocked: boolean
+  discount?: ProductDiscount | null
+}
+
+function SemesterBundleCard({ bundle, isUnlocked, discount }: SemesterBundleCardProps) {
+  const subjectNames = (bundle.subjects || [])
+    .map(s => s.subjectName || s.subjectCode)
+    .filter(Boolean)
+
+  const finalSixMonth = discount ? applyDiscountToPrice(bundle.sixMonthPrice, discount) : bundle.sixMonthPrice
+  const finalLifetime = discount ? applyDiscountToPrice(bundle.lifetimePrice, discount) : bundle.lifetimePrice
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -16 }}
+      whileHover={{ y: -4 }}
+      transition={{ duration: 0.25 }}
+      className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border group hover:shadow-card-hover transition-all duration-200 flex flex-col justify-between overflow-hidden"
+    >
+      {/* Thumbnail Banner */}
+      <Link
+        to={`/courses/semester-bundles/${bundle.id}`}
+        className="relative h-48 sm:h-52 bg-slate-900 dark:bg-black overflow-hidden rounded-t-2xl flex items-center justify-center cursor-pointer group"
+      >
+        {bundle.thumbnailUrl ? (
+          <img
+            src={bundle.thumbnailUrl}
+            alt={bundle.title}
+            className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          />
+        ) : (
+          <div className="absolute inset-0 bg-[#0F0F12] flex flex-col items-center justify-center p-6 text-center">
+            <Sparkles size={44} className="text-white/20 mb-2" />
+            <span className="text-xs font-mono font-bold tracking-widest text-primary-300 uppercase">
+              SEMESTER {bundle.semesterNumber ?? 'BUNDLE'}
+            </span>
+            <span className="text-sm font-bold text-white/90 line-clamp-2 mt-1 max-w-[220px]">
+              {bundle.title}
+            </span>
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+
+        {/* Top Badges */}
+        <div className="absolute top-3 left-3 flex gap-1.5 flex-wrap">
+          {bundle.semesterNumber != null && (
+            <span className="px-2.5 py-1 text-xs font-bold bg-primary-600/90 backdrop-blur-md text-white rounded-lg border border-white/20 shadow-xs">
+              Semester {bundle.semesterNumber}
+            </span>
+          )}
+          {bundle.branchCode && (
+            <span className="px-2.5 py-1 text-xs font-mono font-bold bg-white/20 backdrop-blur-md text-white rounded-lg border border-white/20 shadow-xs">
+              {bundle.branchCode}
+            </span>
+          )}
+        </div>
+
+        <div className="absolute top-3 right-3 flex items-center gap-1.5">
+          {isUnlocked ? (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold bg-emerald-500 text-white rounded-lg shadow-sm">
+              <CheckCircle2 size={12} /> Unlocked
+            </span>
+          ) : (
+            <>
+              {discount && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-black bg-gradient-to-r from-rose-500 to-amber-500 text-white rounded-lg shadow-sm">
+                  <Sparkles size={11} /> {formatDiscountLabel(discount)}
+                </span>
+              )}
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold bg-[#0A0A0A] text-white border border-white/20 rounded-lg shadow-xs">
+                <Sparkles size={12} /> Semester Pack
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* Bottom Badges on Thumbnail */}
+        <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between text-[11px] text-white/90">
+          <span className="flex items-center gap-1.5 bg-black/50 backdrop-blur-md px-2.5 py-0.5 rounded-md border border-white/10 font-semibold">
+            <Package size={11} className="text-primary-400" /> {bundle.subjects?.length || 0} Subject Bundles
+            {Boolean(bundle.totalVideos) && (
+              <>
+                <span className="text-white/40">•</span>
+                <Play size={10} className="text-primary-400" /> {bundle.totalVideos} Videos
+              </>
+            )}
+          </span>
+          <span className="flex items-center gap-1 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/10 font-bold text-amber-300">
+            <Star size={11} className="fill-amber-400 text-amber-400" /> {bundle.rating ?? 4.9}
+          </span>
+        </div>
+
+        {/* Hover Overlay */}
+        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="w-12 h-12 bg-primary-500/90 text-white rounded-full flex items-center justify-center shadow-lg border border-white/30 transform group-hover:scale-110 transition-transform">
+            <ArrowRight size={20} />
+          </div>
+        </div>
+      </Link>
+
+      <div className="p-5 sm:p-6 flex-1 flex flex-col justify-between">
+        <div>
+          {/* Academic Hierarchy */}
+          {(bundle.academicCourseName || bundle.branchName || bundle.semesterNumber) && (
+            <p className="text-[11px] font-semibold text-brand-muted dark:text-brand-dark-muted mb-1.5 uppercase tracking-wider">
+              {[bundle.collegeName, bundle.academicCourseName, bundle.branchName].filter(Boolean).join(' • ')}
+            </p>
+          )}
+
+          {/* Title */}
+          <Link to={`/courses/semester-bundles/${bundle.id}`}>
+            <h3 className="text-base sm:text-lg font-black text-brand-text dark:text-brand-dark-text group-hover:text-primary-500 transition-colors line-clamp-2 mb-2">
+              {bundle.title}
+            </h3>
+          </Link>
+
+          <p className="text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-2 mb-3 leading-relaxed">
+            {bundle.description || `All-in-one semester bundle unlocking complete video lectures, unit notes, and resources for Semester ${bundle.semesterNumber}.`}
+          </p>
+
+          {/* Mapped Subject Pills */}
+          {subjectNames.length > 0 && (
+            <div className="mb-4">
+              <span className="text-[10px] font-bold text-brand-muted uppercase tracking-wider block mb-1.5">
+                Included Subjects ({subjectNames.length}):
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {subjectNames.slice(0, 4).map((name, i) => (
+                  <span
+                    key={i}
+                    className="inline-block text-[10px] px-2 py-0.5 rounded-md font-medium bg-gray-100 dark:bg-white/10 text-brand-text dark:text-brand-dark-text truncate max-w-[150px]"
+                  >
+                    {name}
+                  </span>
+                ))}
+                {subjectNames.length > 4 && (
+                  <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-md font-bold bg-primary-500/10 text-primary-600 dark:text-primary-400">
+                    +{subjectNames.length - 4} more
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Pricing */}
+        <div className="flex items-baseline justify-between pt-3 border-t border-gray-100 dark:border-brand-dark-border mt-auto">
+          {bundle.sixMonthEnabled && (
+            <div>
+              <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">6-Month Access</span>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-sm font-bold text-brand-text dark:text-brand-dark-text">₹{finalSixMonth}</span>
+                {finalSixMonth < bundle.sixMonthPrice && (
+                  <span className="text-[11px] line-through text-brand-muted">₹{bundle.sixMonthPrice}</span>
+                )}
+              </div>
+            </div>
+          )}
+          {bundle.lifetimeEnabled && (
+            <div className={bundle.sixMonthEnabled ? 'text-right' : ''}>
+              <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">Lifetime Access</span>
+              <div className={`flex items-baseline gap-1.5 ${bundle.sixMonthEnabled ? 'justify-end' : ''}`}>
+                <span className="text-sm font-black text-primary-600 dark:text-primary-400">₹{finalLifetime}</span>
+                {finalLifetime < bundle.lifetimePrice && (
+                  <span className="text-[11px] line-through text-brand-muted">₹{bundle.lifetimePrice}</span>
+                )}
+              </div>
+            </div>
+          )}
+          {!bundle.sixMonthEnabled && !bundle.lifetimeEnabled && (
+            <div>
+              <span className="text-xs font-bold text-brand-muted">Pricing Unavailable</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Button */}
+      <div className="p-4 pt-0">
+        <Link
+          to={`/courses/semester-bundles/${bundle.id}`}
+          className={`w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+            isUnlocked
+              ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm'
+              : 'bg-[#0A0A0A] hover:bg-gray-800 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 shadow-sm'
+          }`}
+        >
+          {isUnlocked ? (
+            <>
+              <CheckCircle2 size={15} /> Access Semester Bundle
+            </>
+          ) : (
+            <>
+              <Sparkles size={15} /> View Semester Bundle <ArrowRight size={13} />
+            </>
+          )}
+        </Link>
+      </div>
+    </motion.div>
+  )
+}
 
 interface SubjectBundleCardProps {
   bundle: SubjectBundle
@@ -196,14 +405,23 @@ function SubjectBundleCard({ bundle, isUnlocked }: SubjectBundleCardProps) {
 
         {/* Pricing */}
         <div className="flex items-baseline justify-between pt-3 border-t border-gray-100 dark:border-brand-dark-border mt-auto">
-          <div>
-            <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">6-Month Access</span>
-            <span className="text-sm font-bold text-brand-text dark:text-brand-dark-text">₹{bundle.sixMonthPrice}</span>
-          </div>
-          <div className="text-right">
-            <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">Lifetime Access</span>
-            <span className="text-sm font-black text-primary-600 dark:text-primary-400">₹{bundle.lifetimePrice}</span>
-          </div>
+          {bundle.sixMonthEnabled && (
+            <div>
+              <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">6-Month Access</span>
+              <span className="text-sm font-bold text-brand-text dark:text-brand-dark-text">₹{bundle.sixMonthPrice}</span>
+            </div>
+          )}
+          {bundle.lifetimeEnabled && (
+            <div className={bundle.sixMonthEnabled ? 'text-right' : ''}>
+              <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">Lifetime Access</span>
+              <span className="text-sm font-black text-primary-600 dark:text-primary-400">₹{bundle.lifetimePrice}</span>
+            </div>
+          )}
+          {!bundle.sixMonthEnabled && !bundle.lifetimeEnabled && (
+            <div>
+              <span className="text-xs font-bold text-brand-muted">Pricing Unavailable</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -463,13 +681,14 @@ function AccordionSection({ title, defaultOpen = false, badge, children }: Accor
 }
 
 export default function Courses() {
-  const [courseSection, setCourseSection] = useState<'bundles' | 'courses' | 'webinars'>('bundles')
+  const [courseSection, setCourseSection] = useState<'semester-bundles' | 'bundles' | 'courses' | 'webinars'>('bundles')
   const [liveWebinars, setLiveWebinars] = useState<LiveWebinar[]>([])
   const [webinarRecordings, setWebinarRecordings] = useState<WebinarRecording[]>([])
   const [webinarsLoading, setWebinarsLoading] = useState(false)
   const [openingReplayId, setOpeningReplayId] = useState<string | null>(null)
   const [courses, setCourses] = useState<Course[]>([])
   const [subjectBundles, setSubjectBundles] = useState<SubjectBundle[]>([])
+  const [semesterBundles, setSemesterBundles] = useState<SemesterBundle[]>([])
   const [loading, setLoading] = useState(true)
 
   const { user, isAuthenticated } = useAuthStore()
@@ -481,6 +700,8 @@ export default function Courses() {
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set())
   const [unlockedSubjectIds, setUnlockedSubjectIds] = useState<Set<number>>(new Set())
   const [unlockedResourceSubjectIds, setUnlockedResourceSubjectIds] = useState<Set<number>>(new Set())
+  const [unlockedSemesterIds, setUnlockedSemesterIds] = useState<Set<number>>(new Set())
+  const [unlockedSemesterBundleIds, setUnlockedSemesterBundleIds] = useState<Set<string>>(new Set())
   const [activeSubjectBundle, setActiveSubjectBundle] = useState<SubjectBundle | null>(null)
   const [activeResourceBundle, setActiveResourceBundle] = useState<ResourceBundle | null>(null)
   const [enrollCourse, setEnrollCourse] = useState<Course | null>(null)
@@ -489,6 +710,8 @@ export default function Courses() {
   const [allAccessPrice, setAllAccessPrice] = useState(999)
   // Map of courseId -> active ProductDiscount (null means no active discount)
   const [courseDiscountsMap, setCourseDiscountsMap] = useState<Map<string, ProductDiscount>>(new Map())
+  // Map of semesterBundleId -> active ProductDiscount
+  const [semesterDiscountsMap, setSemesterDiscountsMap] = useState<Map<string, ProductDiscount>>(new Map())
 
   const requireLogin = () => {
     showAuthRequiredToast({
@@ -504,27 +727,39 @@ export default function Courses() {
     })
     ;(async () => {
       try {
-        const [coursesData, bundlesData] = await Promise.all([
+        const [coursesData, bundlesData, semBundlesData] = await Promise.all([
           fetchPublishedSiteCourses(),
           fetchPublishedSubjectBundles(),
+          fetchPublishedSemesterBundles(),
         ])
         setCourses(coursesData)
         setSubjectBundles(bundlesData)
+        setSemesterBundles(semBundlesData)
 
-        // Load all active course discounts in a single query for all courses
-        // and build a Map for O(1) lookup per card. Avoids N+1 fetches.
+        // Load all active discounts in parallel queries
         try {
-          const discounts = await fetchAllDiscounts('course')
+          const [discounts, semDiscounts] = await Promise.all([
+            fetchAllDiscounts('course').catch(() => []),
+            fetchAllDiscounts('semester_bundle').catch(() => []),
+          ])
           const now = new Date()
           const map = new Map<string, ProductDiscount>()
           for (const d of discounts) {
             if (!d.isActive) continue
             if (d.startsAt && new Date(d.startsAt) > now) continue
             if (d.expiresAt && new Date(d.expiresAt) <= now) continue
-            // Only store the first (most recent) active discount per product
             if (!map.has(d.productId)) map.set(d.productId, d)
           }
           setCourseDiscountsMap(map)
+
+          const semMap = new Map<string, ProductDiscount>()
+          for (const d of semDiscounts) {
+            if (!d.isActive) continue
+            if (d.startsAt && new Date(d.startsAt) > now) continue
+            if (d.expiresAt && new Date(d.expiresAt) <= now) continue
+            if (!semMap.has(d.productId)) semMap.set(d.productId, d)
+          }
+          setSemesterDiscountsMap(semMap)
         } catch {
           // Discount fetch failure is non-critical — don't block page
         }
@@ -542,6 +777,8 @@ export default function Courses() {
       setPendingIds(new Set())
       setUnlockedSubjectIds(new Set())
       setUnlockedResourceSubjectIds(new Set())
+      setUnlockedSemesterIds(new Set())
+      setUnlockedSemesterBundleIds(new Set())
       return
     }
     try {
@@ -551,10 +788,12 @@ export default function Courses() {
       setEnrolledIds(new Set(approved))
       setPendingIds(new Set(pending))
 
-      // Authoritative batch query for both subject and resource bundle entitlements
+      // Authoritative batch query for subject, resource, and semester bundle entitlements
       const entitlements = await fetchUserEntitlements(userId)
       setUnlockedSubjectIds(entitlements.subjectBundleSubjectIds)
       setUnlockedResourceSubjectIds(entitlements.resourceBundleSubjectIds)
+      setUnlockedSemesterIds(entitlements.semesterBundleSemesterIds || new Set())
+      setUnlockedSemesterBundleIds(entitlements.semesterBundleIds || new Set())
     } catch (err) {
       console.error('Failed to load enrollments:', err)
     }
@@ -594,7 +833,13 @@ export default function Courses() {
   }
 
   const [searchParams] = useSearchParams()
-  useEffect(() => { if (searchParams.get('tab') === 'webinars') setCourseSection('webinars') }, [searchParams])
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (tab === 'webinars') setCourseSection('webinars')
+    else if (tab === 'semester-bundles') setCourseSection('semester-bundles')
+    else if (tab === 'bundles') setCourseSection('bundles')
+    else if (tab === 'courses') setCourseSection('courses')
+  }, [searchParams])
   const initGroup = (searchParams.get('group') || 'College & Tech Courses') as CourseGroup
   const initSub = searchParams.get('sub') as CourseSubcategory | null
 
@@ -967,6 +1212,26 @@ export default function Courses() {
     })
   }, [subjectBundles, appliedSubjectId, search])
 
+  const filteredSemesterBundles = useMemo(() => {
+    return semesterBundles.filter(b => {
+      if (appliedSemesterId && b.semesterId !== appliedSemesterId) return false
+      if (appliedBranchId && b.branchId && b.branchId !== appliedBranchId) return false
+      if (appliedCourseId && b.academicCourseId && b.academicCourseId !== appliedCourseId) return false
+      if (appliedCollegeId && b.collegeId && b.collegeId !== appliedCollegeId) return false
+      if (search) {
+        const q = search.toLowerCase()
+        const title = (b.title || '').toLowerCase()
+        const desc = (b.description || '').toLowerCase()
+        const course = (b.academicCourseName || '').toLowerCase()
+        const branch = (b.branchName || '').toLowerCase()
+        const college = (b.collegeName || '').toLowerCase()
+        const subs = (b.subjects || []).map(s => `${s.subjectName || ''} ${s.subjectCode || ''}`).join(' ').toLowerCase()
+        if (!title.includes(q) && !desc.includes(q) && !course.includes(q) && !branch.includes(q) && !college.includes(q) && !subs.includes(q)) return false
+      }
+      return true
+    })
+  }, [semesterBundles, appliedSemesterId, appliedBranchId, appliedCourseId, appliedCollegeId, search])
+
   // Scroll the (now-updated) results into view and confirm the count whenever
   // an Academic Filter search is actually run — otherwise, on desktop the
   // grid updates quietly inside the same viewport and easily goes unnoticed,
@@ -1022,6 +1287,21 @@ export default function Courses() {
       {/* Course / Bundle / Webinar switcher */}
       <div className="max-w-7xl mx-auto px-4 pt-6">
         <div className="inline-flex rounded-2xl border border-gray-100 dark:border-brand-dark-border bg-white dark:bg-brand-dark-card p-1 shadow-sm flex-wrap gap-1">
+          <button
+            onClick={() => setCourseSection('semester-bundles')}
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
+              courseSection === 'semester-bundles'
+                ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black shadow-md'
+                : 'text-brand-muted dark:text-brand-dark-muted hover:text-brand-text dark:hover:text-brand-dark-text'
+            }`}
+          >
+            <Sparkles size={15} /> Semester Bundles
+            {semesterBundles.length > 0 && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${courseSection === 'semester-bundles' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-white/10'}`}>
+                {semesterBundles.length}
+              </span>
+            )}
+          </button>
           <button
             onClick={() => setCourseSection('bundles')}
             className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
@@ -1220,6 +1500,156 @@ export default function Courses() {
             </>
           )}
         </section>
+      ) : courseSection === 'semester-bundles' ? (
+        <div className="max-w-7xl mx-auto px-4 py-8 flex gap-6">
+          {/* Sidebar — desktop */}
+          <aside className="hidden md:block w-64 flex-shrink-0">
+            <div className="sticky top-32">
+              <div className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border p-4 mb-4">
+                <div className="flex items-center justify-between mb-4 border-b border-gray-100 dark:border-brand-dark-border pb-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-brand-text dark:text-brand-dark-text">Academic Filter</h3>
+                  {(hSelectedCollegeId || hSelectedCourseId || hSelectedBranchId || hSelectedSemesterId) && (
+                    <button
+                      onClick={handleHResetHierarchy}
+                      className="text-[10px] font-bold text-red-500 hover:text-red-600 transition-colors uppercase tracking-wider"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+
+                {renderHHierarchyDropdown(
+                  'College',
+                  'Select College...',
+                  hColleges,
+                  hSelectedCollegeId,
+                  handleHCollegeSelect,
+                  'college',
+                  false
+                )}
+
+                {renderHHierarchyDropdown(
+                  'Course',
+                  hSelectedCollegeId ? 'Select Course...' : 'Select College first',
+                  hCourses,
+                  hSelectedCourseId,
+                  handleHCourseSelect,
+                  'course',
+                  !hSelectedCollegeId
+                )}
+
+                {renderHHierarchyDropdown(
+                  'Branch',
+                  hSelectedCourseId ? 'Select Branch...' : 'Select Course first',
+                  hBranches,
+                  hSelectedBranchId,
+                  handleHBranchSelect,
+                  'branch',
+                  !hSelectedCourseId
+                )}
+
+                {renderHHierarchyDropdown(
+                  'Semester',
+                  hSelectedBranchId ? 'Select Semester...' : 'Select Branch first',
+                  hSemesters.map(s => ({ id: s.id, name: `Semester ${s.semester_number}` })),
+                  hSelectedSemesterId,
+                  handleHSemesterSelect,
+                  'semester',
+                  !hSelectedBranchId
+                )}
+
+                <button
+                  onClick={handleHApplyFilter}
+                  disabled={!(hSelectedCollegeId || hSelectedCourseId || hSelectedBranchId || hSelectedSemesterId)}
+                  className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-primary-500 hover:bg-primary-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Search size={14} /> Search
+                </button>
+              </div>
+
+              {/* Semester Bundle Information Card */}
+              <div className="bg-gray-50 dark:bg-white/5 rounded-2xl border border-brand-border p-4 text-xs leading-relaxed text-brand-muted dark:text-brand-dark-muted space-y-2">
+                <div className="font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-1.5">
+                  <Sparkles size={14} className="text-brand-text dark:text-white" /> All-in-One Semester Pack
+                </div>
+                <p>
+                  Get full semester syllabus coverage across <strong>all subjects</strong> with complete <strong>video lectures</strong>, <strong>unit notes</strong>, and <strong>revision PDFs</strong> in one combined package.
+                </p>
+                <p>
+                  Save up to <strong>50%</strong> compared to purchasing individual subject bundles!
+                </p>
+              </div>
+            </div>
+          </aside>
+
+          {/* Main content */}
+          <main id="semester-bundles-list" className="flex-1 min-w-0 scroll-mt-24">
+            <div className="flex items-center justify-between mb-6 gap-3">
+              <div className="min-w-0">
+                <h2 className="text-xl font-bold text-brand-text dark:text-brand-dark-text truncate">
+                  {appliedHierarchyLabel || 'All Semester Bundles'}
+                </h2>
+                <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">
+                  {filteredSemesterBundles.length} semester bundle{filteredSemesterBundles.length !== 1 ? 's' : ''} available
+                </p>
+              </div>
+
+              <button
+                onClick={() => setMobileFiltersOpen(true)}
+                className="md:hidden flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+              >
+                <SlidersHorizontal size={15} />
+                Filters
+                {activeFilterCount > 0 && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary-500 text-white">{activeFilterCount}</span>
+                )}
+              </button>
+            </div>
+
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <Loader2 size={32} className="animate-spin text-brand-muted dark:text-brand-dark-muted mb-3" />
+                <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Loading semester bundles...</p>
+              </div>
+            ) : filteredSemesterBundles.length === 0 ? (
+              <div className="text-center py-20 bg-gray-50 dark:bg-white/5 rounded-3xl border border-dashed border-gray-200 dark:border-white/10 p-8">
+                <Sparkles size={48} className="mx-auto text-gray-300 dark:text-brand-dark-muted mb-4 opacity-50" />
+                <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text mb-2">No semester bundles found</h3>
+                <p className="text-brand-muted dark:text-brand-dark-muted text-sm max-w-md mx-auto mb-4">
+                  {hierarchyActive
+                    ? 'No semester bundles matched your academic filter. Try selecting a different college, course, branch, or semester, or reset the filter.'
+                    : 'No published semester bundles were found. You can explore individual subject bundles instead.'}
+                </p>
+                {hierarchyActive ? (
+                  <button
+                    onClick={handleHResetHierarchy}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                  >
+                    Reset Academic Filter
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setCourseSection('bundles')}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-primary-500 text-white hover:bg-primary-600 transition-colors"
+                  >
+                    <Package size={15} /> Browse Subject Bundles
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+                {filteredSemesterBundles.map(bundle => (
+                  <SemesterBundleCard
+                    key={bundle.id}
+                    bundle={bundle}
+                    isUnlocked={unlockedSemesterIds.has(bundle.semesterId) || unlockedSemesterBundleIds.has(bundle.id)}
+                    discount={semesterDiscountsMap.get(bundle.id) || semesterDiscountsMap.get(String(bundle.semesterId))}
+                  />
+                ))}
+              </div>
+            )}
+          </main>
+        </div>
       ) : courseSection === 'bundles' ? (
         <div className="max-w-7xl mx-auto px-4 py-8 flex gap-6">
           {/* Sidebar — desktop */}

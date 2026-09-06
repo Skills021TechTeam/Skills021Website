@@ -13,6 +13,7 @@ import ResetPassword from './pages/ResetPassword'
 import AdminLogin from './pages/AdminLogin'
 import Courses from './pages/Courses'
 import SubjectBundleView from './pages/SubjectBundleView'
+import SemesterBundleView from './pages/SemesterBundleView'
 import Resources from './pages/Resources'
 import PathFinder from './pages/PathFinder'
 import VideosBrowse from './pages/VideosBrowse'
@@ -86,6 +87,8 @@ function AnimatedRoutes() {
             <Route path="/courses/bundles/:subjectId" element={<ProtectedRoute><SubjectBundleView /></ProtectedRoute>} />
             <Route path="/subject-bundles/:subjectId" element={<ProtectedRoute><SubjectBundleView /></ProtectedRoute>} />
             <Route path="/resources/bundles/:subjectId" element={<ProtectedRoute><SubjectBundleView /></ProtectedRoute>} />
+            <Route path="/courses/semester-bundles/:bundleId" element={<ProtectedRoute><SemesterBundleView /></ProtectedRoute>} />
+            <Route path="/semester-bundles/:bundleId" element={<ProtectedRoute><SemesterBundleView /></ProtectedRoute>} />
             <Route path="/resources" element={<ProtectedRoute><Resources /></ProtectedRoute>} />
             <Route path="/resources/videos" element={<ProtectedRoute><VideosBrowse /></ProtectedRoute>} />
             <Route path="/pathfinder" element={<ProtectedRoute><PathFinder /></ProtectedRoute>} />

@@ -53,3 +53,5 @@ supabase/migrations/20260905_resource_bundle_only.sql
 supabase/migrations/20260905_subject_bundle_system.sql
 supabase/migrations/20260906_course_resource_bundle_individual_access.sql
 supabase/migrations/20260906_fix_bundle_access_scope.sql
+supabase/migrations/20260907_subject_bundle_semester_only_option.sql
+supabase/migrations/20260907_semester_bundle_system.sql

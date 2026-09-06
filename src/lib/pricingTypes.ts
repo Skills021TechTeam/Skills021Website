@@ -3,7 +3,7 @@
 // Central TypeScript definitions for the Pricing, Discounts & Coupons system.
 // ============================================================================
 
-export type ProductType = 'course' | 'resource' | 'premium_membership' | 'subject_bundle' | 'resource_bundle'
+export type ProductType = 'course' | 'resource' | 'premium_membership' | 'subject_bundle' | 'resource_bundle' | 'semester_bundle'
 export type DiscountType = 'percentage' | 'fixed'
 
 // ─── Product Discount ────────────────────────────────────────────────────────

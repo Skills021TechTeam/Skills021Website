@@ -3,11 +3,11 @@ import { useParams, useNavigate, Link, useSearchParams, useLocation } from 'reac
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Package, Lock, Unlock, CheckCircle2, AlertCircle, Clock,
-  Play, FileText, ChevronDown, ChevronRight, ArrowLeft,
+  Play, FileText, ChevronDown, ChevronRight, ArrowLeft, ArrowRight,
   Sparkles, ShieldCheck, HelpCircle, Check, Loader2,
   Calendar, Layers, Download, Upload, X, Copy, QrCode, Tag,
   BadgePercent, AlertTriangle, ExternalLink, BookOpen,
-  Star, Users
+  Star, Users, GraduationCap
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
@@ -25,6 +25,8 @@ import type {
   SubjectBundleAccess,
   SubjectBundlePlan,
 } from '../lib/subjectBundleTypes'
+import { fetchSemesterBundleForSubject, getUserSemesterBundleEntitlement } from '../lib/semesterBundleService'
+import type { SemesterBundle } from '../lib/semesterBundleTypes'
 import {
   fetchResourceBundleBySubject,
   getUserResourceBundleEntitlement,
@@ -74,6 +76,7 @@ export default function SubjectBundleView() {
   const [loading, setLoading] = useState(true)
   const [bundle, setBundle] = useState<SubjectBundle | null>(null)
   const [resourceBundle, setResourceBundle] = useState<ResourceBundle | null>(null)
+  const [parentSemesterBundle, setParentSemesterBundle] = useState<SemesterBundle | null>(null)
   const [curriculum, setCurriculum] = useState<{
     units: SubjectUnit[]
     videos: SubjectVideo[]
@@ -103,17 +106,51 @@ export default function SubjectBundleView() {
 
     setLoading(true)
     try {
-      const [bundleData, resBundleData, currData, accessData, resAccessData] = await Promise.all([
+      const [bundleData, resBundleData, currData, accessData, resAccessData, parentSemBundle] = await Promise.all([
         fetchSubjectBundle(numSubjectId),
         fetchResourceBundleBySubject(numSubjectId),
         fetchSubjectCurriculum(numSubjectId),
         user?.id ? getUserSubjectBundleEntitlement(user.id, numSubjectId) : Promise.resolve({ hasAccess: false } as SubjectBundleAccess),
         user?.id ? getUserResourceBundleEntitlement(user.id, numSubjectId) : Promise.resolve({ hasAccess: false } as ResourceBundleAccess),
+        fetchSemesterBundleForSubject(numSubjectId),
       ])
 
       setBundle(bundleData)
       setResourceBundle(resBundleData)
       setCurriculum(currData)
+      setParentSemesterBundle(parentSemBundle)
+
+      let finalAccess = accessData
+      let finalResAccess = resAccessData
+
+      // Check if user owns parent semester bundle if direct subject access is not active
+      if (!finalAccess.hasAccess && user?.id && parentSemBundle?.id) {
+        try {
+          const semEnt = await getUserSemesterBundleEntitlement(user.id, parentSemBundle.id)
+          if (semEnt.hasAccess) {
+            finalAccess = {
+              hasAccess: true,
+              planType: (semEnt.planType as any) || 'six_month',
+              expiresAt: semEnt.expiresAt || undefined,
+              startsAt: semEnt.startsAt || undefined,
+              isLifetime: semEnt.isLifetime,
+              paymentStatus: 'paid',
+              status: 'active',
+              viaSemesterBundle: true,
+              semesterBundleTitle: parentSemBundle.title,
+            }
+            finalResAccess = {
+              hasAccess: true,
+              planType: (semEnt.planType as any) || 'six_month',
+              expiresAt: semEnt.expiresAt || undefined,
+              startsAt: semEnt.startsAt || undefined,
+              isLifetime: semEnt.isLifetime,
+            }
+          }
+        } catch (e) {
+          console.warn('[SubjectBundleView] Error checking semester bundle access fallback:', e)
+        }
+      }
 
       // Admin or premium membership grants full access
       if (isAdmin || isPremiumUser) {
@@ -128,8 +165,8 @@ export default function SubjectBundleView() {
           isPremiumPass: isPremiumUser,
         })
       } else {
-        setAccess(accessData)
-        setResourceAccess(resAccessData)
+        setAccess(finalAccess)
+        setResourceAccess(finalResAccess)
       }
 
       // Default first 2 units to open
@@ -381,6 +418,12 @@ export default function SubjectBundleView() {
                         )}
                       </div>
                     )}
+                    {access.viaSemesterBundle && (
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-[11px] font-bold text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700/50">
+                        <Sparkles size={12} className="text-emerald-600 dark:text-emerald-400" />
+                        <span>Included with your {access.semesterBundleTitle || parentSemesterBundle?.title || 'Semester'} Bundle</span>
+                      </div>
+                    )}
                     <p className="text-[11px] text-emerald-600/80 dark:text-emerald-400/80">
                       All units, lectures, and resources are unlocked.
                     </p>
@@ -493,6 +536,39 @@ export default function SubjectBundleView() {
             animate={{ opacity: 1, y: 0 }}
             className="mb-12"
           >
+            {/* Semester Bundle Upsell Banner */}
+            {parentSemesterBundle && (
+              <div className="max-w-3xl mx-auto mb-8 p-4 sm:p-5 rounded-2xl bg-gray-50 dark:bg-white/5 border border-brand-border flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-11 h-11 rounded-xl bg-gray-100 dark:bg-white/10 text-brand-text dark:text-white flex items-center justify-center flex-shrink-0">
+                    <Sparkles size={22} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-[#0A0A0A] text-white dark:bg-white dark:text-black">
+                        Full Semester Pack Available
+                      </span>
+                      <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                        Best Value
+                      </span>
+                    </div>
+                    <h4 className="text-sm sm:text-base font-bold text-brand-text dark:text-brand-dark-text mt-1">
+                      {parentSemesterBundle.title}
+                    </h4>
+                    <p className="text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-1">
+                      Includes this subject plus {Math.max(0, (parentSemesterBundle.subjects?.length || 1) - 1)} more subjects for complete semester preparation!
+                    </p>
+                  </div>
+                </div>
+                <Link
+                  to={`/courses/semester-bundles/${parentSemesterBundle.id}`}
+                  className="flex-shrink-0 px-4 py-2.5 rounded-xl bg-[#0A0A0A] hover:bg-gray-800 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow-sm transition-all"
+                >
+                  View Semester Bundle <ArrowRight size={14} />
+                </Link>
+              </div>
+            )}
+
             <div className="text-center max-w-xl mx-auto mb-6">
               {isFromResources ? (
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 mb-2">
@@ -519,84 +595,118 @@ export default function SubjectBundleView() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl mx-auto items-stretch">
                   {/* Option 1: Complete Subject Bundle (Videos + Notes) */}
                   {bundle && (
-                    <div className="card p-6 border-2 border-primary-500 dark:border-primary-500 bg-gradient-to-b from-primary-50/20 to-transparent dark:from-primary-950/20 shadow-lg relative flex flex-col justify-between">
-                      <div className="absolute -top-3 right-6 px-3 py-0.5 rounded-full bg-primary-500 text-white text-[10px] font-black uppercase tracking-wider shadow-xs flex items-center gap-1">
-                        <Sparkles size={11} /> Complete Learning
+                    bundle.isSemesterOnly ? (
+                      <div className="card p-6 border-2 border-violet-500/40 bg-gradient-to-b from-violet-50/20 to-transparent dark:from-violet-950/20 shadow-lg relative flex flex-col justify-between text-center">
+                        <div className="flex flex-col items-center justify-center p-2">
+                          <div className="w-12 h-12 rounded-2xl bg-violet-100 dark:bg-violet-950/50 text-violet-600 dark:text-violet-400 flex items-center justify-center mb-3">
+                            <GraduationCap size={24} />
+                          </div>
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300 mb-2">
+                            Exclusive to Semester Bundle
+                          </span>
+                          <h3 className="text-lg sm:text-xl font-bold text-brand-text dark:text-brand-dark-text mb-2">
+                            {bundle.title || `${subjectTitle} Complete Bundle`}
+                          </h3>
+                          <p className="text-xs text-brand-muted leading-relaxed max-w-sm mb-4">
+                            This subject is exclusively bundled inside the Semester Bundle package. Enroll in the full Semester Bundle to unlock all lectures and notes.
+                          </p>
+                          {parentSemesterBundle ? (
+                            <Link
+                              to={`/courses/semester-bundles/${parentSemesterBundle.id}`}
+                              className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold text-xs sm:text-sm transition-all shadow-sm flex items-center justify-center gap-1.5"
+                            >
+                              Enroll via {parentSemesterBundle.title} <ArrowRight size={15} />
+                            </Link>
+                          ) : (
+                            <Link
+                              to="/courses"
+                              className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold text-xs sm:text-sm transition-all shadow-sm flex items-center justify-center gap-1.5"
+                            >
+                              Browse Semester Bundles <ArrowRight size={15} />
+                            </Link>
+                          )}
+                        </div>
                       </div>
-
-                      <div>
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="text-xs font-bold uppercase tracking-wider text-primary-500 flex items-center gap-1">
-                            <Package size={14} /> Subject Bundle
-                          </span>
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300">
-                            Videos + Notes
-                          </span>
+                    ) : (
+                      <div className="card p-6 border-2 border-primary-500 dark:border-primary-500 bg-gradient-to-b from-primary-50/20 to-transparent dark:from-primary-950/20 shadow-lg relative flex flex-col justify-between">
+                        <div className="absolute -top-3 right-6 px-3 py-0.5 rounded-full bg-primary-500 text-white text-[10px] font-black uppercase tracking-wider shadow-xs flex items-center gap-1">
+                          <Sparkles size={11} /> Complete Learning
                         </div>
 
-                        <h3 className="text-xl font-bold text-brand-text dark:text-brand-dark-text mb-1">
-                          {bundle.title || `${subjectTitle} Complete Bundle`}
-                        </h3>
-                        <p className="text-xs text-brand-muted mb-4">
-                          The full academic package. Includes all recorded lectures, exam problem walkthroughs, and notes.
-                        </p>
+                        <div>
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-xs font-bold uppercase tracking-wider text-primary-500 flex items-center gap-1">
+                              <Package size={14} /> Subject Bundle
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300">
+                              Videos + Notes
+                            </span>
+                          </div>
 
-                        <div className="grid grid-cols-2 gap-3 mb-6 p-3 rounded-xl bg-white/60 dark:bg-black/20 border border-brand-border dark:border-brand-dark-border">
+                          <h3 className="text-xl font-bold text-brand-text dark:text-brand-dark-text mb-1">
+                            {bundle.title || `${subjectTitle} Complete Bundle`}
+                          </h3>
+                          <p className="text-xs text-brand-muted mb-4">
+                            The full academic package. Includes all recorded lectures, exam problem walkthroughs, and notes.
+                          </p>
+
+                          <div className="grid grid-cols-2 gap-3 mb-6 p-3 rounded-xl bg-white/60 dark:bg-black/20 border border-brand-border dark:border-brand-dark-border">
+                            {bundle.sixMonthEnabled && (
+                              <div>
+                                <p className="text-[10px] font-bold uppercase text-brand-muted">6 Months Access</p>
+                                <p className="text-2xl font-black text-brand-text dark:text-brand-dark-text">₹{bundle.sixMonthPrice}</p>
+                                <p className="text-[10px] text-brand-muted">Semester Prep</p>
+                              </div>
+                            )}
+                            {bundle.lifetimeEnabled && (
+                              <div>
+                                <p className="text-[10px] font-bold uppercase text-primary-500">Lifetime Access</p>
+                                <p className="text-2xl font-black text-primary-600 dark:text-primary-400">₹{bundle.lifetimePrice}</p>
+                                <p className="text-[10px] text-brand-muted">Never expires</p>
+                              </div>
+                            )}
+                          </div>
+
+                          <ul className="space-y-2.5 text-xs text-brand-text dark:text-brand-dark-text mb-6">
+                            <li className="flex items-center gap-2">
+                              <Check size={14} className="text-emerald-500 flex-shrink-0" />
+                              <span className="font-semibold">All {curriculum.units.length} Units Completely Unlocked</span>
+                            </li>
+                            <li className="flex items-center gap-2">
+                              <Check size={14} className="text-emerald-500 flex-shrink-0" />
+                              <span>All {curriculum.videos.length} Full-Length Video Lectures</span>
+                            </li>
+                            <li className="flex items-center gap-2">
+                              <Check size={14} className="text-emerald-500 flex-shrink-0" />
+                              <span>All Handwritten Notes, Formula Sheets & PDFs</span>
+                            </li>
+                            <li className="flex items-center gap-2">
+                              <Check size={14} className="text-emerald-500 flex-shrink-0" />
+                              <span>Subject Quizzes & Learning Resources</span>
+                            </li>
+                          </ul>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-4 border-t border-brand-border dark:border-brand-dark-border">
                           {bundle.sixMonthEnabled && (
-                            <div>
-                              <p className="text-[10px] font-bold uppercase text-brand-muted">6 Months Access</p>
-                              <p className="text-2xl font-black text-brand-text dark:text-brand-dark-text">₹{bundle.sixMonthPrice}</p>
-                              <p className="text-[10px] text-brand-muted">Semester Prep</p>
-                            </div>
+                            <button
+                              onClick={() => openCheckout('subject_bundle', 'six_month', bundle)}
+                              className="w-full py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-white/10 dark:hover:bg-white/15 text-brand-text dark:text-white font-bold text-xs transition-colors cursor-pointer"
+                            >
+                              Buy 6 Months (₹{bundle.sixMonthPrice})
+                            </button>
                           )}
                           {bundle.lifetimeEnabled && (
-                            <div>
-                              <p className="text-[10px] font-bold uppercase text-primary-500">Lifetime Access</p>
-                              <p className="text-2xl font-black text-primary-600 dark:text-primary-400">₹{bundle.lifetimePrice}</p>
-                              <p className="text-[10px] text-brand-muted">Never expires</p>
-                            </div>
+                            <button
+                              onClick={() => openCheckout('subject_bundle', 'lifetime', bundle)}
+                              className="w-full py-2.5 rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-bold text-xs transition-colors shadow-xs cursor-pointer"
+                            >
+                              Buy Lifetime (₹{bundle.lifetimePrice})
+                            </button>
                           )}
                         </div>
-
-                        <ul className="space-y-2.5 text-xs text-brand-text dark:text-brand-dark-text mb-6">
-                          <li className="flex items-center gap-2">
-                            <Check size={14} className="text-emerald-500 flex-shrink-0" />
-                            <span className="font-semibold">All {curriculum.units.length} Units Completely Unlocked</span>
-                          </li>
-                          <li className="flex items-center gap-2">
-                            <Check size={14} className="text-emerald-500 flex-shrink-0" />
-                            <span>All {curriculum.videos.length} Full-Length Video Lectures</span>
-                          </li>
-                          <li className="flex items-center gap-2">
-                            <Check size={14} className="text-emerald-500 flex-shrink-0" />
-                            <span>All Handwritten Notes, Formula Sheets & PDFs</span>
-                          </li>
-                          <li className="flex items-center gap-2">
-                            <Check size={14} className="text-emerald-500 flex-shrink-0" />
-                            <span>Subject Quizzes & Learning Resources</span>
-                          </li>
-                        </ul>
                       </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-4 border-t border-brand-border dark:border-brand-dark-border">
-                        {bundle.sixMonthEnabled && (
-                          <button
-                            onClick={() => openCheckout('subject_bundle', 'six_month', bundle)}
-                            className="w-full py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-white/10 dark:hover:bg-white/15 text-brand-text dark:text-white font-bold text-xs transition-colors cursor-pointer"
-                          >
-                            Buy 6 Months (₹{bundle.sixMonthPrice})
-                          </button>
-                        )}
-                        {bundle.lifetimeEnabled && (
-                          <button
-                            onClick={() => openCheckout('subject_bundle', 'lifetime', bundle)}
-                            className="w-full py-2.5 rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-bold text-xs transition-colors shadow-xs cursor-pointer"
-                          >
-                            Buy Lifetime (₹{bundle.lifetimePrice})
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                    )
                   )}
 
                   {/* Option 2: Resource Bundle (Notes Only) */}
@@ -714,84 +824,116 @@ export default function SubjectBundleView() {
               /* Course flow: Show ONLY the course card (Subject Bundle) centered */
               <div className="max-w-xl mx-auto">
                 {bundle && (
-                  <div className="card p-6 sm:p-7 border-2 border-primary-500 dark:border-primary-500 bg-gradient-to-b from-primary-50/20 to-transparent dark:from-primary-950/20 shadow-xl relative flex flex-col justify-between">
-                    <div className="absolute -top-3 right-6 px-3 py-0.5 rounded-full bg-primary-500 text-white text-[10px] font-black uppercase tracking-wider shadow-xs flex items-center gap-1">
-                      <Sparkles size={11} /> Complete Learning
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-xs font-bold uppercase tracking-wider text-primary-500 flex items-center gap-1">
-                          <Package size={14} /> Subject Bundle
-                        </span>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300">
-                          Videos + Notes
-                        </span>
+                  bundle.isSemesterOnly ? (
+                    <div className="card p-6 sm:p-8 border-2 border-violet-500/40 bg-gradient-to-b from-violet-50/20 to-transparent dark:from-violet-950/20 shadow-xl relative text-center">
+                      <div className="w-14 h-14 mx-auto rounded-2xl bg-violet-100 dark:bg-violet-950/50 text-violet-600 dark:text-violet-400 flex items-center justify-center mb-3">
+                        <GraduationCap size={28} />
                       </div>
-
-                      <h3 className="text-xl sm:text-2xl font-bold text-brand-text dark:text-brand-dark-text mb-1">
+                      <span className="inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300 mb-3">
+                        Exclusive to Semester Bundle
+                      </span>
+                      <h3 className="text-xl sm:text-2xl font-bold text-brand-text dark:text-brand-dark-text mb-2">
                         {bundle.title || `${subjectTitle} Complete Bundle`}
                       </h3>
-                      <p className="text-xs sm:text-sm text-brand-muted mb-4">
-                        The full academic package. Includes all recorded lectures, exam problem walkthroughs, and notes.
+                      <p className="text-xs sm:text-sm text-brand-muted leading-relaxed max-w-md mx-auto mb-6">
+                        This subject is part of the curated Semester Bundle pack and cannot be purchased as a standalone single subject. Get complete access to all {curriculum.units.length} units, lectures, and resources by enrolling in the semester bundle.
                       </p>
-
-                      <div className="grid grid-cols-2 gap-3 mb-6 p-3 sm:p-4 rounded-xl bg-white/60 dark:bg-black/20 border border-brand-border dark:border-brand-dark-border">
-                        {bundle.sixMonthEnabled && (
-                          <div>
-                            <p className="text-[10px] font-bold uppercase text-brand-muted">6 Months Access</p>
-                            <p className="text-2xl sm:text-3xl font-black text-brand-text dark:text-brand-dark-text">₹{bundle.sixMonthPrice}</p>
-                            <p className="text-[10px] text-brand-muted">Semester Prep</p>
-                          </div>
-                        )}
-                        {bundle.lifetimeEnabled && (
-                          <div>
-                            <p className="text-[10px] font-bold uppercase text-primary-500">Lifetime Access</p>
-                            <p className="text-2xl sm:text-3xl font-black text-primary-600 dark:text-primary-400">₹{bundle.lifetimePrice}</p>
-                            <p className="text-[10px] text-brand-muted">Never expires</p>
-                          </div>
-                        )}
+                      {parentSemesterBundle ? (
+                        <Link
+                          to={`/courses/semester-bundles/${parentSemesterBundle.id}`}
+                          className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold text-sm transition-all shadow-md inline-flex items-center justify-center gap-2"
+                        >
+                          Enroll via {parentSemesterBundle.title} <ArrowRight size={16} />
+                        </Link>
+                      ) : (
+                        <Link
+                          to="/courses"
+                          className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold text-sm transition-all shadow-md inline-flex items-center justify-center gap-2"
+                        >
+                          Browse Semester Bundles <ArrowRight size={16} />
+                        </Link>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="card p-6 sm:p-7 border-2 border-primary-500 dark:border-primary-500 bg-gradient-to-b from-primary-50/20 to-transparent dark:from-primary-950/20 shadow-xl relative flex flex-col justify-between">
+                      <div className="absolute -top-3 right-6 px-3 py-0.5 rounded-full bg-primary-500 text-white text-[10px] font-black uppercase tracking-wider shadow-xs flex items-center gap-1">
+                        <Sparkles size={11} /> Complete Learning
                       </div>
 
-                      <ul className="space-y-2.5 text-xs sm:text-sm text-brand-text dark:text-brand-dark-text mb-6">
-                        <li className="flex items-center gap-2">
-                          <Check size={15} className="text-emerald-500 flex-shrink-0" />
-                          <span className="font-semibold">All {curriculum.units.length} Units Completely Unlocked</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Check size={15} className="text-emerald-500 flex-shrink-0" />
-                          <span>All {curriculum.videos.length} Full-Length Video Lectures</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Check size={15} className="text-emerald-500 flex-shrink-0" />
-                          <span>All Handwritten Notes, Formula Sheets & PDFs</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Check size={15} className="text-emerald-500 flex-shrink-0" />
-                          <span>Subject Quizzes & Learning Resources</span>
-                        </li>
-                      </ul>
-                    </div>
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs font-bold uppercase tracking-wider text-primary-500 flex items-center gap-1">
+                            <Package size={14} /> Subject Bundle
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300">
+                            Videos + Notes
+                          </span>
+                        </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4 border-t border-brand-border dark:border-brand-dark-border">
-                      {bundle.sixMonthEnabled && (
-                        <button
-                          onClick={() => openCheckout('subject_bundle', 'six_month', bundle)}
-                          className="w-full py-3 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-white/10 dark:hover:bg-white/15 text-brand-text dark:text-white font-bold text-xs sm:text-sm transition-colors cursor-pointer"
-                        >
-                          Buy 6 Months (₹{bundle.sixMonthPrice})
-                        </button>
-                      )}
-                      {bundle.lifetimeEnabled && (
-                        <button
-                          onClick={() => openCheckout('subject_bundle', 'lifetime', bundle)}
-                          className="w-full py-3 rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-bold text-xs sm:text-sm transition-colors shadow-sm cursor-pointer"
-                        >
-                          Buy Lifetime (₹{bundle.lifetimePrice})
-                        </button>
-                      )}
+                        <h3 className="text-xl sm:text-2xl font-bold text-brand-text dark:text-brand-dark-text mb-1">
+                          {bundle.title || `${subjectTitle} Complete Bundle`}
+                        </h3>
+                        <p className="text-xs sm:text-sm text-brand-muted mb-4">
+                          The full academic package. Includes all recorded lectures, exam problem walkthroughs, and notes.
+                        </p>
+
+                        <div className="grid grid-cols-2 gap-3 mb-6 p-3 sm:p-4 rounded-xl bg-white/60 dark:bg-black/20 border border-brand-border dark:border-brand-dark-border">
+                          {bundle.sixMonthEnabled && (
+                            <div>
+                              <p className="text-[10px] font-bold uppercase text-brand-muted">6 Months Access</p>
+                              <p className="text-2xl sm:text-3xl font-black text-brand-text dark:text-brand-dark-text">₹{bundle.sixMonthPrice}</p>
+                              <p className="text-[10px] text-brand-muted">Semester Prep</p>
+                            </div>
+                          )}
+                          {bundle.lifetimeEnabled && (
+                            <div>
+                              <p className="text-[10px] font-bold uppercase text-primary-500">Lifetime Access</p>
+                              <p className="text-2xl sm:text-3xl font-black text-primary-600 dark:text-primary-400">₹{bundle.lifetimePrice}</p>
+                              <p className="text-[10px] text-brand-muted">Never expires</p>
+                            </div>
+                          )}
+                        </div>
+
+                        <ul className="space-y-2.5 text-xs sm:text-sm text-brand-text dark:text-brand-dark-text mb-6">
+                          <li className="flex items-center gap-2">
+                            <Check size={15} className="text-emerald-500 flex-shrink-0" />
+                            <span className="font-semibold">All {curriculum.units.length} Units Completely Unlocked</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <Check size={15} className="text-emerald-500 flex-shrink-0" />
+                            <span>All {curriculum.videos.length} Full-Length Video Lectures</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <Check size={15} className="text-emerald-500 flex-shrink-0" />
+                            <span>All Handwritten Notes, Formula Sheets & PDFs</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <Check size={15} className="text-emerald-500 flex-shrink-0" />
+                            <span>Subject Quizzes & Learning Resources</span>
+                          </li>
+                        </ul>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4 border-t border-brand-border dark:border-brand-dark-border">
+                        {bundle.sixMonthEnabled && (
+                          <button
+                            onClick={() => openCheckout('subject_bundle', 'six_month', bundle)}
+                            className="w-full py-3 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-white/10 dark:hover:bg-white/15 text-brand-text dark:text-white font-bold text-xs sm:text-sm transition-colors cursor-pointer"
+                          >
+                            Buy 6 Months (₹{bundle.sixMonthPrice})
+                          </button>
+                        )}
+                        {bundle.lifetimeEnabled && (
+                          <button
+                            onClick={() => openCheckout('subject_bundle', 'lifetime', bundle)}
+                            className="w-full py-3 rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-bold text-xs sm:text-sm transition-colors shadow-sm cursor-pointer"
+                          >
+                            Buy Lifetime (₹{bundle.lifetimePrice})
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )
                 )}
 
                 {resourceBundle && (

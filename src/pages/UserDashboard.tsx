@@ -289,7 +289,7 @@ export default function UserDashboard() {
 
     enrolledSemesterBundles.forEach((b) => {
       b.subjects?.forEach((s) => {
-        if (s.subjectId && !list.some((existing) => existing.subjectId === s.subjectId)) {
+        if (s.subjectId && s.subjectName && !list.some((existing) => existing.subjectId === s.subjectId)) {
           list.push({
             subjectId: s.subjectId,
             subjectName: s.subjectName,

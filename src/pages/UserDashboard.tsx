@@ -5,11 +5,12 @@ import {
   Clock, CheckCircle, TrendingUp, Play, Save,
   User, Phone, School, Lock, AlertCircle, CreditCard, ShieldCheck, Loader2, Sparkles, Copy, Camera, Image as ImageIcon, LogOut,
   GraduationCap, Calendar, BookMarked, FileText, ChevronDown, ChevronUp, BarChart3, Target,
-  Smartphone, Volume2
+  Smartphone, Volume2, Download
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import LogoutConfirmModal from '../components/LogoutConfirmModal'
 import { fetchPublishedSiteCourses } from '../lib/courseService'
+import { fetchPublishedResources, type Resource, triggerResourceDownload } from '../lib/resourceService'
 import { Course } from '../store/contentStore'
 import { getEnrollmentsForUser, Enrollment, getPaymentSettings } from '../lib/videoEngagementService'
 import { updateUserAuthPassword } from '../lib/supabase'
@@ -19,11 +20,12 @@ import AvatarPickerModal from '../components/AvatarPickerModal'
 import toast from 'react-hot-toast'
 import { haptic } from '../lib/haptics'
 
-type DashboardTab = 'overview' | 'courses' | 'transactions' | 'profile'
+type DashboardTab = 'overview' | 'courses' | 'resources' | 'transactions' | 'profile'
 
 const sidebarItems = [
   { id: 'overview' as DashboardTab, label: 'Overview', icon: LayoutDashboard },
   { id: 'courses' as DashboardTab, label: 'My Courses', icon: BookOpen },
+  { id: 'resources' as DashboardTab, label: 'My Resources', icon: FileText },
   { id: 'transactions' as DashboardTab, label: 'Paid Enrollments', icon: CreditCard },
   { id: 'profile' as DashboardTab, label: 'Profile Settings', icon: Settings },
 ]
@@ -68,6 +70,7 @@ export default function UserDashboard() {
   const { user, updateProfileInSupabase, logoutUser } = useAuthStore()
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview')
   const [coursesList, setCoursesList] = useState<Course[]>([])
+  const [resourcesList, setResourcesList] = useState<Resource[]>([])
   const [enrollments, setEnrollments] = useState<Enrollment[]>([])
   const [loading, setLoading] = useState(true)
   const [activePlayCourse, setActivePlayCourse] = useState<Course | null>(null)
@@ -173,11 +176,13 @@ export default function UserDashboard() {
     if (!user?.id) return
     setLoading(true)
     try {
-      const [allCourses, userEnrollments] = await Promise.all([
+      const [allCourses, allResources, userEnrollments] = await Promise.all([
         fetchPublishedSiteCourses().catch(() => []),
+        fetchPublishedResources().catch(() => []),
         getEnrollmentsForUser(user.id).catch(() => []),
       ])
       setCoursesList(allCourses)
+      setResourcesList(allResources)
       setEnrollments(userEnrollments)
     } catch (err) {
       console.error('Failed to load user dashboard data:', err)
@@ -201,13 +206,18 @@ export default function UserDashboard() {
       .toUpperCase()
       .slice(0, 2)
 
-  // Filter only active courses (approved 'paid' or 'free', excluding rejected and pending)
-  const activeEnrollments = enrollments.filter(
-    (enr) => (enr.status === 'paid' || enr.status === 'free') && enr.itemType !== 'premium_membership'
+  // Filter only active courses (approved 'paid' or 'free', strictly excluding resources and memberships)
+  const activeCourseEnrollments = enrollments.filter(
+    (enr) =>
+      (enr.status === 'paid' || enr.status === 'free') &&
+      enr.itemType !== 'premium_membership' &&
+      enr.itemType !== 'resource' &&
+      enr.itemType !== 'resource_bundle' &&
+      !String(enr.courseId).startsWith('resource_')
   )
 
   // Map active enrolled courses
-  const enrolledCoursesWithMeta = activeEnrollments.map((enr) => {
+  const enrolledCoursesWithMeta = activeCourseEnrollments.map((enr) => {
     const matchedCourse = coursesList.find((c) => String(c.id) === String(enr.courseId))
     return {
       enrollment: enr,
@@ -234,6 +244,40 @@ export default function UserDashboard() {
       }) as Course,
     }
   })
+
+  // Filter and map active purchased resources
+  const activeResourceEnrollments = enrollments.filter(
+    (enr) =>
+      (enr.status === 'paid' || enr.status === 'free') &&
+      (enr.itemType === 'resource' || String(enr.courseId).startsWith('resource_'))
+  )
+
+  const enrolledResourcesWithMeta = activeResourceEnrollments.map((enr) => {
+    const rawId = String(enr.courseId).replace(/^resource_/, '')
+    const matchedResource = resourcesList.find((r) => String(r.id) === rawId)
+    return {
+      enrollment: enr,
+      resource: matchedResource || null,
+      id: rawId,
+      title: matchedResource?.title || enr.itemTitle || `Resource #${rawId}`,
+      description: matchedResource?.description || 'Study material & notes',
+      downloadUrl: matchedResource?.downloadUrl || '',
+      type: matchedResource?.type || 'Notes / Document',
+    }
+  })
+
+  const handleDownloadPurchasedResource = async (item: { title: string; downloadUrl: string }) => {
+    if (!item.downloadUrl) {
+      toast.error('Download file is not available yet.')
+      return
+    }
+    try {
+      await triggerResourceDownload(item.downloadUrl, item.title || 'document.pdf')
+      toast.success('Download started! 📄')
+    } catch {
+      window.open(item.downloadUrl, '_blank')
+    }
+  }
 
   const paidEnrollments = enrollments.filter((e) => e.status === 'paid')
   const freeEnrollments = enrollments.filter((e) => e.status === 'free')
@@ -343,7 +387,7 @@ export default function UserDashboard() {
               {[
                 {
                   label: 'Total Enrolled Courses',
-                  value: activeEnrollments.length.toString(),
+                  value: activeCourseEnrollments.length.toString(),
                   icon: BookOpen,
                   color: 'text-primary-500',
                   bg: 'bg-primary-50 dark:bg-primary-900/20',
@@ -454,6 +498,54 @@ export default function UserDashboard() {
                 </div>
               )}
             </div>
+
+            {/* Purchased Resources & Notes */}
+            {enrolledResourcesWithMeta.length > 0 && (
+              <div className="card p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-2">
+                    <FileText size={18} className="text-indigo-500" />
+                    Your Purchased Notes & Resources
+                  </h3>
+                  {enrolledResourcesWithMeta.length > 2 && (
+                    <button
+                      onClick={() => setActiveTab('resources')}
+                      className="text-xs font-semibold text-primary-500 hover:underline"
+                    >
+                      View All ({enrolledResourcesWithMeta.length})
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  {enrolledResourcesWithMeta.slice(0, 3).map((item) => (
+                    <div key={item.enrollment.id} className="card p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center flex-shrink-0 text-white font-bold">
+                        <FileText size={22} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="badge text-[10px] px-2 py-0.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">
+                            {item.type}
+                          </span>
+                          <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted">
+                            Purchased on {new Date(item.enrollment.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p className="font-semibold text-sm text-brand-text dark:text-brand-dark-text truncate">
+                          {item.title}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleDownloadPurchasedResource(item)}
+                        className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition-colors flex-shrink-0"
+                      >
+                        <Download size={13} /> Download File
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )
 
@@ -525,6 +617,74 @@ export default function UserDashboard() {
                         className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary-500 text-white text-xs font-bold rounded-xl hover:bg-primary-600 transition-colors"
                       >
                         <Play size={13} /> Watch Course Video
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+
+      case 'resources':
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">My Purchased Resources & Notes</h2>
+                <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">
+                  All study materials, formula sheets, and notes unlocked on your account
+                </p>
+              </div>
+              <a
+                href="/resources"
+                className="btn-primary text-xs px-4 py-2"
+              >
+                Browse More Resources
+              </a>
+            </div>
+
+            {enrolledResourcesWithMeta.length === 0 ? (
+              <div className="card p-12 text-center">
+                <FileText size={48} className="mx-auto text-brand-muted dark:text-brand-dark-muted mb-3 opacity-40" />
+                <h3 className="text-base font-bold text-brand-text dark:text-brand-dark-text">You haven't purchased any notes or resources yet</h3>
+                <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1 max-w-sm mx-auto mb-5">
+                  Browse our curated collection of notes, roadmaps, formula sheets, and lab manuals.
+                </p>
+                <a href="/resources" className="btn-primary inline-flex text-xs px-5 py-2.5">
+                  Explore Resources
+                </a>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {enrolledResourcesWithMeta.map((item) => (
+                  <div key={item.enrollment.id} className="card overflow-hidden flex flex-col justify-between">
+                    <div className="p-5">
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        <span className="badge text-xs bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">
+                          {item.type}
+                        </span>
+                        <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted">
+                          Purchased on {new Date(item.enrollment.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <h3 className="font-bold text-base text-brand-text dark:text-brand-dark-text mb-2 line-clamp-2">
+                        {item.title}
+                      </h3>
+                      <p className="text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-2 mb-4">
+                        {item.description}
+                      </p>
+                    </div>
+                    <div className="p-5 pt-0 border-t border-brand-border dark:border-brand-dark-border mt-auto">
+                      <div className="flex items-center justify-between text-xs text-brand-muted dark:text-brand-dark-muted py-3">
+                        <span>Paid: ₹{item.enrollment.amount}</span>
+                        <span className="text-emerald-500 font-semibold">Active & Unlocked</span>
+                      </div>
+                      <button
+                        onClick={() => handleDownloadPurchasedResource(item)}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-colors"
+                      >
+                        <Download size={13} /> Download Resource
                       </button>
                     </div>
                   </div>

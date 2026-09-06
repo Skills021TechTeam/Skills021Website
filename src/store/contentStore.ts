@@ -60,6 +60,9 @@ export interface Course {
   branchId?: number
   semesterId?: number
   subjectId?: number
+  // True if this course/lecture was uploaded as curriculum under a Subject Bundle
+  // rather than as an individual standalone course in 'All Courses'.
+  isBundleOnly?: boolean
 }
 
 // ─── Resource Types ─────────────────────────────────────────────────────────
@@ -88,6 +91,7 @@ export interface Resource {
   downloads: number
   bookmarks: number
   createdAt: string
+  isBundleOnly?: boolean
 }
 
 // ─── Quiz Types ──────────────────────────────────────────────────────────────

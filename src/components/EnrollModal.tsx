@@ -3,10 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Loader2, CheckCircle2, QrCode, Copy, Check,
   UploadCloud, AlertCircle, Phone, GraduationCap, Sparkles, Clock,
-  Tag, ChevronRight, BadgePercent, XCircle
+  Tag, ChevronRight, BadgePercent, XCircle, FileText
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { Course } from '../store/contentStore'
+import { Course, Resource } from '../store/contentStore'
 import { submitPaymentProof, createEnrollment, getPaymentSettings, PaymentSettings } from '../lib/videoEngagementService'
 import {
   fetchCheckoutPrice,
@@ -18,6 +18,7 @@ import type { CheckoutPricing, ProductType } from '../lib/pricingTypes'
 
 export interface EnrollModalProps {
   course?: Course | null
+  resource?: Resource | null
   isPremiumMembership?: boolean
   premiumAmount?: number
   userId: string
@@ -31,6 +32,7 @@ type Step = 'details' | 'upi_payment' | 'submitted' | 'free_success'
 
 export default function EnrollModal({
   course,
+  resource,
   isPremiumMembership = false,
   premiumAmount = 999,
   userId,
@@ -57,17 +59,38 @@ export default function EnrollModal({
   })
 
   // ─── Pricing state ────────────────────────────────────────────────────────
-  const isFree = !isPremiumMembership && course?.price === 'FREE'
-  const title = isPremiumMembership ? 'All-Access Premium Membership' : (course?.title || 'Course Access')
-  const itemId = isPremiumMembership ? 'premium_all_access' : (course?.id || 'course_generic')
   const itemType: ProductType = isPremiumMembership
     ? 'premium_membership'
-    : 'course'
+    : resource
+      ? 'resource'
+      : 'course'
+
+  const isFree = !isPremiumMembership && (
+    resource
+      ? (!resource.isPremium || !resource.price || resource.price === 0)
+      : course?.price === 'FREE'
+  )
+
+  const title = isPremiumMembership
+    ? 'All-Access Premium Membership'
+    : resource
+      ? (resource.title || 'Resource Access')
+      : (course?.title || 'Course Access')
+
+  const itemId = isPremiumMembership
+    ? 'premium_all_access'
+    : resource
+      ? String(resource.id)
+      : (course?.id || 'course_generic')
 
   // Server-verified pricing (the source of truth for the payment amount)
   const [pricing, setPricing] = useState<CheckoutPricing>(
     initialCheckoutPricing(
-      isPremiumMembership ? premiumAmount : (typeof course?.price === 'number' ? course.price : 0)
+      isPremiumMembership
+        ? premiumAmount
+        : resource
+          ? (resource.price || 0)
+          : (typeof course?.price === 'number' ? course.price : 0)
     )
   )
 
@@ -133,7 +156,11 @@ export default function EnrollModal({
   const effectivePremiumAmount = paymentSettings.allAccessPrice || premiumAmount
   // Always use server-calculated amount — NEVER trust a frontend-derived amount
   const displayAmount = pricing.isLoading
-    ? (isPremiumMembership ? effectivePremiumAmount : (isFree ? 0 : (typeof course?.price === 'number' ? course.price : 499)))
+    ? (isPremiumMembership
+        ? effectivePremiumAmount
+        : isFree
+          ? 0
+          : (resource ? (resource.price || 0) : (typeof course?.price === 'number' ? course.price : 499)))
     : pricing.finalAmount
 
   const activeUpiId = paymentSettings.upiId || 'skills021@upi'
@@ -231,11 +258,11 @@ export default function EnrollModal({
       return
     }
 
-    if (isFree && course) {
+    if (isFree) {
       setSubmitting(true)
       try {
         await createEnrollment({
-          courseId: course.id,
+          courseId: itemId,
           userId,
           firstName: firstName.trim(),
           lastName: lastName.trim(),
@@ -243,11 +270,12 @@ export default function EnrollModal({
           phone: phone.trim(),
           status: 'free',
           amount: 0,
-          itemTitle: course.title,
+          itemTitle: title,
+          itemType: itemType === 'resource' ? 'resource' : 'course',
         })
         toast.success('Enrolled successfully for Free! 🎉')
         setStep('free_success')
-        onEnrolled(course.id)
+        onEnrolled(itemId)
       } catch (err: unknown) {
         toast.error((err as Error).message || 'Failed to enroll')
       } finally {
@@ -289,7 +317,7 @@ export default function EnrollModal({
 
       await submitPaymentProof({
         userId,
-        itemType: itemType === 'premium_membership' ? 'premium_membership' : 'course',
+        itemType: itemType === 'premium_membership' ? 'premium_membership' : (itemType === 'resource' ? 'resource' : 'course'),
         itemId,
         itemTitle: title,
         firstName: firstName.trim(),
@@ -331,7 +359,7 @@ export default function EnrollModal({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
-        className="fixed inset-0 bg-black/75 z-[70] flex items-center justify-center p-4 overflow-y-auto"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto"
       >
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
@@ -344,11 +372,11 @@ export default function EnrollModal({
           <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 dark:border-brand-dark-border">
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-primary-500/10 dark:bg-primary-500/20 text-primary-500 flex items-center justify-center">
-                {isPremiumMembership ? <Sparkles size={18} /> : <GraduationCap size={18} />}
+                {isPremiumMembership ? <Sparkles size={18} /> : (resource ? <FileText size={18} /> : <GraduationCap size={18} />)}
               </div>
               <div>
                 <h3 className="text-base font-bold text-brand-text dark:text-brand-dark-text leading-tight">
-                  {isPremiumMembership ? 'Upgrade to Premium' : isFree ? 'Free Enrollment' : 'Purchase Course'}
+                  {isPremiumMembership ? 'Upgrade to Premium' : isFree ? 'Free Access' : (resource ? 'Purchase Resource' : 'Purchase Course')}
                 </h3>
                 <p className="text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-1">{title}</p>
               </div>

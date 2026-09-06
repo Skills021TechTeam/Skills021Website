@@ -198,7 +198,7 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
   try {
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, email, name, first_name, last_name, college, phone, role, avatar_url, is_premium, age, branch, current_semester, semester_sgpa, year_of_study, bio, created_at, updated_at')
+      .select('id, email, name, college, phone, role, avatar_url, is_premium, age, branch, current_semester, semester_sgpa, year_of_study, bio, created_at, updated_at')
       .eq('id', userId)
       .maybeSingle()
 
@@ -208,16 +208,17 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
     }
     if (!data) return null
 
-    const fullName =
-      data.name ||
-      `${data.first_name || ''} ${data.last_name || ''}`.trim() ||
-      data.email?.split('@')[0] ||
-      'User'
+    const fullName = data.name || data.email?.split('@')[0] || 'User'
+    const nameParts = fullName.trim().split(/\s+/)
+    const firstName = nameParts[0] || ''
+    const lastName = nameParts.slice(1).join(' ') || ''
 
     return {
       id: data.id,
       email: data.email,
       name: fullName,
+      first_name: firstName,
+      last_name: lastName,
       college: data.college || 'Student Institution',
       phone: data.phone || '',
       role: data.role || 'user',
@@ -283,7 +284,7 @@ export async function upsertUserProfile(
     const { data, error } = await supabase
       .from('profiles')
       .upsert(payload, { onConflict: 'id' })
-      .select('id, email, name, first_name, last_name, college, phone, role, avatar_url, is_premium, age, branch, current_semester, semester_sgpa, year_of_study, bio, created_at, updated_at')
+      .select('id, email, name, college, phone, role, avatar_url, is_premium, age, branch, current_semester, semester_sgpa, year_of_study, bio, created_at, updated_at')
       .maybeSingle()
 
     if (error) {
@@ -294,13 +295,18 @@ export async function upsertUserProfile(
         const { data: fallbackData } = await supabase
           .from('profiles')
           .upsert(fallbackPayload, { onConflict: 'id' })
-          .select('id, email, name, first_name, last_name, college, phone, role, avatar_url, is_premium, age, branch, current_semester, semester_sgpa, year_of_study, bio, created_at, updated_at')
+          .select('id, email, name, college, phone, role, avatar_url, is_premium, age, branch, current_semester, semester_sgpa, year_of_study, bio, created_at, updated_at')
           .maybeSingle()
+
+        const fallbackName = fallbackData?.name || fullName
+        const fbParts = fallbackName.trim().split(/\s+/)
 
         return {
           id: fallbackData?.id || profile.id,
           email: fallbackData?.email || profile.email || '',
-          name: fallbackData?.name || fullName,
+          name: fallbackName,
+          first_name: fbParts[0] || '',
+          last_name: fbParts.slice(1).join(' ') || '',
           college: fallbackData?.college || profile.college || 'Student Institution',
           phone: fallbackData?.phone || '',
           role: fallbackData?.role || 'user',
@@ -314,11 +320,16 @@ export async function upsertUserProfile(
     }
 
     const nameResolved = data?.name || data?.email?.split('@')[0] || fullName
+    const nameParts = nameResolved.trim().split(/\s+/)
+    const firstName = nameParts[0] || ''
+    const lastName = nameParts.slice(1).join(' ') || ''
 
     return {
       id: data?.id || profile.id,
       email: data?.email || profile.email || '',
       name: nameResolved,
+      first_name: firstName,
+      last_name: lastName,
       college: data?.college || profile.college || 'Student Institution',
       phone: data?.phone || '',
       role: data?.role || 'user',
@@ -451,7 +462,7 @@ export async function fetchAllUsersWithEnrollments(): Promise<UserWithEnrollment
     // 1. Fetch all profiles
     const { data: profilesData, error: profilesError } = await supabase
       .from('profiles')
-      .select('id, email, name, first_name, last_name, avatar_url, college, phone, branch, current_semester, semester_sgpa, year_of_study, bio, age, role, is_premium, created_at, updated_at')
+      .select('id, email, name, avatar_url, college, phone, branch, current_semester, semester_sgpa, year_of_study, bio, age, role, is_premium, created_at, updated_at')
       .order('created_at', { ascending: false })
 
     if (profilesError) {
@@ -533,16 +544,19 @@ export async function fetchAllUsersWithEnrollments(): Promise<UserWithEnrollment
 
       const fullName =
         p.name ||
-        `${p.first_name || ''} ${p.last_name || ''}`.trim() ||
         p.email?.split('@')[0] ||
         'User'
+
+      const nameParts = fullName.trim().split(/\s+/)
+      const firstName = nameParts[0] || ''
+      const lastName = nameParts.slice(1).join(' ') || ''
 
       results.push({
         id: p.id,
         email: p.email,
         name: fullName,
-        first_name: p.first_name || '',
-        last_name: p.last_name || '',
+        first_name: firstName,
+        last_name: lastName,
         avatar_url: p.avatar_url || '',
         college: p.college || 'Student Institution',
         phone: p.phone || (userEnrolls[0]?.phone ?? ''),

@@ -185,14 +185,13 @@ export async function lookupUserPublicProfile(email: string): Promise<UserProfil
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('name, first_name, last_name, avatar_url, role, email')
+        .select('name, avatar_url, role, email')
         .ilike('email', cleanEmail)
         .maybeSingle()
 
       if (!error && data) {
         const dbName =
           data.name ||
-          `${data.first_name || ''} ${data.last_name || ''}`.trim() ||
           deriveNameFromEmail(cleanEmail)
         if (dbName) resolvedName = dbName
         if (data.avatar_url && typeof data.avatar_url === 'string' && data.avatar_url.trim() !== '') {

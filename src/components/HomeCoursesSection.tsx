@@ -119,7 +119,7 @@ export default function HomeCoursesSection() {
         </div>
         <p className="max-w-md text-brand-muted dark:text-brand-dark-muted">
           Every course is crafted with real engineers and industry experts so you graduate with
-          skills teams actually pay for.
+          skills.
         </p>
       </motion.div>
 

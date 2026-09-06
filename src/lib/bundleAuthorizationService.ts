@@ -5,6 +5,8 @@ import { supabase } from './supabase'
 
 export interface UserEntitlements {
   subjectBundleSubjectIds: Set<number>
+  semesterBundleSemesterIds: Set<number>
+  semesterBundleIds: Set<string>
   resourceBundleItemIds: Set<number>
   resourceBundleSubjectIds: Set<number>
   enrolledCourseIds: Set<string>
@@ -20,6 +22,8 @@ export interface UserEntitlements {
 export async function fetchUserEntitlements(userId: string | null | undefined): Promise<UserEntitlements> {
   const result: UserEntitlements = {
     subjectBundleSubjectIds: new Set<number>(),
+    semesterBundleSemesterIds: new Set<number>(),
+    semesterBundleIds: new Set<string>(),
     resourceBundleItemIds: new Set<number>(),
     resourceBundleSubjectIds: new Set<number>(),
     enrolledCourseIds: new Set<string>(),
@@ -33,7 +37,7 @@ export async function fetchUserEntitlements(userId: string | null | undefined): 
   const now = new Date()
 
   try {
-    const [subjectRes, resourceRes, enrollmentRes] = await Promise.all([
+    const [subjectRes, resourceRes, semesterRes, enrollmentRes] = await Promise.all([
       // Active subject bundles
       supabase
         .from('subject_bundle_purchases')
@@ -57,6 +61,23 @@ export async function fetchUserEntitlements(userId: string | null | undefined): 
         .eq('payment_status', 'paid')
         .eq('status', 'active'),
 
+      // Active semester bundles with mapped subjects
+      supabase
+        .from('semester_bundle_purchases')
+        .select(`
+          bundle_id,
+          semester_id,
+          expires_at,
+          semester_bundles (
+            semester_bundle_subjects (
+              subject_bundles ( subject_id )
+            )
+          )
+        `)
+        .eq('user_id', userId)
+        .eq('payment_status', 'paid')
+        .eq('status', 'active'),
+
       // Individual enrollments and bundle enrollments
       supabase
         .from('enrollments')
@@ -68,6 +89,54 @@ export async function fetchUserEntitlements(userId: string | null | undefined): 
       for (const p of subjectRes.data) {
         if (!p.expires_at || new Date(p.expires_at) > now) {
           result.subjectBundleSubjectIds.add(Number(p.subject_id))
+        }
+      }
+    }
+
+    if (semesterRes.data) {
+      for (const sem of semesterRes.data) {
+        if (!sem.expires_at || new Date(sem.expires_at) > now) {
+          result.semesterBundleSemesterIds.add(Number(sem.semester_id))
+          if (sem.bundle_id) result.semesterBundleIds.add(String(sem.bundle_id))
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const b = sem.semester_bundles as any
+          const mappings = b?.semester_bundle_subjects || []
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          for (const m of mappings) {
+            const sid = m?.subject_bundles?.subject_id
+            if (sid) {
+              result.subjectBundleSubjectIds.add(Number(sid))
+            }
+          }
+        }
+      }
+
+      // Authoritative direct fetch of all subjects mapped to active semester bundles
+      if (result.semesterBundleIds.size > 0) {
+        const { data: directMappings } = await supabase
+          .from('semester_bundle_subjects')
+          .select('subject_bundles(subject_id)')
+          .in('bundle_id', Array.from(result.semesterBundleIds))
+
+        if (directMappings) {
+          for (const dm of directMappings) {
+            const sid = (dm as any)?.subject_bundles?.subject_id
+            if (sid) result.subjectBundleSubjectIds.add(Number(sid))
+          }
+        }
+      }
+
+      // Also ensure all subjects with matching semester_id are entitled
+      if (result.semesterBundleSemesterIds.size > 0) {
+        const { data: semSubjs } = await supabase
+          .from('subjects')
+          .select('id')
+          .in('semester_id', Array.from(result.semesterBundleSemesterIds))
+
+        if (semSubjs) {
+          for (const s of semSubjs) {
+            result.subjectBundleSubjectIds.add(Number(s.id))
+          }
         }
       }
     }
@@ -128,6 +197,33 @@ export async function fetchUserEntitlements(userId: string | null | undefined): 
               .maybeSingle()
             if (bRow?.subject_id) {
               result.subjectBundleSubjectIds.add(Number(bRow.subject_id))
+            }
+          }
+        } else if (enr.item_type === 'semester_bundle' && isApproved) {
+          const bundleId = rawItemId?.split(':')[0]
+          if (bundleId) {
+            result.semesterBundleIds.add(String(bundleId))
+            const { data: semRow } = await supabase
+              .from('semester_bundles')
+              .select(`
+                semester_id,
+                semester_bundle_subjects (
+                  subject_bundles ( subject_id )
+                )
+              `)
+              .eq('id', bundleId)
+              .maybeSingle()
+            if (semRow?.semester_id) {
+              result.semesterBundleSemesterIds.add(Number(semRow.semester_id))
+            }
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const mappings = (semRow as any)?.semester_bundle_subjects || []
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            for (const m of mappings) {
+              const sid = m?.subject_bundles?.subject_id
+              if (sid) {
+                result.subjectBundleSubjectIds.add(Number(sid))
+              }
             }
           }
         } else if (enr.item_type === 'resource_bundle' && isApproved) {

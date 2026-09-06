@@ -462,6 +462,19 @@ export async function getUserResourceBundleEntitlement(
     console.warn('[resourceBundleService] Error checking enrollments fallback:', enrErr)
   }
 
+  // If still no access, check if user has access via Subject Bundle or Semester Bundle
+  if (!resAccess.hasAccess) {
+    try {
+      const { hasSubjectBundleAccess } = await import('./subjectBundleService')
+      const hasAccess = await hasSubjectBundleAccess(userId, subjectId)
+      if (hasAccess) {
+        resAccess.hasAccess = true
+        resAccess.isPending = false
+        resAccess.hasPending = false
+      }
+    } catch {}
+  }
+
   return resAccess
 }
 

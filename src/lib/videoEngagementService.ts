@@ -5,7 +5,7 @@ export interface Enrollment {
   id: string
   courseId: string
   userId: string
-  itemType: 'course' | 'premium_membership' | 'resource' | 'subject_bundle' | 'resource_bundle'
+  itemType: 'course' | 'premium_membership' | 'resource' | 'subject_bundle' | 'resource_bundle' | 'semester_bundle'
   itemTitle?: string
   firstName: string
   lastName: string
@@ -318,6 +318,33 @@ export async function approvePaymentRequest(enrollmentId: string): Promise<Enrol
     }
   }
 
+  // If it was a semester bundle purchase, activate the entitlement atomically
+  if (data.item_type === 'semester_bundle') {
+    try {
+      const nowIso = new Date().toISOString()
+      // 1. Direct update into semester_bundle_purchases
+      await supabase
+        .from('semester_bundle_purchases')
+        .update({
+          payment_status: 'paid',
+          status: 'active',
+          approved_at: nowIso,
+          starts_at: nowIso,
+        })
+        .eq('enrollment_id', data.id)
+
+      // 2. Also attempt RPC if present
+      const authUser = (await supabase.auth.getUser()).data.user
+      const adminId = authUser?.id || data.user_id
+      await supabase.rpc('approve_semester_bundle_purchase', {
+        p_enrollment_id: data.id,
+        p_admin_id: adminId,
+      })
+    } catch (e) {
+      console.warn('Could not activate semester bundle via RPC:', e)
+    }
+  }
+
   return mapEnrollment(data)
 }
 
@@ -364,6 +391,22 @@ export async function rejectPaymentRequest(enrollmentId: string, reason: string)
         .eq('enrollment_id', data.id)
     } catch (e) {
       console.warn('Could not update resource_bundle_purchases:', e)
+    }
+  }
+
+  // Revoke semester bundle purchase entitlement if applicable
+  if (data.item_type === 'semester_bundle') {
+    try {
+      await supabase
+        .from('semester_bundle_purchases')
+        .update({
+          payment_status: 'rejected',
+          status: 'revoked',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('enrollment_id', data.id)
+    } catch (e) {
+      console.warn('Could not update semester_bundle_purchases:', e)
     }
   }
 

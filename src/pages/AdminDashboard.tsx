@@ -350,6 +350,22 @@ import type {
   CreateResourceBundleInput,
   UpdateResourceBundleInput,
 } from '../lib/resourceBundleTypes'
+import {
+  fetchAllSemesterBundles,
+  fetchSemesterBundle,
+  createSemesterBundle,
+  updateSemesterBundle,
+  deleteSemesterBundle,
+  toggleSemesterBundleActive,
+  updateSemesterBundleMappings,
+} from '../lib/semesterBundleService'
+import type {
+  SemesterBundle,
+  SemesterBundleSubject,
+  CreateSemesterBundleInput,
+  UpdateSemesterBundleInput,
+} from '../lib/semesterBundleTypes'
+import { fetchSubjectBundlesBySemester } from '../lib/subjectBundleService'
 
 type AdminTab =
   | 'overview' | 'courses' | 'resources' | 'quizzes' | 'roadmaps'
@@ -357,8 +373,8 @@ type AdminTab =
   | 'pathfinder-careers' | 'pathfinder-exams' | 'pathfinder-mappings'
   | 'career-applications'
   | 'hackathons' | 'payment-approvals'
-  | 'subject-bundles' | 'resource-bundles'
-  | 'course-discounts' | 'resource-discounts' | 'coupons' | 'coupon-usage'
+  | 'semester-bundles' | 'subject-bundles' | 'resource-bundles'
+  | 'semester-discounts' | 'course-discounts' | 'resource-discounts' | 'coupons' | 'coupon-usage'
 
 const sidebarItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard; group?: string }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -375,8 +391,10 @@ const sidebarItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard;
   { id: 'pathfinder-careers', label: 'Career Paths', icon: Compass, group: '🧭 Skills021 PathFinder' },
   { id: 'pathfinder-exams', label: 'Exams', icon: FileText, group: '🧭 Skills021 PathFinder' },
   { id: 'pathfinder-mappings', label: 'Career Mapping', icon: Map, group: '🧭 Skills021 PathFinder' },
+  { id: 'semester-bundles', label: 'Semester Bundles', icon: GraduationCap, group: '💰 Pricing & Bundles' },
   { id: 'subject-bundles', label: 'Subject Bundles', icon: Package, group: '💰 Pricing & Bundles' },
   { id: 'resource-bundles', label: 'Resource Bundles', icon: Layers, group: '💰 Pricing & Bundles' },
+  { id: 'semester-discounts', label: 'Semester Bundle Discounts', icon: DollarSign, group: '💰 Pricing & Bundles' },
   { id: 'course-discounts', label: 'Subject Bundle Discounts', icon: DollarSign, group: '💰 Pricing & Bundles' },
   { id: 'resource-discounts', label: 'Resource Bundle Discounts', icon: DollarSign, group: '💰 Pricing & Bundles' },
   { id: 'coupons', label: 'Coupon Codes', icon: Sparkles, group: '💰 Pricing & Bundles' },
@@ -8046,6 +8064,7 @@ export default function AdminDashboard() {
     const [editingDiscount, setEditingDiscount] = useState<ProductDiscount | null>(null)
     const [deletingDiscount, setDeletingDiscount] = useState<ProductDiscount | null>(null)
     const [saving, setSaving] = useState(false)
+    const [semBundlesList, setSemBundlesList] = useState<SemesterBundle[]>([])
 
     // Form state
     const [formProductId, setFormProductId] = useState('')
@@ -8062,6 +8081,12 @@ export default function AdminDashboard() {
         .then(setDiscounts)
         .catch(() => toast.error('Failed to load discounts'))
         .finally(() => setLoading(false))
+
+      if (productType === 'semester_bundle') {
+        fetchAllSemesterBundles()
+          .then(setSemBundlesList)
+          .catch(() => {})
+      }
     }, [productType])
 
     const resetForm = () => {
@@ -8153,7 +8178,7 @@ export default function AdminDashboard() {
       Disabled: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
     }[status] || 'bg-gray-100 text-gray-600')
 
-    const label = productType === 'subject_bundle' ? 'Subject Bundle' : productType === 'resource_bundle' ? 'Resource Bundle' : productType === 'course' ? 'Course' : 'Resource'
+    const label = productType === 'semester_bundle' ? 'Semester Bundle' : productType === 'subject_bundle' ? 'Subject Bundle' : productType === 'resource_bundle' ? 'Resource Bundle' : productType === 'course' ? 'Course' : 'Resource'
 
     return (
       <div>
@@ -8174,11 +8199,14 @@ export default function AdminDashboard() {
           <div className="space-y-3">
             {filtered.map(d => {
               const status = getDiscountStatus(d)
+              const matchedSem = productType === 'semester_bundle' ? semBundlesList.find(sb => sb.id === d.productId || String(sb.semesterId) === d.productId) : null
               return (
                 <div key={d.id} className="card p-4 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-bold text-sm text-brand-text dark:text-brand-dark-text">{label} ID: {d.productId}</span>
+                      <span className="font-bold text-sm text-brand-text dark:text-brand-dark-text">
+                        {matchedSem ? matchedSem.title : `${label} ID: ${d.productId}`}
+                      </span>
                       <span className={`badge text-[10px] ${statusColor(status)}`}>{status}</span>
                     </div>
                     <div className="flex items-center gap-3 text-xs text-brand-muted dark:text-brand-dark-muted">
@@ -8215,9 +8243,26 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="space-y-3">
-                  <Field label={`${label} ID *`}>
-                    <input value={formProductId} onChange={e => setFormProductId(e.target.value)} className={inputCls} placeholder={productType === 'course' ? 'e.g. 12 (the site_courses.id)' : 'e.g. 5 (the resources.id)'} />
-                  </Field>
+                  {productType === 'semester_bundle' && semBundlesList.length > 0 ? (
+                    <Field label="Select Semester Bundle *">
+                      <select
+                        value={formProductId}
+                        onChange={e => setFormProductId(e.target.value)}
+                        className={inputCls}
+                      >
+                        <option value="">-- Choose a Semester Bundle --</option>
+                        {semBundlesList.map(sb => (
+                          <option key={sb.id} value={sb.id}>
+                            {sb.title} (Sem {sb.semesterNumber} · 6M: ₹{sb.sixMonthPrice}, Life: ₹{sb.lifetimePrice})
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  ) : (
+                    <Field label={`${label} ID *`}>
+                      <input value={formProductId} onChange={e => setFormProductId(e.target.value)} className={inputCls} placeholder={productType === 'course' ? 'e.g. 12 (the site_courses.id)' : 'e.g. UUID or ID'} />
+                    </Field>
+                  )}
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Discount Type *">
                       <select value={formDiscountType} onChange={e => setFormDiscountType(e.target.value as DiscountType)} className={inputCls}>
@@ -8234,6 +8279,62 @@ export default function AdminDashboard() {
                       <input type="number" min="0" step="1" value={formMaxDiscount} onChange={e => setFormMaxDiscount(e.target.value)} className={inputCls} placeholder="e.g. 500" />
                     </Field>
                   )}
+
+                  {/* Live Calculation Preview */}
+                  {(() => {
+                    const selectedSem = productType === 'semester_bundle' ? semBundlesList.find(sb => sb.id === formProductId) : null
+                    const val = parseFloat(formDiscountValue)
+                    if (!selectedSem || isNaN(val) || val <= 0) return null
+
+                    const calcFinal = (base: number) => {
+                      if (formDiscountType === 'percentage') {
+                        let disc = base * (val / 100)
+                        if (formMaxDiscount && parseFloat(formMaxDiscount) > 0) {
+                          disc = Math.min(disc, parseFloat(formMaxDiscount))
+                        }
+                        return Math.max(0, Math.round(base - disc))
+                      }
+                      return Math.max(0, Math.round(base - val))
+                    }
+
+                    const final6M = selectedSem.sixMonthEnabled ? calcFinal(selectedSem.sixMonthPrice) : null
+                    const finalLife = selectedSem.lifetimeEnabled ? calcFinal(selectedSem.lifetimePrice) : null
+
+                    return (
+                      <div className="p-3.5 rounded-xl bg-violet-50/80 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-900/40 text-xs space-y-1.5">
+                        <div className="font-bold text-violet-900 dark:text-violet-200 flex items-center justify-between">
+                          <span>Live Price Preview (after discount):</span>
+                          <span className="font-black text-violet-600 dark:text-violet-400">
+                            {formDiscountType === 'percentage' ? `${val}% OFF` : `₹${val} OFF`}
+                          </span>
+                        </div>
+                        {final6M !== null && (
+                          <div className="flex items-center justify-between text-brand-text dark:text-white">
+                            <span>6-Month Plan:</span>
+                            <span className="font-bold">
+                              ₹{final6M} <span className="text-[11px] font-normal text-brand-muted line-through">₹{selectedSem.sixMonthPrice}</span>
+                            </span>
+                          </div>
+                        )}
+                        {finalLife !== null && (
+                          <div className="flex items-center justify-between text-brand-text dark:text-white">
+                            <span>Lifetime Plan:</span>
+                            <span className="font-bold">
+                              ₹{finalLife} <span className="text-[11px] font-normal text-brand-muted line-through">₹{selectedSem.lifetimePrice}</span>
+                            </span>
+                          </div>
+                        )}
+                        <p className="text-[11px] text-violet-700 dark:text-violet-300 pt-1 border-t border-violet-200/60 dark:border-violet-800/40 leading-relaxed">
+                          💡 <strong>Notice</strong>: The value entered is the <em>discount amount subtracted</em> from original price (e.g. ₹{selectedSem.sixMonthPrice} - ₹{val} = ₹{final6M}).
+                          {selectedSem.sixMonthPrice > 799 && (
+                            <span className="block mt-0.5 font-medium">
+                              To sell 6-Month for <strong>₹799</strong>, set this discount to <strong>₹{selectedSem.sixMonthPrice - 799}</strong>.
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    )
+                  })()}
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Starts At (optional)">
                       <input type="datetime-local" value={formStartsAt} onChange={e => setFormStartsAt(e.target.value)} className={inputCls} />
@@ -8681,6 +8782,7 @@ export default function AdminDashboard() {
     const [formSixMonthEnabled, setFormSixMonthEnabled] = useState(true)
     const [formLifetimeEnabled, setFormLifetimeEnabled] = useState(true)
     const [formIsActive, setFormIsActive] = useState(true)
+    const [formIsSemesterOnly, setFormIsSemesterOnly] = useState(false)
     const [formThumbnailUrl, setFormThumbnailUrl] = useState('')
     const [formDescription, setFormDescription] = useState('')
     const [formThumbFile, setFormThumbFile] = useState<File | null>(null)
@@ -8742,6 +8844,7 @@ export default function AdminDashboard() {
       setFormSixMonthEnabled(true)
       setFormLifetimeEnabled(true)
       setFormIsActive(true)
+      setFormIsSemesterOnly(false)
       setFormThumbnailUrl('')
       setFormDescription('')
       setFormThumbFile(null)
@@ -8770,6 +8873,7 @@ export default function AdminDashboard() {
       setFormSixMonthEnabled(b.sixMonthEnabled)
       setFormLifetimeEnabled(b.lifetimeEnabled)
       setFormIsActive(b.isActive)
+      setFormIsSemesterOnly(Boolean(b.isSemesterOnly))
       setFormThumbnailUrl(b.thumbnailUrl || '')
       setFormDescription(b.description || '')
       setFormThumbFile(null)
@@ -8810,6 +8914,7 @@ export default function AdminDashboard() {
             sixMonthEnabled: formSixMonthEnabled,
             lifetimeEnabled: formLifetimeEnabled,
             isActive: formIsActive,
+            isSemesterOnly: formIsSemesterOnly,
             thumbnailUrl: finalThumbnailUrl || undefined,
             description: formDescription.trim() || null,
           })
@@ -8823,6 +8928,7 @@ export default function AdminDashboard() {
             sixMonthEnabled: formSixMonthEnabled,
             lifetimeEnabled: formLifetimeEnabled,
             isActive: formIsActive,
+            isSemesterOnly: formIsSemesterOnly,
             thumbnailUrl: finalThumbnailUrl || undefined,
             description: formDescription.trim() || null,
           })
@@ -9183,19 +9289,32 @@ export default function AdminDashboard() {
                         </div>
                       </td>
 
-                      {/* Status Toggle */}
-                      <td className="px-4 py-3.5">
-                        <button
-                          onClick={() => handleToggleActive(b)}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
-                            b.isActive
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 hover:bg-emerald-200'
-                              : 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400 hover:bg-gray-200'
-                          }`}
-                        >
-                          <span className={`w-2 h-2 rounded-full ${b.isActive ? 'bg-emerald-500' : 'bg-gray-400'}`} />
-                          {b.isActive ? 'Active' : 'Inactive'}
-                        </button>
+                      {/* Status & Visibility */}
+                      <td className="px-4 py-3.5 space-y-1.5">
+                        <div>
+                          <button
+                            onClick={() => handleToggleActive(b)}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
+                              b.isActive
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 hover:bg-emerald-200'
+                                : 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400 hover:bg-gray-200'
+                            }`}
+                          >
+                            <span className={`w-2 h-2 rounded-full ${b.isActive ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                            {b.isActive ? 'Active' : 'Inactive'}
+                          </button>
+                        </div>
+                        <div>
+                          {b.isSemesterOnly ? (
+                            <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300 border border-violet-200 dark:border-violet-800/40">
+                              Semester Only
+                            </span>
+                          ) : (
+                            <span className="inline-block text-[10px] font-medium px-2 py-0.5 rounded bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400">
+                              Standalone & Bundle
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Sales Stats */}
@@ -9494,6 +9613,49 @@ export default function AdminDashboard() {
                     <p className="text-xs text-brand-muted">Visible for students to purchase on Courses & Subject Bundle pages</p>
                   </div>
                 </label>
+
+                {/* Catalog Visibility */}
+                <div className="p-3.5 rounded-xl border border-brand-border dark:border-brand-dark-border bg-gray-50/50 dark:bg-white/5 space-y-2">
+                  <span className="block text-xs font-bold uppercase tracking-wider text-brand-text dark:text-brand-dark-text">
+                    Catalog Visibility
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormIsSemesterOnly(false)}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        !formIsSemesterOnly
+                          ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-800 dark:text-emerald-200 shadow-xs'
+                          : 'bg-white dark:bg-brand-dark-card border-brand-border text-brand-muted hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 font-bold text-xs">
+                        <Package size={14} />
+                        <span>Both (Standalone & Bundle)</span>
+                      </div>
+                      <p className="text-[10px] opacity-80 mt-0.5">
+                        Visible on /courses as a standalone subject bundle & in semester bundles.
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormIsSemesterOnly(true)}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        formIsSemesterOnly
+                          ? 'bg-violet-50 dark:bg-violet-950/40 border-violet-500 text-violet-800 dark:text-violet-200 shadow-xs'
+                          : 'bg-white dark:bg-brand-dark-card border-brand-border text-brand-muted hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 font-bold text-xs">
+                        <GraduationCap size={14} />
+                        <span>Semester Bundle Only</span>
+                      </div>
+                      <p className="text-[10px] opacity-80 mt-0.5">
+                        Exclusive to Semester Bundle. Hidden from individual subject bundle catalog.
+                      </p>
+                    </button>
+                  </div>
+                </div>
 
                 {/* Action Buttons */}
                 <div className="flex gap-3 pt-2">
@@ -10803,6 +10965,1265 @@ export default function AdminDashboard() {
     )
   }
 
+  // ─── SEMESTER BUNDLES SECTION ─────────────────────────────────────────────
+  function SemesterBundlesSection() {
+    const [bundles, setBundles] = useState<SemesterBundle[]>([])
+    const [loading, setLoading] = useState(true)
+    const [search, setSearch] = useState('')
+    const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+
+    // Modals
+    const [showBundleModal, setShowBundleModal] = useState(false)
+    const [editingBundle, setEditingBundle] = useState<SemesterBundle | null>(null)
+    const [deletingBundle, setDeletingBundle] = useState<SemesterBundle | null>(null)
+    const [managingBundle, setManagingBundle] = useState<SemesterBundle | null>(null)
+
+    // Hierarchy selection for create modal
+    const [hCollegesList, setHCollegesList] = useState<any[]>([])
+    const [hCoursesList, setHCoursesList] = useState<any[]>([])
+    const [hBranchesList, setHBranchesList] = useState<any[]>([])
+    const [hSemestersList, setHSemestersList] = useState<any[]>([])
+    const [selCollegeId, setSelCollegeId] = useState<number | null>(null)
+    const [selCourseId, setSelCourseId] = useState<number | null>(null)
+    const [selBranchId, setSelBranchId] = useState<number | null>(null)
+    const [selSemesterId, setSelSemesterId] = useState<number | null>(null)
+
+    // Available subject bundles for chosen semester
+    const [availableSubjectBundles, setAvailableSubjectBundles] = useState<SubjectBundle[]>([])
+    const [selectedSubjectBundleIds, setSelectedSubjectBundleIds] = useState<Set<string>>(new Set())
+    const [selectedSubjectSemesterOnly, setSelectedSubjectSemesterOnly] = useState<Record<string, boolean>>({})
+    const [loadingSubjectBundles, setLoadingSubjectBundles] = useState(false)
+
+    // Form fields for bundle
+    const [formTitle, setFormTitle] = useState('')
+    const [formDescription, setFormDescription] = useState('')
+    const [formSixMonthPrice, setFormSixMonthPrice] = useState('999')
+    const [formLifetimePrice, setFormLifetimePrice] = useState('1999')
+    const [formSixMonthEnabled, setFormSixMonthEnabled] = useState(true)
+    const [formLifetimeEnabled, setFormLifetimeEnabled] = useState(true)
+    const [formIsActive, setFormIsActive] = useState(true)
+    const [formThumbnailUrl, setFormThumbnailUrl] = useState('')
+    const [formThumbFile, setFormThumbFile] = useState<File | null>(null)
+    const [formThumbPreview, setFormThumbPreview] = useState<string | null>(null)
+    const [savingBundle, setSavingBundle] = useState(false)
+
+    // Manage mapped subjects modal state
+    const [manageAvailableBundles, setManageAvailableBundles] = useState<SubjectBundle[]>([])
+    const [manageSelectedIds, setManageSelectedIds] = useState<Set<string>>(new Set())
+    const [manageSemesterOnlyMap, setManageSemesterOnlyMap] = useState<Record<string, boolean>>({})
+    const [loadingManageSubjects, setLoadingManageSubjects] = useState(false)
+    const [savingManageSubjects, setSavingManageSubjects] = useState(false)
+
+    const loadBundles = useCallback(async () => {
+      setLoading(true)
+      try {
+        const data = await fetchAllSemesterBundles()
+        setBundles(data)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to load semester bundles')
+      } finally {
+        setLoading(false)
+      }
+    }, [])
+
+    useEffect(() => {
+      loadBundles()
+    }, [loadBundles])
+
+    const openCreateModal = async () => {
+      setEditingBundle(null)
+      setSelCollegeId(null)
+      setSelCourseId(null)
+      setSelBranchId(null)
+      setSelSemesterId(null)
+      setHCoursesList([])
+      setHBranchesList([])
+      setHSemestersList([])
+      setAvailableSubjectBundles([])
+      setSelectedSubjectBundleIds(new Set())
+      setSelectedSubjectSemesterOnly({})
+      setFormTitle('')
+      setFormDescription('')
+      setFormSixMonthPrice('999')
+      setFormLifetimePrice('1999')
+      setFormSixMonthEnabled(true)
+      setFormLifetimeEnabled(true)
+      setFormIsActive(true)
+      setFormThumbnailUrl('')
+      setFormThumbFile(null)
+      setFormThumbPreview(null)
+      setShowBundleModal(true)
+
+      fetchColleges().then(setHCollegesList).catch(() => toast.error('Failed to load colleges'))
+    }
+
+    const openEditModal = async (b: SemesterBundle) => {
+      setEditingBundle(b)
+      setSelSemesterId(b.semesterId)
+      setFormTitle(b.title)
+      setFormDescription(b.description || '')
+      setFormSixMonthPrice(String(b.sixMonthPrice))
+      setFormLifetimePrice(String(b.lifetimePrice))
+      setFormSixMonthEnabled(b.sixMonthEnabled)
+      setFormLifetimeEnabled(b.lifetimeEnabled)
+      setFormIsActive(b.isActive)
+      setFormThumbnailUrl(b.thumbnailUrl || '')
+      setFormThumbFile(null)
+      setFormThumbPreview(b.thumbnailUrl || null)
+
+      const currentIds = new Set((b.subjects || []).map(s => s.subjectBundleId))
+      setSelectedSubjectBundleIds(currentIds)
+      const initialMap: Record<string, boolean> = {}
+      ;(b.subjects || []).forEach(s => {
+        initialMap[s.subjectBundleId] = Boolean(s.isSemesterOnly)
+      })
+      setSelectedSubjectSemesterOnly(initialMap)
+
+      setLoadingSubjectBundles(true)
+      setShowBundleModal(true)
+      try {
+        const sBundles = await fetchSubjectBundlesBySemester(b.semesterId)
+        setAvailableSubjectBundles(sBundles)
+      } catch {
+        toast.error('Failed to load semester subjects')
+      } finally {
+        setLoadingSubjectBundles(false)
+      }
+    }
+
+    const handleCollegeSelect = async (cId: number) => {
+      setSelCollegeId(cId)
+      setSelCourseId(null)
+      setSelBranchId(null)
+      setSelSemesterId(null)
+      setHBranchesList([])
+      setHSemestersList([])
+      setAvailableSubjectBundles([])
+      setSelectedSubjectBundleIds(new Set())
+      setSelectedSubjectSemesterOnly({})
+      try {
+        const courses = await fetchCourses(cId)
+        setHCoursesList(courses)
+      } catch {
+        toast.error('Failed to load courses')
+      }
+    }
+
+    const handleCourseSelect = async (courseId: number) => {
+      setSelCourseId(courseId)
+      setSelBranchId(null)
+      setSelSemesterId(null)
+      setHSemestersList([])
+      setAvailableSubjectBundles([])
+      setSelectedSubjectBundleIds(new Set())
+      setSelectedSubjectSemesterOnly({})
+      try {
+        const branches = await fetchBranches(courseId)
+        setHBranchesList(branches)
+      } catch {
+        toast.error('Failed to load branches')
+      }
+    }
+
+    const handleBranchSelect = async (branchId: number) => {
+      setSelBranchId(branchId)
+      setSelSemesterId(null)
+      setAvailableSubjectBundles([])
+      setSelectedSubjectBundleIds(new Set())
+      setSelectedSubjectSemesterOnly({})
+      try {
+        const sems = await fetchSemesters(branchId)
+        setHSemestersList(sems)
+      } catch {
+        toast.error('Failed to load semesters')
+      }
+    }
+
+    const handleSemesterSelect = async (semId: number) => {
+      setSelSemesterId(semId)
+      setLoadingSubjectBundles(true)
+
+      const semObj = hSemestersList.find(s => s.id === semId)
+      const brObj = hBranchesList.find(b => b.id === selBranchId)
+      const crsObj = hCoursesList.find(c => c.id === selCourseId)
+      const prefix = [crsObj?.name, brObj?.code || brObj?.name].filter(Boolean).join(' ')
+      const semNum = semObj?.semester_number || ''
+      if (!formTitle || formTitle.includes('Semester')) {
+        setFormTitle(`${prefix ? `${prefix} - ` : ''}Semester ${semNum} Complete Bundle`.trim())
+      }
+
+      try {
+        const sBundles = await fetchSubjectBundlesBySemester(semId)
+        setAvailableSubjectBundles(sBundles)
+        setSelectedSubjectBundleIds(new Set(sBundles.map(b => b.id)))
+        const initialMap: Record<string, boolean> = {}
+        sBundles.forEach(sb => {
+          initialMap[sb.id] = Boolean(sb.isSemesterOnly)
+        })
+        setSelectedSubjectSemesterOnly(initialMap)
+
+        if (sBundles.length > 0) {
+          const sum6m = sBundles.reduce((acc, b) => acc + (b.sixMonthPrice || 0), 0)
+          const sumLt = sBundles.reduce((acc, b) => acc + (b.lifetimePrice || 0), 0)
+          if (sum6m > 0) setFormSixMonthPrice(String(Math.round(sum6m * 0.65)))
+          if (sumLt > 0) setFormLifetimePrice(String(Math.round(sumLt * 0.65)))
+        }
+      } catch {
+        toast.error('Failed to load subject bundles for this semester')
+      } finally {
+        setLoadingSubjectBundles(false)
+      }
+    }
+
+    const toggleSubjectSelection = (bundleId: string) => {
+      setSelectedSubjectBundleIds(prev => {
+        const next = new Set(prev)
+        if (next.has(bundleId)) next.delete(bundleId)
+        else next.add(bundleId)
+        return next
+      })
+    }
+
+    const handleSelectAllSubjects = () => {
+      if (selectedSubjectBundleIds.size === availableSubjectBundles.length) {
+        setSelectedSubjectBundleIds(new Set())
+      } else {
+        setSelectedSubjectBundleIds(new Set(availableSubjectBundles.map(b => b.id)))
+      }
+    }
+
+    const handleSaveBundle = async () => {
+      if (!selSemesterId) {
+        toast.error('Please select an Academic Hierarchy semester')
+        return
+      }
+      if (!formTitle.trim()) {
+        toast.error('Please provide a bundle title')
+        return
+      }
+      if (selectedSubjectBundleIds.size === 0) {
+        toast.error('Please select at least one Subject Bundle to include in this Semester Bundle')
+        return
+      }
+
+      const smPrice = parseFloat(formSixMonthPrice)
+      const ltPrice = parseFloat(formLifetimePrice)
+      if (isNaN(smPrice) || smPrice < 0 || isNaN(ltPrice) || ltPrice < 0) {
+        toast.error('Prices must be valid positive numbers')
+        return
+      }
+      if (!formSixMonthEnabled && !formLifetimeEnabled) {
+        toast.error('At least one plan (6-Month or Lifetime) must be enabled')
+        return
+      }
+
+      setSavingBundle(true)
+      try {
+        let finalThumbnailUrl = formThumbnailUrl.trim()
+        if (formThumbFile) {
+          const cleanName = formThumbFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+          const path = `semester_bundle_${Date.now()}_${cleanName}`
+          finalThumbnailUrl = await uploadCourseThumbnail(formThumbFile, path)
+        }
+
+        const selectedMappings = Array.from(selectedSubjectBundleIds).map(sbId => ({
+          subjectBundleId: sbId,
+          isSemesterOnly: Boolean(selectedSubjectSemesterOnly[sbId]),
+        }))
+
+        if (editingBundle) {
+          const updated = await updateSemesterBundle(editingBundle.id, {
+            title: formTitle.trim(),
+            description: formDescription.trim(),
+            thumbnailUrl: finalThumbnailUrl || undefined,
+            sixMonthPrice: smPrice,
+            lifetimePrice: ltPrice,
+            sixMonthEnabled: formSixMonthEnabled,
+            lifetimeEnabled: formLifetimeEnabled,
+            isActive: formIsActive,
+            subjectBundleMappings: selectedMappings,
+          })
+          setBundles(prev => prev.map(b => b.id === updated.id ? updated : b))
+          toast.success('Semester Bundle updated successfully! 🎉')
+        } else {
+          const created = await createSemesterBundle({
+            semesterId: selSemesterId,
+            title: formTitle.trim(),
+            description: formDescription.trim(),
+            thumbnailUrl: finalThumbnailUrl || undefined,
+            sixMonthPrice: smPrice,
+            lifetimePrice: ltPrice,
+            sixMonthEnabled: formSixMonthEnabled,
+            lifetimeEnabled: formLifetimeEnabled,
+            isActive: formIsActive,
+            subjectBundleMappings: selectedMappings,
+          })
+          setBundles(prev => [created, ...prev])
+          toast.success('Semester Bundle created successfully! 🎉')
+        }
+        setShowBundleModal(false)
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to save semester bundle')
+      } finally {
+        setSavingBundle(false)
+      }
+    }
+
+    const handleToggleActive = async (b: SemesterBundle) => {
+      try {
+        const updated = await toggleSemesterBundleActive(b.id, !b.isActive)
+        setBundles(prev => prev.map(x => x.id === updated.id ? updated : x))
+        toast.success(`Semester bundle ${updated.isActive ? 'activated' : 'deactivated'}`)
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to update bundle status')
+      }
+    }
+
+    const handleDeleteBundle = async () => {
+      if (!deletingBundle) return
+      try {
+        await deleteSemesterBundle(deletingBundle.id)
+        setBundles(prev => prev.filter(b => b.id !== deletingBundle.id))
+        toast.success('Semester bundle deleted successfully')
+        setDeletingBundle(null)
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to delete semester bundle')
+      }
+    }
+
+    const openManageSubjectsModal = async (b: SemesterBundle) => {
+      setManagingBundle(b)
+      setLoadingManageSubjects(true)
+      const currentIds = new Set((b.subjects || []).map(s => s.subjectBundleId))
+      setManageSelectedIds(currentIds)
+      const initialMap: Record<string, boolean> = {}
+      ;(b.subjects || []).forEach(s => {
+        initialMap[s.subjectBundleId] = Boolean(s.isSemesterOnly)
+      })
+      setManageSemesterOnlyMap(initialMap)
+      try {
+        const sBundles = await fetchSubjectBundlesBySemester(b.semesterId)
+        setManageAvailableBundles(sBundles)
+      } catch {
+        toast.error('Failed to load semester subject bundles')
+      } finally {
+        setLoadingManageSubjects(false)
+      }
+    }
+
+    const handleSaveManageMappings = async () => {
+      if (!managingBundle) return
+      setSavingManageSubjects(true)
+      try {
+        const mappings = Array.from(manageSelectedIds).map(sbId => ({
+          subjectBundleId: sbId,
+          isSemesterOnly: Boolean(manageSemesterOnlyMap[sbId]),
+        }))
+        await updateSemesterBundleMappings(managingBundle.id, mappings)
+        const reloaded = await fetchSemesterBundle(managingBundle.id)
+        if (reloaded) {
+          setBundles(prev => prev.map(b => b.id === reloaded.id ? reloaded : b))
+        }
+        toast.success('Semester bundle subject mappings saved!')
+        setManagingBundle(null)
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to save mappings')
+      } finally {
+        setSavingManageSubjects(false)
+      }
+    }
+
+    const filteredBundles = bundles.filter(b => {
+      if (statusFilter === 'active' && !b.isActive) return false
+      if (statusFilter === 'inactive' && b.isActive) return false
+      if (search) {
+        const q = search.toLowerCase()
+        return (
+          b.title.toLowerCase().includes(q) ||
+          (b.branchName || '').toLowerCase().includes(q) ||
+          (b.academicCourseName || '').toLowerCase().includes(q) ||
+          (b.collegeName || '').toLowerCase().includes(q) ||
+          `semester ${b.semesterNumber}`.includes(q) ||
+          (b.subjects || []).some(s => (s.subjectName || '').toLowerCase().includes(q))
+        )
+      }
+      return true
+    })
+
+    const totalBundlesCount = bundles.length
+    const activeBundlesCount = bundles.filter(b => b.isActive).length
+    const totalSalesCount = bundles.reduce((sum, b) => sum + (b.totalPurchases || 0), 0)
+    const totalRevenueSum = bundles.reduce((sum, b) => sum + (b.totalRevenue || 0), 0)
+
+    // Calculate sum of individual subject bundles for live value display in modal
+    const selectedSubjectsSum6m = availableSubjectBundles
+      .filter(b => selectedSubjectBundleIds.has(b.id))
+      .reduce((acc, b) => acc + (b.sixMonthPrice || 0), 0)
+    const selectedSubjectsSumLt = availableSubjectBundles
+      .filter(b => selectedSubjectBundleIds.has(b.id))
+      .reduce((acc, b) => acc + (b.lifetimePrice || 0), 0)
+
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="p-2 rounded-xl bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400 border border-violet-100 dark:border-violet-900/30">
+                <GraduationCap size={22} />
+              </span>
+              <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text">Semester Bundles</h2>
+            </div>
+            <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-1">
+              Package multiple Subject Bundles from the same semester into an authoritative bundle with discounted pricing.
+            </p>
+          </div>
+          <button
+            onClick={openCreateModal}
+            className="flex items-center justify-center gap-2 btn-primary text-sm py-2.5 px-4 shadow-sm"
+          >
+            <Plus size={16} /> Create Semester Bundle
+          </button>
+        </div>
+
+        {/* Stats Row */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="p-4 rounded-2xl bg-white dark:bg-brand-dark-card border border-brand-border">
+            <p className="text-xs font-semibold uppercase tracking-wider text-brand-muted">Total Semester Bundles</p>
+            <p className="text-2xl font-black text-brand-text dark:text-brand-dark-text mt-1">{totalBundlesCount}</p>
+          </div>
+          <div className="p-4 rounded-2xl bg-white dark:bg-brand-dark-card border border-brand-border">
+            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Active Bundles</p>
+            <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{activeBundlesCount}</p>
+          </div>
+          <div className="p-4 rounded-2xl bg-white dark:bg-brand-dark-card border border-brand-border">
+            <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Total Enrolled</p>
+            <p className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1">{totalSalesCount}</p>
+          </div>
+          <div className="p-4 rounded-2xl bg-white dark:bg-brand-dark-card border border-brand-border">
+            <p className="text-xs font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">Verified Revenue</p>
+            <p className="text-2xl font-black text-violet-600 dark:text-violet-400 mt-1">₹{totalRevenueSum.toLocaleString('en-IN')}</p>
+          </div>
+        </div>
+
+        {/* Filter bar */}
+        <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+          <div className="relative flex-1 w-full sm:max-w-md">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brand-muted" />
+            <input
+              type="text"
+              placeholder="Search by title, semester, branch, college or subjects..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="input pl-10 text-sm w-full"
+            />
+          </div>
+          <div className="flex gap-1 p-1 rounded-xl bg-gray-100 dark:bg-brand-dark-card border border-brand-border w-full sm:w-auto">
+            {(['all', 'active', 'inactive'] as const).map((st) => (
+              <button
+                key={st}
+                onClick={() => setStatusFilter(st)}
+                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-colors ${
+                  statusFilter === st
+                    ? 'bg-white dark:bg-white/10 text-brand-text dark:text-white shadow-xs'
+                    : 'text-brand-muted hover:text-brand-text'
+                }`}
+              >
+                {st}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Bundles Grid */}
+        {loading ? (
+          <div className="py-20 flex flex-col items-center justify-center">
+            <Loader2 size={32} className="animate-spin text-primary-500 mb-2" />
+            <p className="text-sm text-brand-muted">Loading semester bundles...</p>
+          </div>
+        ) : filteredBundles.length === 0 ? (
+          <div className="py-16 text-center rounded-3xl border border-dashed border-brand-border bg-white/50 dark:bg-brand-dark-card/50 p-8">
+            <GraduationCap size={44} className="mx-auto text-brand-muted opacity-40 mb-3" />
+            <h3 className="text-base font-bold text-brand-text dark:text-brand-dark-text">No semester bundles found</h3>
+            <p className="text-xs text-brand-muted max-w-sm mx-auto mt-1 mb-4">
+              {search || statusFilter !== 'all'
+                ? 'Try adjusting your search query or status filter.'
+                : 'Create your first Semester Bundle to bundle multiple Subject Bundles together with attractive package pricing.'}
+            </p>
+            {(!search && statusFilter === 'all') && (
+              <button onClick={openCreateModal} className="btn-primary text-xs py-2 px-4 inline-flex items-center gap-2">
+                <Plus size={14} /> Create Semester Bundle
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {filteredBundles.map((b) => (
+              <div
+                key={b.id}
+                className={`rounded-3xl border transition-all overflow-hidden flex flex-col justify-between bg-white dark:bg-brand-dark-card shadow-xs hover:shadow-md ${
+                  b.isActive ? 'border-brand-border' : 'border-dashed border-gray-300 dark:border-white/10 opacity-75'
+                }`}
+              >
+                <div>
+                  {/* Top card banner */}
+                  <div className="relative h-44 bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-600 overflow-hidden flex items-center justify-center">
+                    {b.thumbnailUrl ? (
+                      <img src={b.thumbnailUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                    ) : (
+                      <div className="text-center p-4">
+                        <GraduationCap size={48} className="mx-auto text-white/80 mb-2" />
+                        <span className="text-xs font-black uppercase tracking-widest text-white/90">
+                          Semester {b.semesterNumber} Bundle
+                        </span>
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+                    
+                    {/* Top badging */}
+                    <div className="absolute top-3 left-3 flex gap-2">
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-black/60 text-white backdrop-blur border border-white/20">
+                        Semester {b.semesterNumber}
+                      </span>
+                      {b.isActive ? (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/90 text-white backdrop-blur">
+                          Active
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-gray-500/90 text-white backdrop-blur">
+                          Draft
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="absolute bottom-3 left-3 right-3 text-white">
+                      <p className="text-[10px] font-semibold text-white/80 truncate">
+                        {[b.collegeName, b.academicCourseName, b.branchCode || b.branchName].filter(Boolean).join(' · ')}
+                      </p>
+                      <h3 className="text-base font-black text-white leading-snug line-clamp-1">
+                        {b.title}
+                      </h3>
+                    </div>
+                  </div>
+
+                  {/* Body */}
+                  <div className="p-5 space-y-4">
+                    {b.description && (
+                      <p className="text-xs text-brand-muted line-clamp-2 leading-relaxed">
+                        {b.description}
+                      </p>
+                    )}
+
+                    {/* Mapped Subject Bundles */}
+                    <div>
+                      <div className="flex items-center justify-between text-xs font-bold text-brand-text dark:text-brand-dark-text mb-2">
+                        <span className="flex items-center gap-1.5">
+                          <Package size={13} className="text-violet-500" />
+                          Included Subject Bundles ({b.subjects?.length || 0})
+                        </span>
+                        <button
+                          onClick={() => openManageSubjectsModal(b)}
+                          className="text-[11px] text-violet-600 dark:text-violet-400 hover:underline"
+                        >
+                          Manage Mappings
+                        </button>
+                      </div>
+
+                      {b.subjects && b.subjects.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto no-scrollbar">
+                          {b.subjects.map((s) => (
+                            <span
+                              key={s.id}
+                              className="px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-900/30 flex items-center gap-1"
+                              title={s.subjectName}
+                            >
+                              <span>{s.subjectCode || s.subjectName}</span>
+                              {s.isSemesterOnly && (
+                                <span className="px-1 py-0.5 rounded bg-violet-200 dark:bg-violet-800 text-[8px] font-black uppercase tracking-wider text-violet-900 dark:text-violet-100">
+                                  Bundle Only
+                                </span>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 italic">
+                          No subject bundles mapped yet. Click "Manage Mappings" to link subjects.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Aggregate curriculum counts */}
+                    <div className="grid grid-cols-2 gap-2 p-2.5 rounded-xl bg-gray-50 dark:bg-white/5 text-xs text-brand-muted">
+                      <div>
+                        <span className="block text-[10px] uppercase font-bold text-brand-muted">Total Lectures</span>
+                        <span className="font-bold text-brand-text dark:text-brand-dark-text">{b.totalVideos || 0} videos</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] uppercase font-bold text-brand-muted">Total Notes/PDFs</span>
+                        <span className="font-bold text-brand-text dark:text-brand-dark-text">{b.totalResources || 0} files</span>
+                      </div>
+                    </div>
+
+                    {/* Pricing Display */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className={`p-2 rounded-xl border ${b.sixMonthEnabled ? 'border-brand-border bg-white dark:bg-brand-dark-card' : 'border-dashed border-gray-200 opacity-60'}`}>
+                        <p className="text-[10px] font-bold text-brand-muted uppercase">6-Month Plan</p>
+                        <p className="text-base font-black text-brand-text dark:text-brand-dark-text mt-0.5">
+                          ₹{b.sixMonthPrice}
+                        </p>
+                        <span className="text-[9px] font-bold text-brand-muted">
+                          {b.sixMonthEnabled ? '✓ Enabled' : 'Disabled'}
+                        </span>
+                      </div>
+                      <div className={`p-2 rounded-xl border ${b.lifetimeEnabled ? 'border-brand-border bg-white dark:bg-brand-dark-card' : 'border-dashed border-gray-200 opacity-60'}`}>
+                        <p className="text-[10px] font-bold text-brand-muted uppercase">Lifetime Plan</p>
+                        <p className="text-base font-black text-brand-text dark:text-brand-dark-text mt-0.5">
+                          ₹{b.lifetimePrice}
+                        </p>
+                        <span className="text-[9px] font-bold text-brand-muted">
+                          {b.lifetimeEnabled ? '✓ Enabled' : 'Disabled'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Sales Metrics */}
+                    <div className="flex items-center justify-between text-[11px] text-brand-muted pt-1 border-t border-brand-border">
+                      <span>{b.totalPurchases || 0} purchases ({b.activePurchases || 0} active)</span>
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                        ₹{(b.totalRevenue || 0).toLocaleString('en-IN')} rev
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bottom Actions */}
+                <div className="p-4 bg-gray-50/80 dark:bg-black/20 border-t border-brand-border flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleToggleActive(b)}
+                      className={`text-xs font-bold px-2.5 py-1.5 rounded-lg transition-colors ${
+                        b.isActive
+                          ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-200'
+                          : 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200'
+                      }`}
+                    >
+                      {b.isActive ? 'Deactivate' : 'Activate'}
+                    </button>
+                    <button
+                      onClick={() => openEditModal(b)}
+                      className="p-1.5 text-brand-muted hover:text-brand-text rounded-lg hover:bg-white dark:hover:bg-white/10"
+                      title="Edit bundle settings"
+                    >
+                      <Edit2 size={15} />
+                    </button>
+                    <button
+                      onClick={() => setDeletingBundle(b)}
+                      className="p-1.5 text-red-500 hover:text-red-600 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30"
+                      title="Delete bundle"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+
+                  <a
+                    href={`/semester-bundles/${b.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline"
+                  >
+                    Student View <ExternalLink size={12} />
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Create / Edit Semester Bundle Modal */}
+        <AnimatePresence>
+          {showBundleModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+            >
+              <motion.div
+                initial={{ scale: 0.95, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.95, y: 20 }}
+                className="bg-white dark:bg-brand-dark-card border border-brand-border rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
+              >
+                {/* Modal Header */}
+                <div className="p-6 border-b border-brand-border flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="p-2 rounded-xl bg-violet-50 dark:bg-violet-950/40 text-violet-600">
+                      <GraduationCap size={20} />
+                    </span>
+                    <div>
+                      <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">
+                        {editingBundle ? 'Edit Semester Bundle' : 'Create Semester Bundle'}
+                      </h3>
+                      <p className="text-xs text-brand-muted">
+                        Select hierarchy, choose subject bundles to include, and configure package pricing.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowBundleModal(false)}
+                    className="p-1.5 text-brand-muted hover:text-brand-text rounded-xl"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Modal Body */}
+                <div className="p-6 overflow-y-auto space-y-6">
+                  {/* Step 1: Academic Hierarchy Picker */}
+                  {!editingBundle && (
+                    <div className="p-4 rounded-2xl bg-gray-50 dark:bg-white/5 border border-brand-border space-y-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400">
+                        Step 1: Select Academic Hierarchy
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-brand-muted mb-1">College</label>
+                          <select
+                            value={selCollegeId || ''}
+                            onChange={(e) => handleCollegeSelect(Number(e.target.value))}
+                            className="input text-xs w-full"
+                          >
+                            <option value="">Select College...</option>
+                            {hCollegesList.map((c) => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-brand-muted mb-1">Academic Course</label>
+                          <select
+                            value={selCourseId || ''}
+                            onChange={(e) => handleCourseSelect(Number(e.target.value))}
+                            disabled={!selCollegeId}
+                            className="input text-xs w-full disabled:opacity-50"
+                          >
+                            <option value="">{selCollegeId ? 'Select Course...' : 'Select College first'}</option>
+                            {hCoursesList.map((c) => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-brand-muted mb-1">Branch</label>
+                          <select
+                            value={selBranchId || ''}
+                            onChange={(e) => handleBranchSelect(Number(e.target.value))}
+                            disabled={!selCourseId}
+                            className="input text-xs w-full disabled:opacity-50"
+                          >
+                            <option value="">{selCourseId ? 'Select Branch...' : 'Select Course first'}</option>
+                            {hBranchesList.map((b) => (
+                              <option key={b.id} value={b.id}>{b.name} ({b.code || 'Code'})</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-brand-muted mb-1">Semester</label>
+                          <select
+                            value={selSemesterId || ''}
+                            onChange={(e) => handleSemesterSelect(Number(e.target.value))}
+                            disabled={!selBranchId}
+                            className="input text-xs w-full disabled:opacity-50 font-bold text-violet-600"
+                          >
+                            <option value="">{selBranchId ? 'Select Semester...' : 'Select Branch first'}</option>
+                            {hSemestersList.map((s) => (
+                              <option key={s.id} value={s.id}>Semester {s.semester_number}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Step 2: Subject Bundles Selector */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400">
+                        Step 2: Choose Subject Bundles to Include ({selectedSubjectBundleIds.size}/{availableSubjectBundles.length})
+                      </span>
+                      {availableSubjectBundles.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleSelectAllSubjects}
+                          className="text-xs font-semibold text-primary-600 hover:underline"
+                        >
+                          {selectedSubjectBundleIds.size === availableSubjectBundles.length ? 'Deselect All' : 'Select All'}
+                        </button>
+                      )}
+                    </div>
+
+                    {loadingSubjectBundles ? (
+                      <div className="py-6 text-center text-xs text-brand-muted flex items-center justify-center gap-2">
+                        <Loader2 size={16} className="animate-spin" /> Loading subject bundles for this semester...
+                      </div>
+                    ) : !selSemesterId ? (
+                      <div className="p-4 rounded-xl border border-dashed border-brand-border text-center text-xs text-brand-muted">
+                        Please select a Semester in Step 1 to view its available Subject Bundles.
+                      </div>
+                    ) : availableSubjectBundles.length === 0 ? (
+                      <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 text-xs text-amber-800 dark:text-amber-300">
+                        ⚠️ No Subject Bundles have been created for this semester yet. Please create Subject Bundles in the "Subject Bundles" tab first.
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-60 overflow-y-auto border border-brand-border rounded-2xl p-2">
+                        {availableSubjectBundles.map((sb) => {
+                          const isSelected = selectedSubjectBundleIds.has(sb.id)
+                          const isSemesterOnly = Boolean(selectedSubjectSemesterOnly[sb.id])
+                          return (
+                            <div
+                              key={sb.id}
+                              className={`p-3 rounded-xl border transition-all space-y-2.5 ${
+                                isSelected
+                                  ? 'bg-violet-50/50 dark:bg-violet-950/20 border-violet-300 dark:border-violet-700/60'
+                                  : 'bg-white dark:bg-brand-dark-card border-brand-border hover:border-gray-300 opacity-70'
+                              }`}
+                            >
+                              <div
+                                onClick={() => toggleSubjectSelection(sb.id)}
+                                className="flex items-center justify-between gap-3 cursor-pointer"
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => {}} // Handled by container
+                                    className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500 cursor-pointer"
+                                  />
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-bold text-brand-text dark:text-brand-dark-text truncate">
+                                      {sb.subjectName}
+                                    </p>
+                                    <p className="text-[10px] text-brand-muted">
+                                      {sb.subjectCode || 'No code'} · {sb.videoCount || 0} videos · {sb.resourceCount || 0} notes
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="text-right text-[11px] font-semibold text-brand-muted shrink-0">
+                                  <div>6M: ₹{sb.sixMonthPrice}</div>
+                                  <div>Life: ₹{sb.lifetimePrice}</div>
+                                </div>
+                              </div>
+
+                              {/* Visibility pill toggle (shown when subject is included in the semester bundle) */}
+                              {isSelected && (
+                                <div className="pt-2 border-t border-violet-100 dark:border-violet-900/30 flex items-center justify-between flex-wrap gap-2 text-[11px]">
+                                  <span className="text-[10px] font-bold text-violet-700 dark:text-violet-300 uppercase tracking-wider">
+                                    Display Visibility:
+                                  </span>
+                                  <div className="inline-flex rounded-lg p-0.5 bg-white dark:bg-black/40 border border-violet-200 dark:border-violet-800/40 shadow-xs">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setSelectedSubjectSemesterOnly(prev => ({ ...prev, [sb.id]: false }))
+                                      }}
+                                      className={`px-2.5 py-1 rounded-md font-bold text-[10px] transition-all cursor-pointer ${
+                                        !isSemesterOnly
+                                          ? 'bg-emerald-500 text-white shadow-xs'
+                                          : 'text-brand-muted hover:text-brand-text'
+                                      }`}
+                                      title="Available both in this semester bundle and as a standalone subject bundle on /courses"
+                                    >
+                                      Both (Semester & Standalone)
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setSelectedSubjectSemesterOnly(prev => ({ ...prev, [sb.id]: true }))
+                                      }}
+                                      className={`px-2.5 py-1 rounded-md font-bold text-[10px] transition-all cursor-pointer ${
+                                        isSemesterOnly
+                                          ? 'bg-violet-600 text-white shadow-xs'
+                                          : 'text-brand-muted hover:text-brand-text'
+                                      }`}
+                                      title="Exclusive to Semester Bundle. Hidden from standalone subject bundles catalog."
+                                    >
+                                      Only in Semester Bundle
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* Value Benchmark Helper */}
+                    {availableSubjectBundles.length > 0 && selectedSubjectBundleIds.size > 0 && (
+                      <div className="p-3 rounded-xl bg-primary-50/50 dark:bg-primary-950/20 border border-primary-100 dark:border-primary-900/30 text-xs flex items-center justify-between">
+                        <span className="text-brand-muted">
+                          Sum of selected individual bundles:
+                        </span>
+                        <span className="font-bold text-brand-text dark:text-brand-dark-text">
+                          6-Mo: ₹{selectedSubjectsSum6m} · Lifetime: ₹{selectedSubjectsSumLt}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Step 3: Bundle Details & Pricing */}
+                  <div className="space-y-4 pt-2 border-t border-brand-border">
+                    <span className="text-xs font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400">
+                      Step 3: Bundle Details & Pricing
+                    </span>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-brand-text dark:text-brand-dark-text mb-1">
+                        Bundle Title *
+                      </label>
+                      <input
+                        type="text"
+                        value={formTitle}
+                        onChange={(e) => setFormTitle(e.target.value)}
+                        placeholder="e.g. B.Tech CSE Semester 4 All-Subject Bundle"
+                        className="input text-xs w-full font-semibold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-brand-text dark:text-brand-dark-text mb-1">
+                        Description
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={formDescription}
+                        onChange={(e) => setFormDescription(e.target.value)}
+                        placeholder="Comprehensive bundle covering all video lectures and revision notes for this semester..."
+                        className="input text-xs w-full"
+                      />
+                    </div>
+
+                    {/* Pricing Inputs */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="p-3 rounded-2xl border border-brand-border space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-brand-text dark:text-brand-dark-text">
+                            6-Month Plan Price (₹) *
+                          </label>
+                          <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={formSixMonthEnabled}
+                              onChange={(e) => setFormSixMonthEnabled(e.target.checked)}
+                              className="rounded text-violet-600"
+                            />
+                            <span className="text-[11px] font-semibold text-brand-muted">Enabled</span>
+                          </label>
+                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          value={formSixMonthPrice}
+                          onChange={(e) => setFormSixMonthPrice(e.target.value)}
+                          disabled={!formSixMonthEnabled}
+                          className="input text-xs w-full disabled:opacity-50"
+                        />
+                      </div>
+
+                      <div className="p-3 rounded-2xl border border-brand-border space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-brand-text dark:text-brand-dark-text">
+                            Lifetime Plan Price (₹) *
+                          </label>
+                          <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={formLifetimeEnabled}
+                              onChange={(e) => setFormLifetimeEnabled(e.target.checked)}
+                              className="rounded text-violet-600"
+                            />
+                            <span className="text-[11px] font-semibold text-brand-muted">Enabled</span>
+                          </label>
+                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          value={formLifetimePrice}
+                          onChange={(e) => setFormLifetimePrice(e.target.value)}
+                          disabled={!formLifetimeEnabled}
+                          className="input text-xs w-full disabled:opacity-50"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Thumbnail URL / Upload */}
+                    <div className="space-y-2">
+                      <label className="block text-xs font-semibold text-brand-text dark:text-brand-dark-text">
+                        Thumbnail (URL or Upload Image)
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://... or upload below"
+                        value={formThumbnailUrl}
+                        onChange={(e) => {
+                          setFormThumbnailUrl(e.target.value)
+                          setFormThumbPreview(e.target.value || null)
+                        }}
+                        className="input text-xs w-full mb-2"
+                      />
+                      <div className="flex items-center gap-3">
+                        <label className="cursor-pointer px-3 py-1.5 rounded-xl border border-brand-border bg-gray-50 dark:bg-white/5 hover:bg-gray-100 text-xs font-bold text-brand-text dark:text-brand-dark-text inline-flex items-center gap-2">
+                          <UploadCloud size={14} /> Upload Custom Image
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) {
+                                setFormThumbFile(file)
+                                setFormThumbPreview(URL.createObjectURL(file))
+                              }
+                            }}
+                          />
+                        </label>
+                        {formThumbPreview && (
+                          <div className="flex items-center gap-2">
+                            <img src={formThumbPreview} alt="" className="w-10 h-10 object-cover rounded-lg border" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormThumbFile(null)
+                                setFormThumbPreview(null)
+                                setFormThumbnailUrl('')
+                              }}
+                              className="text-xs text-red-500 hover:underline"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Active Toggle */}
+                    <div className="flex items-center justify-between p-3 rounded-2xl bg-gray-50 dark:bg-white/5 border border-brand-border">
+                      <div>
+                        <span className="block text-xs font-bold text-brand-text dark:text-brand-dark-text">Publish Bundle</span>
+                        <span className="block text-[10px] text-brand-muted">Make available for student enrollment on Courses page</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={formIsActive}
+                        onChange={(e) => setFormIsActive(e.target.checked)}
+                        className="w-5 h-5 rounded text-violet-600"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Modal Footer */}
+                <div className="p-4 border-t border-brand-border flex items-center justify-end gap-2 bg-gray-50 dark:bg-brand-dark-card/50">
+                  <button
+                    type="button"
+                    onClick={() => setShowBundleModal(false)}
+                    disabled={savingBundle}
+                    className="px-4 py-2 rounded-xl border border-brand-border text-xs font-semibold text-brand-muted hover:bg-gray-100"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveBundle}
+                    disabled={savingBundle}
+                    className="btn-primary text-xs py-2 px-5 flex items-center gap-2"
+                  >
+                    {savingBundle && <Loader2 size={14} className="animate-spin" />}
+                    {editingBundle ? 'Save Changes' : 'Create Bundle'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Manage Mapped Subjects Modal */}
+        <AnimatePresence>
+          {managingBundle && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+            >
+              <motion.div
+                initial={{ scale: 0.95, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.95, y: 20 }}
+                className="bg-white dark:bg-brand-dark-card border border-brand-border rounded-3xl w-full max-w-lg overflow-hidden flex flex-col shadow-2xl"
+              >
+                <div className="p-5 border-b border-brand-border flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="p-2 rounded-xl bg-violet-50 dark:bg-violet-950/40 text-violet-600">
+                      <Package size={18} />
+                    </span>
+                    <div>
+                      <h3 className="text-base font-bold text-brand-text dark:text-brand-dark-text">
+                        Manage Included Subjects
+                      </h3>
+                      <p className="text-[11px] text-brand-muted truncate max-w-xs">
+                        {managingBundle.title}
+                      </p>
+                    </div>
+                  </div>
+                  <button onClick={() => setManagingBundle(null)} className="p-1 text-brand-muted hover:text-brand-text">
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <div className="p-5 space-y-3 max-h-96 overflow-y-auto">
+                  {loadingManageSubjects ? (
+                    <div className="py-8 text-center text-xs text-brand-muted flex items-center justify-center gap-2">
+                      <Loader2 size={16} className="animate-spin" /> Loading semester subject bundles...
+                    </div>
+                  ) : manageAvailableBundles.length === 0 ? (
+                    <p className="text-xs text-brand-muted text-center py-6">No subject bundles found for this semester.</p>
+                  ) : (
+                    manageAvailableBundles.map((sb) => {
+                      const isChecked = manageSelectedIds.has(sb.id)
+                      const isSemesterOnly = Boolean(manageSemesterOnlyMap[sb.id])
+                      return (
+                        <div
+                          key={sb.id}
+                          className={`p-3 rounded-xl border transition-all space-y-2.5 ${
+                            isChecked
+                              ? 'bg-violet-50/50 dark:bg-violet-950/20 border-violet-300 dark:border-violet-700/60'
+                              : 'bg-white dark:bg-brand-dark-card border-brand-border opacity-70'
+                          }`}
+                        >
+                          <div
+                            onClick={() => {
+                              setManageSelectedIds((prev) => {
+                                const next = new Set(prev)
+                                if (next.has(sb.id)) next.delete(sb.id)
+                                else next.add(sb.id)
+                                return next
+                              })
+                            }}
+                            className="flex items-center justify-between cursor-pointer"
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {}}
+                                className="w-4 h-4 rounded text-violet-600 cursor-pointer"
+                              />
+                              <div>
+                                <p className="text-xs font-bold text-brand-text dark:text-brand-dark-text">
+                                  {sb.subjectName}
+                                </p>
+                                <p className="text-[10px] text-brand-muted">
+                                  {sb.subjectCode || 'No code'} · {sb.videoCount || 0} lectures
+                                </p>
+                              </div>
+                            </div>
+                            <span className="text-[10px] font-semibold text-brand-muted">
+                              {isChecked ? '✓ Included' : 'Excluded'}
+                            </span>
+                          </div>
+
+                          {/* Visibility pill toggle (shown when subject is included in this semester bundle) */}
+                          {isChecked && (
+                            <div className="pt-2 border-t border-violet-100 dark:border-violet-900/30 flex items-center justify-between flex-wrap gap-2 text-[11px]">
+                              <span className="text-[10px] font-bold text-violet-700 dark:text-violet-300 uppercase tracking-wider">
+                                Display Visibility:
+                              </span>
+                              <div className="inline-flex rounded-lg p-0.5 bg-white dark:bg-black/40 border border-violet-200 dark:border-violet-800/40 shadow-xs">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setManageSemesterOnlyMap(prev => ({ ...prev, [sb.id]: false }))
+                                  }}
+                                  className={`px-2.5 py-1 rounded-md font-bold text-[10px] transition-all cursor-pointer ${
+                                    !isSemesterOnly
+                                      ? 'bg-emerald-500 text-white shadow-xs'
+                                      : 'text-brand-muted hover:text-brand-text'
+                                  }`}
+                                  title="Available both in this semester bundle and as a standalone subject bundle on /courses"
+                                >
+                                  Both (Semester & Standalone)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setManageSemesterOnlyMap(prev => ({ ...prev, [sb.id]: true }))
+                                  }}
+                                  className={`px-2.5 py-1 rounded-md font-bold text-[10px] transition-all cursor-pointer ${
+                                    isSemesterOnly
+                                      ? 'bg-violet-600 text-white shadow-xs'
+                                      : 'text-brand-muted hover:text-brand-text'
+                                  }`}
+                                  title="Exclusive to Semester Bundle. Hidden from standalone subject bundles catalog."
+                                >
+                                  Only in Semester Bundle
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+
+                <div className="p-4 border-t border-brand-border flex items-center justify-between bg-gray-50 dark:bg-brand-dark-card/50">
+                  <span className="text-xs text-brand-muted font-semibold">
+                    {manageSelectedIds.size} subject(s) selected
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setManagingBundle(null)}
+                      disabled={savingManageSubjects}
+                      className="px-3 py-1.5 rounded-xl border border-brand-border text-xs font-semibold text-brand-muted"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveManageMappings}
+                      disabled={savingManageSubjects}
+                      className="btn-primary text-xs py-1.5 px-4 flex items-center gap-2"
+                    >
+                      {savingManageSubjects && <Loader2 size={13} className="animate-spin" />}
+                      Save Included Subjects
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Delete Confirmation Modal */}
+        <AnimatePresence>
+          {deletingBundle && (
+            <DeleteModal
+              title={`Semester Bundle "${deletingBundle.title}"`}
+              itemType="bundle"
+              onConfirm={handleDeleteBundle}
+              onCancel={() => setDeletingBundle(null)}
+            />
+          )}
+        </AnimatePresence>
+      </div>
+    )
+  }
+
   const renderContent = () => {
     switch (activeTab) {
       case 'overview': return renderOverview()
@@ -10819,8 +12240,10 @@ export default function AdminDashboard() {
       case 'pathfinder-careers': return renderPathfinderCareers()
       case 'pathfinder-exams': return renderPathfinderExams()
       case 'pathfinder-mappings': return renderPathfinderMappings()
+      case 'semester-bundles': return <SemesterBundlesSection />
       case 'subject-bundles': return <SubjectBundlesSection />
       case 'resource-bundles': return <ResourceBundlesSection />
+      case 'semester-discounts': return <DiscountSection productType="semester_bundle" />
       case 'course-discounts': return <DiscountSection productType="subject_bundle" />
       case 'resource-discounts': return <DiscountSection productType="resource_bundle" />
       case 'coupons': return <CouponsSection />

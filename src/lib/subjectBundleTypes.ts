@@ -21,6 +21,7 @@ export interface SubjectBundle {
   // Academic hierarchy context (joined)
   subjectName?: string
   subjectCode?: string | null
+  semesterId?: number
   semesterNumber?: number
   branchName?: string
   academicCourseName?: string
@@ -32,6 +33,9 @@ export interface SubjectBundle {
   rating?: number
   reviews?: number
   instructor?: string
+
+  // Visibility option
+  isSemesterOnly?: boolean
 
   // Aggregates for Admin Dashboard and Public Cards
   totalPurchases?: number
@@ -51,6 +55,7 @@ export interface CreateSubjectBundleInput {
   isActive: boolean
   thumbnailUrl?: string
   description?: string | null
+  isSemesterOnly?: boolean
 }
 
 export interface UpdateSubjectBundleInput {
@@ -61,6 +66,7 @@ export interface UpdateSubjectBundleInput {
   isActive?: boolean
   thumbnailUrl?: string
   description?: string | null
+  isSemesterOnly?: boolean
 }
 
 export interface SubjectUnit {
@@ -198,8 +204,12 @@ export interface SubjectBundleAccess {
   status?: 'pending' | 'active' | 'expired' | 'revoked'
   startsAt?: string | null
   expiresAt?: string | null
+  isLifetime?: boolean
   isExpired?: boolean
   daysLeft?: number | null
   hasPending?: boolean
   isPremiumPass?: boolean
+  viaSemesterBundle?: boolean
+  semesterBundleTitle?: string
 }
+

@@ -32,6 +32,7 @@ import { getEnrollmentsForUser } from './lib/videoEngagementService'
 import { useAuthStore, User } from './store/authStore'
 import MobileBottomNav from './components/MobileBottomNav'
 import WebinarVisitPopup from './components/WebinarVisitPopup'
+import NewCoursePopup from './components/NewCoursePopup'
 import CookieBanner from './components/CookieBanner'
 import { initGlobalHaptics } from './lib/haptics'
 import { getCookie } from './lib/cookieService'
@@ -215,6 +216,7 @@ export default function App() {
       </div>
       <MobileBottomNav />
       <WebinarVisitPopup />
+      <NewCoursePopup />
       <CookieBanner />
       <CustomToaster />
     </BrowserRouter>

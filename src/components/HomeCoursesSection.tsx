@@ -53,7 +53,7 @@ function GlassCourseCard({ course, index }: GlassCourseCardProps) {
         transform: `perspective(1000px) rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg)`,
         transition: 'transform 0.15s ease-out',
       }}
-      className="glass group relative flex flex-col overflow-hidden rounded-3xl p-6 hover:shadow-[0_25px_60px_-25px_rgba(139,92,246,0.5)]"
+      className="glass group relative flex h-full min-h-[300px] flex-col overflow-hidden rounded-3xl p-7 hover:shadow-[0_25px_60px_-25px_rgba(139,92,246,0.5)] md:min-h-[320px]"
     >
       {/* Animated conic gradient border on hover */}
       <div
@@ -80,8 +80,8 @@ function GlassCourseCard({ course, index }: GlassCourseCardProps) {
         </span>
       </div>
 
-      <h3 className="mt-6 text-xl font-semibold tracking-tight text-brand-text dark:text-white">{course.title}</h3>
-      <p className="mt-2 text-sm text-brand-muted dark:text-brand-dark-muted line-clamp-2">{course.description}</p>
+      <h3 className="mt-6 text-xl font-semibold leading-snug tracking-tight [word-spacing:0.08em] text-brand-text dark:text-white">{course.title}</h3>
+      <p className="mt-3 min-h-[4.5rem] text-sm leading-6 text-brand-muted dark:text-brand-dark-muted line-clamp-3">{course.description}</p>
 
       <div className="mt-6 flex items-center justify-between border-t border-black/5 pt-4 dark:border-white/10">
         <div className="text-xs text-brand-muted dark:text-brand-dark-muted">
@@ -123,7 +123,7 @@ export default function HomeCoursesSection() {
         </p>
       </motion.div>
 
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mx-auto grid max-w-[1200px] grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3 lg:gap-10">
         {displayedCourses.map((course, i) => (
           <Link key={course.id} to={`/courses`} className="block">
             <GlassCourseCard course={course} index={i} />

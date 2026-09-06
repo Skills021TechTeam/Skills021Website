@@ -1441,6 +1441,7 @@ export default function Courses() {
                         </div>
                       </li>
                     </ul>
+                    <a href="https://forms.gle/zwvivsCrV2ez28jv7" target="_blank" rel="noopener noreferrer" className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-500/20 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-500/25"><CalendarDays size={16}/> Register for Webinar <ExternalLink size={14} /></a>
                   </div>
                 </div>
               </div>
@@ -1464,12 +1465,28 @@ export default function Courses() {
                       <div className="text-xs font-black uppercase tracking-widest text-violet-500 mb-2">Next webinar · {upcomingWebinar.provider}</div>
                       <h3 className="text-xl font-black text-brand-text dark:text-white">{upcomingWebinar.title}</h3>
                       <p className="text-sm text-brand-muted mt-1">{upcomingWebinar.description}</p>
+                      <div className="mt-5 mb-2">
+                        <p className="text-sm font-bold text-brand-text dark:text-white mb-2 pb-1 border-b border-gray-100 dark:border-white/10 w-max">What will you get?</p>
+                        <ul className="space-y-2 mt-3">
+                          {[
+                            'GATE & engineering career guidance',
+                            'Mentorship for choosing the right course',
+                            'AI & future career opportunities',
+                            'Practical roadmap for your career'
+                          ].map((item, i) => (
+                            <li key={i} className="flex items-start gap-2.5 text-sm text-brand-muted dark:text-brand-dark-muted">
+                              <CheckCircle2 size={16} className="text-emerald-500 shrink-0 mt-0.5" />
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="mt-4 text-sm font-black text-violet-600 dark:text-violet-400">Register NOW — FREE!</p>
+                      </div>
                       <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-violet-50 dark:bg-violet-950/40 border border-violet-100 dark:border-violet-900/30 text-xs font-bold text-violet-700 dark:text-violet-300">
                         <CalendarDays size={14} className="text-violet-500" />
                         {new Date(upcomingWebinar.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
                       </div>
                     </div>
-                    <a href="https://forms.gle/zwvivsCrV2ez28jv7" target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-500/20 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-500/25"><CalendarDays size={16}/> Register for Webinar <ExternalLink size={14} /></a>
                   </div>
                 </div>
               ) : (

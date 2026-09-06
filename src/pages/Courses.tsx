@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
-import { BookOpen, Clock, Users, Star, Search, Play, SlidersHorizontal, ChevronDown, X, Loader2, Lock, CheckCircle2, Sparkles, GraduationCap, Radio, Video, ExternalLink, CalendarDays, MonitorPlay, Trophy, TrendingUp, Zap, ArrowRight, BadgePercent } from 'lucide-react'
+import { BookOpen, Clock, Users, Star, Search, Play, SlidersHorizontal, ChevronDown, X, Loader2, Lock, CheckCircle2, Sparkles, GraduationCap, Radio, Video, ExternalLink, CalendarDays, MonitorPlay, Trophy, TrendingUp, Zap, ArrowRight, BadgePercent, Package, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Course, CourseGroup, CourseSubcategory } from '../store/contentStore'
 import { fetchPublishedSiteCourses } from '../lib/courseService'
@@ -18,7 +18,13 @@ import {
   type Subject
 } from '../lib/resourceService'
 import { useAuthStore } from '../store/authStore'
+import { supabase } from '../lib/supabase'
 import { getEnrollmentsForUser, getPaymentSettings } from '../lib/videoEngagementService'
+import { fetchSubjectBundle, fetchPublishedSubjectBundles } from '../lib/subjectBundleService'
+import type { SubjectBundle } from '../lib/subjectBundleTypes'
+import { fetchResourceBundleBySubject } from '../lib/resourceBundleService'
+import type { ResourceBundle } from '../lib/resourceBundleTypes'
+import { fetchUserEntitlements } from '../lib/bundleAuthorizationService'
 import EnrollModal from '../components/EnrollModal'
 import VideoPlayerModal from '../components/VideoPlayerModal'
 import CourseRatingMenu from '../components/CourseRatingMenu'
@@ -55,6 +61,177 @@ import type { ProductDiscount } from '../lib/pricingTypes'
 import { applyDiscountToPrice, formatDiscountLabel } from '../lib/discountService'
 import { fetchAllDiscounts } from '../lib/discountService'
 
+interface SubjectBundleCardProps {
+  bundle: SubjectBundle
+  isUnlocked: boolean
+}
+
+function SubjectBundleCard({ bundle, isUnlocked }: SubjectBundleCardProps) {
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -16 }}
+      whileHover={{ y: -4 }}
+      transition={{ duration: 0.25 }}
+      className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border group hover:shadow-card-hover transition-all duration-200 flex flex-col justify-between overflow-hidden"
+    >
+      {/* Thumbnail Banner */}
+      <Link
+        to={`/courses/bundles/${bundle.subjectId}`}
+        className="fx-bundle-thumb relative h-48 sm:h-52 bg-slate-900 dark:bg-black overflow-hidden rounded-t-2xl flex items-center justify-center cursor-pointer group"
+      >
+        {bundle.thumbnailUrl ? (
+          <img
+            src={bundle.thumbnailUrl}
+            alt={bundle.subjectName || 'Subject Bundle'}
+            className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          />
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-indigo-900 via-purple-950 to-slate-950 flex flex-col items-center justify-center p-6 text-center">
+            <Package size={44} className="text-white/20 mb-2" />
+            <span className="text-xs font-mono font-bold tracking-widest text-primary-300 uppercase">
+              {bundle.subjectCode || 'SUBJECT BUNDLE'}
+            </span>
+            <span className="text-xs font-bold text-white/80 line-clamp-1 mt-1 max-w-[200px]">
+              {bundle.subjectName}
+            </span>
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+
+        {/* Top Badges */}
+        <div className="absolute top-3 left-3 flex gap-1.5 flex-wrap">
+          {bundle.subjectCode && (
+            <span className="px-2.5 py-1 text-xs font-mono font-bold bg-white/20 backdrop-blur-md text-white rounded-lg border border-white/20 shadow-xs">
+              {bundle.subjectCode}
+            </span>
+          )}
+          {bundle.academicCourseName && (
+            <span className="px-2.5 py-1 text-xs font-semibold bg-primary-500/85 backdrop-blur-md text-white rounded-lg border border-primary-400/30 truncate max-w-[130px] shadow-xs">
+              {bundle.academicCourseName}
+            </span>
+          )}
+        </div>
+
+        <div className="absolute top-3 right-3">
+          {isUnlocked ? (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold bg-emerald-500 text-white rounded-lg shadow-sm">
+              <CheckCircle2 size={12} /> Unlocked
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold bg-amber-500/95 backdrop-blur-md text-white rounded-lg shadow-xs">
+              <Package size={12} /> Bundle
+            </span>
+          )}
+        </div>
+
+        {/* Bottom Badges on Thumbnail */}
+        <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between text-[11px] text-white/90">
+          <span className="flex items-center gap-1.5 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/10 font-semibold">
+            <Play size={10} className="text-primary-400" /> {bundle.videoCount || 0} Lectures
+            <span className="text-white/40">•</span>
+            <FileText size={10} className="text-amber-400" /> {bundle.resourceCount || 0} Notes
+          </span>
+          <span className="flex items-center gap-1 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/10 font-bold text-amber-300">
+            <Star size={11} className="fill-amber-400 text-amber-400" /> {bundle.rating ?? 4.8}
+            <span className="text-white/60 font-normal">({bundle.reviews ?? 120})</span>
+          </span>
+        </div>
+
+        {/* Play/Open Overlay on Hover */}
+        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="w-12 h-12 bg-primary-500/90 text-white rounded-full flex items-center justify-center shadow-lg border border-white/30 transform group-hover:scale-110 transition-transform">
+            <Play size={18} className="translate-x-0.5" />
+          </div>
+        </div>
+      </Link>
+
+      <div className="p-5 sm:p-6 flex-1 flex flex-col justify-between">
+        <div>
+          {/* Academic Hierarchy */}
+          {(bundle.academicCourseName || bundle.branchName || bundle.semesterNumber) && (
+            <p className="text-[11px] font-semibold text-brand-muted dark:text-brand-dark-muted mb-1.5 uppercase tracking-wider">
+              {[bundle.academicCourseName, bundle.branchName, bundle.semesterNumber ? `Semester ${bundle.semesterNumber}` : null].filter(Boolean).join(' • ')}
+            </p>
+          )}
+
+          {/* Title */}
+          <Link to={`/courses/bundles/${bundle.subjectId}`}>
+            <h3 className="text-base sm:text-lg font-black text-brand-text dark:text-brand-dark-text group-hover:text-primary-500 transition-colors line-clamp-2 mb-2">
+              {bundle.subjectName || `Subject #${bundle.subjectId}`}
+            </h3>
+          </Link>
+
+          <p className="text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-2 mb-4 leading-relaxed">
+            {bundle.description || 'Complete semester preparation bundle including all unit-wise video lectures, chapter notes, and revision PDFs.'}
+          </p>
+
+          {/* Metrics */}
+          <div className="grid grid-cols-3 gap-2 py-2.5 px-3 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 mb-4 text-center">
+            <div>
+              <div className="text-xs font-bold text-brand-text dark:text-brand-dark-text flex items-center justify-center gap-1">
+                <Play size={11} className="text-primary-500" />
+                {bundle.videoCount || 0}
+              </div>
+              <div className="text-[10px] text-brand-muted dark:text-brand-dark-muted">Lectures</div>
+            </div>
+            <div>
+              <div className="text-xs font-bold text-brand-text dark:text-brand-dark-text flex items-center justify-center gap-1">
+                <FileText size={11} className="text-amber-500" />
+                {bundle.resourceCount || 0}
+              </div>
+              <div className="text-[10px] text-brand-muted dark:text-brand-dark-muted">Notes/PDFs</div>
+            </div>
+            <div>
+              <div className="text-xs font-bold text-brand-text dark:text-brand-dark-text flex items-center justify-center gap-1">
+                <BookOpen size={11} className="text-emerald-500" />
+                {bundle.unitCount || 0}
+              </div>
+              <div className="text-[10px] text-brand-muted dark:text-brand-dark-muted">Units</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Pricing */}
+        <div className="flex items-baseline justify-between pt-3 border-t border-gray-100 dark:border-brand-dark-border mt-auto">
+          <div>
+            <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">6-Month Access</span>
+            <span className="text-sm font-bold text-brand-text dark:text-brand-dark-text">₹{bundle.sixMonthPrice}</span>
+          </div>
+          <div className="text-right">
+            <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">Lifetime Access</span>
+            <span className="text-sm font-black text-primary-600 dark:text-primary-400">₹{bundle.lifetimePrice}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Button */}
+      <div className="p-4 pt-0">
+        <Link
+          to={`/courses/bundles/${bundle.subjectId}`}
+          className={`w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+            isUnlocked
+              ? 'bg-green-500 hover:bg-green-600 text-white shadow-sm'
+              : 'bg-[#0A0A0A] hover:bg-primary-600 text-white dark:bg-white dark:text-black dark:hover:bg-primary-500 dark:hover:text-white shadow-sm'
+          }`}
+        >
+          {isUnlocked ? (
+            <>
+              <CheckCircle2 size={15} /> Open Curriculum
+            </>
+          ) : (
+            <>
+              <Package size={15} /> Open Subject Bundle <ArrowRight size={13} />
+            </>
+          )}
+        </Link>
+      </div>
+    </motion.div>
+  )
+}
+
 interface CourseCardProps {
   course: Course
   userId: string | null
@@ -62,24 +239,29 @@ interface CourseCardProps {
   isPremium: boolean
   isEnrolled: boolean
   isPending: boolean
+  isSubjectBundleUnlocked?: boolean
+  isResourceBundleUnlocked?: boolean
   onPlay: (course: Course) => void
   onEnroll: (course: Course) => void
   onRated: (courseId: string, average: number, count: number) => void
-  /** Active product discount for this course, if any */
-  activeDiscount?: ProductDiscount | null
 }
 
-function CourseCard({ course, userId, isAdmin, isPremium, isEnrolled, isPending, onPlay, onEnroll, onRated, activeDiscount }: CourseCardProps) {
-  const isFreeCourse = course.price === 'FREE' || course.price === 0
-  const canWatch = isAdmin || isPremium || isEnrolled || isFreeCourse
-
-  // Compute sale price if a discount is active
-  const originalNumericPrice = typeof course.price === 'number' ? course.price : 0
-  const salePrice = activeDiscount && !isFreeCourse
-    ? applyDiscountToPrice(originalNumericPrice, activeDiscount)
-    : null
-  const discountLabel = activeDiscount && !isFreeCourse ? formatDiscountLabel(activeDiscount) : null
-  const hasSale = salePrice != null && salePrice < originalNumericPrice
+function CourseCard({
+  course,
+  userId,
+  isAdmin,
+  isPremium,
+  isEnrolled,
+  isPending,
+  isSubjectBundleUnlocked,
+  isResourceBundleUnlocked,
+  onPlay,
+  onEnroll,
+  onRated
+}: CourseCardProps) {
+  const isBundleOnly = Boolean(course.isBundleOnly)
+  const isFreeCourse = !isBundleOnly && (course.price === 'FREE' || course.price === 0)
+  const canWatch = isAdmin || isPremium || isEnrolled || isFreeCourse || Boolean(isSubjectBundleUnlocked)
 
   return (
     <motion.div
@@ -91,9 +273,11 @@ function CourseCard({ course, userId, isAdmin, isPremium, isEnrolled, isPending,
       transition={{ duration: 0.25 }}
       className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border group hover:shadow-card-hover transition-all duration-200"
     >
-      {/* Thumbnail — clean dark card */}
+      {/* Thumbnail */}
       <div
-        onClick={() => onPlay(course)}
+        onClick={() => {
+          if (canWatch) onPlay(course)
+        }}
         className="fx-course-thumb relative h-44 bg-gray-900 dark:bg-black overflow-hidden rounded-t-2xl flex items-center justify-center cursor-pointer"
       >
         {course.thumbnail ? (
@@ -101,33 +285,43 @@ function CourseCard({ course, userId, isAdmin, isPremium, isEnrolled, isPending,
         ) : (
           <BookOpen size={48} className="text-white/10" />
         )}
-        {/* Overlay on hover */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+
         {/* Badges */}
         <div className="absolute top-3 left-3 flex gap-2">
           <span className="px-2.5 py-1 text-xs font-semibold bg-white/15 backdrop-blur-sm text-white rounded-lg border border-white/20">
             {course.level}
           </span>
-          {course.price === 'FREE' && (
-            <span className="px-2.5 py-1 text-xs font-semibold bg-primary-500 text-white rounded-lg">FREE</span>
-          )}
-          {/* Sale badge */}
-          {hasSale && discountLabel && (
-            <span className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold bg-red-500 text-white rounded-lg">
-              <BadgePercent size={10} /> {discountLabel}
+          {course.subject && (
+            <span className="px-2.5 py-1 text-xs font-semibold bg-primary-500/80 backdrop-blur-sm text-white rounded-lg border border-primary-400/30 truncate max-w-[140px]">
+              {course.subject}
             </span>
           )}
         </div>
+
         {canWatch ? (
           <div className="absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold bg-green-500 text-white rounded-lg">
-            <CheckCircle2 size={11} /> {isAdmin ? 'ADMIN' : isPremium ? 'PREMIUM ALL-ACCESS' : 'ENROLLED'}
+            <CheckCircle2 size={11} /> {isAdmin ? 'ADMIN' : isPremium ? 'PREMIUM PASS' : isSubjectBundleUnlocked ? 'SUBJECT UNLOCKED' : isFreeCourse ? 'FREE ACCESS' : 'ENROLLED'}
           </div>
         ) : isPending ? (
           <div className="absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold bg-amber-500 text-white rounded-lg animate-pulse">
             <Clock size={11} /> PENDING APPROVAL
           </div>
+        ) : isBundleOnly ? (
+          <div className="absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold bg-primary-500 text-white rounded-lg">
+            <Package size={11} /> SUBJECT BUNDLE
+          </div>
+        ) : isResourceBundleUnlocked ? (
+          <div className="absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold bg-blue-500 text-white rounded-lg">
+            <CheckCircle2 size={11} /> NOTES ONLY
+          </div>
+        ) : typeof course.price === 'number' ? (
+          <div className="absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold bg-[#0A0A0A] text-white rounded-lg">
+            ₹{course.price}
+          </div>
         ) : null}
-        {/* Play / Lock button on hover */}
+
+        {/* Play / Lock icon on hover */}
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center border border-white/40">
             {canWatch ? <Play size={18} className="text-white ml-0.5" /> : <Lock size={16} className="text-white" />}
@@ -137,9 +331,21 @@ function CourseCard({ course, userId, isAdmin, isPremium, isEnrolled, isPending,
 
       {/* Content */}
       <div className="p-5">
-        <span className="text-[11px] font-semibold text-brand-muted dark:text-brand-dark-muted bg-gray-100 dark:bg-white/10 px-2 py-0.5 rounded-md">
-          {course.subcategory}
-        </span>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] font-semibold text-brand-muted dark:text-brand-dark-muted bg-gray-100 dark:bg-white/10 px-2 py-0.5 rounded-md">
+            {course.academicCourse || course.subcategory}
+          </span>
+          {course.subjectId && (
+            <Link
+              to={`/courses/bundles/${course.subjectId}`}
+              className="text-[11px] font-bold text-primary-500 hover:underline flex items-center gap-1"
+              title="View Complete Subject Bundle"
+            >
+              <Package size={11} /> Subject Bundles
+            </Link>
+          )}
+        </div>
+
         <h3 className="text-[15px] font-bold text-brand-text dark:text-brand-dark-text mt-2 mb-1 leading-snug line-clamp-2 group-hover:text-primary-500 transition-colors">
           {course.title}
         </h3>
@@ -155,20 +361,16 @@ function CourseCard({ course, userId, isAdmin, isPremium, isEnrolled, isPending,
           <span className="flex items-center gap-1"><Users size={11} />{course.enrolled.toLocaleString()}</span>
         </div>
 
-        {/* Price & CTA */}
+        {/* Action & CTA */}
         <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-brand-dark-border">
-          <div>
-            {course.price === 'FREE' ? (
-              <span className="text-lg font-bold text-primary-500">FREE</span>
-            ) : hasSale ? (
-              <div className="flex flex-col">
-                <span className="text-xs line-through text-brand-muted dark:text-brand-dark-muted">₹{originalNumericPrice}</span>
-                <span className="text-lg font-bold text-red-500">₹{salePrice}</span>
-              </div>
-            ) : (
-              <span className="text-lg font-bold text-brand-text dark:text-brand-dark-text">₹{course.price}</span>
-            )}
+          <div className="text-xs text-brand-muted dark:text-brand-dark-muted font-medium">
+            {isBundleOnly
+              ? 'Bundle Pricing'
+              : isFreeCourse
+                ? 'Free Access'
+                : `₹${course.price}`}
           </div>
+
           <div className="flex items-center gap-2">
             <CourseRatingMenu
               courseId={course.id}
@@ -180,9 +382,9 @@ function CourseCard({ course, userId, isAdmin, isPremium, isEnrolled, isPending,
             {canWatch ? (
               <button
                 onClick={() => onPlay(course)}
-                className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-primary-500 rounded-xl hover:bg-primary-600 transition-colors"
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-primary-500 rounded-xl hover:bg-primary-600 transition-colors shadow-xs"
               >
-                <Play size={11} /> Watch Video
+                <Play size={11} /> Watch Lectures
               </button>
             ) : isPending ? (
               <button
@@ -191,12 +393,19 @@ function CourseCard({ course, userId, isAdmin, isPremium, isEnrolled, isPending,
               >
                 <Clock size={11} /> Pending Review
               </button>
+            ) : isBundleOnly ? (
+              <Link
+                to={`/courses/bundles/${course.subjectId}`}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-primary-500 rounded-xl hover:bg-primary-600 transition-colors shadow-xs"
+              >
+                <Package size={12} /> View Subject & Bundles
+              </Link>
             ) : (
               <button
                 onClick={() => onEnroll(course)}
-                className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#0A0A0A] dark:bg-white dark:text-black rounded-xl hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-primary-500 rounded-xl hover:bg-primary-600 transition-colors shadow-xs"
               >
-                <Play size={11} /> Enroll Now
+                Enroll · {typeof course.price === 'number' ? `₹${course.price}` : 'Free'}
               </button>
             )}
           </div>
@@ -254,12 +463,13 @@ function AccordionSection({ title, defaultOpen = false, badge, children }: Accor
 }
 
 export default function Courses() {
-  const [courseSection, setCourseSection] = useState<'courses' | 'webinars'>('courses')
+  const [courseSection, setCourseSection] = useState<'bundles' | 'courses' | 'webinars'>('bundles')
   const [liveWebinars, setLiveWebinars] = useState<LiveWebinar[]>([])
   const [webinarRecordings, setWebinarRecordings] = useState<WebinarRecording[]>([])
   const [webinarsLoading, setWebinarsLoading] = useState(false)
   const [openingReplayId, setOpeningReplayId] = useState<string | null>(null)
   const [courses, setCourses] = useState<Course[]>([])
+  const [subjectBundles, setSubjectBundles] = useState<SubjectBundle[]>([])
   const [loading, setLoading] = useState(true)
 
   const { user, isAuthenticated } = useAuthStore()
@@ -269,6 +479,10 @@ export default function Courses() {
 
   const [enrolledIds, setEnrolledIds] = useState<Set<string>>(new Set())
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set())
+  const [unlockedSubjectIds, setUnlockedSubjectIds] = useState<Set<number>>(new Set())
+  const [unlockedResourceSubjectIds, setUnlockedResourceSubjectIds] = useState<Set<number>>(new Set())
+  const [activeSubjectBundle, setActiveSubjectBundle] = useState<SubjectBundle | null>(null)
+  const [activeResourceBundle, setActiveResourceBundle] = useState<ResourceBundle | null>(null)
   const [enrollCourse, setEnrollCourse] = useState<Course | null>(null)
   const [showPremiumModal, setShowPremiumModal] = useState(false)
   const [playCourse, setPlayCourse] = useState<Course | null>(null)
@@ -290,8 +504,12 @@ export default function Courses() {
     })
     ;(async () => {
       try {
-        const data = await fetchPublishedSiteCourses()
-        setCourses(data)
+        const [coursesData, bundlesData] = await Promise.all([
+          fetchPublishedSiteCourses(),
+          fetchPublishedSubjectBundles(),
+        ])
+        setCourses(coursesData)
+        setSubjectBundles(bundlesData)
 
         // Load all active course discounts in a single query for all courses
         // and build a Map for O(1) lookup per card. Avoids N+1 fetches.
@@ -322,6 +540,8 @@ export default function Courses() {
     if (!userId) {
       setEnrolledIds(new Set())
       setPendingIds(new Set())
+      setUnlockedSubjectIds(new Set())
+      setUnlockedResourceSubjectIds(new Set())
       return
     }
     try {
@@ -330,6 +550,11 @@ export default function Courses() {
       const pending = enrollments.filter(e => e.status === 'pending').map(e => e.courseId)
       setEnrolledIds(new Set(approved))
       setPendingIds(new Set(pending))
+
+      // Authoritative batch query for both subject and resource bundle entitlements
+      const entitlements = await fetchUserEntitlements(userId)
+      setUnlockedSubjectIds(entitlements.subjectBundleSubjectIds)
+      setUnlockedResourceSubjectIds(entitlements.resourceBundleSubjectIds)
     } catch (err) {
       console.error('Failed to load enrollments:', err)
     }
@@ -341,8 +566,13 @@ export default function Courses() {
 
   const handlePlay = (course: Course) => {
     if (!isAuthenticated) return requireLogin()
-    if (isAdmin || enrolledIds.has(course.id)) {
+    const isBundleOnly = Boolean(course.isBundleOnly)
+    const isSubjectUnlocked = isBundleOnly && course.subjectId ? unlockedSubjectIds.has(course.subjectId) : false
+    const isFreeCourse = !isBundleOnly && (course.price === 'FREE' || course.price === 0)
+    if (isAdmin || user?.isPremium || enrolledIds.has(course.id) || isFreeCourse || isSubjectUnlocked) {
       setPlayCourse(course)
+    } else if (isBundleOnly && course.subjectId) {
+      navigate(`/courses/bundles/${course.subjectId}`)
     } else {
       setEnrollCourse(course)
     }
@@ -398,6 +628,33 @@ export default function Courses() {
   const [appliedBranchId, setAppliedBranchId] = useState<number | null>(null)
   const [appliedSemesterId, setAppliedSemesterId] = useState<number | null>(null)
   const [appliedSubjectId, setAppliedSubjectId] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!appliedSubjectId) {
+      setActiveSubjectBundle(null)
+      setActiveResourceBundle(null)
+      return
+    }
+    let cancelled = false
+    Promise.all([
+      fetchSubjectBundle(appliedSubjectId),
+      fetchResourceBundleBySubject(appliedSubjectId),
+    ])
+      .then(([subBundle, resBundle]) => {
+        if (!cancelled) {
+          setActiveSubjectBundle(subBundle)
+          setActiveResourceBundle(resBundle)
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to fetch bundles for subject:', err)
+        if (!cancelled) {
+          setActiveSubjectBundle(null)
+          setActiveResourceBundle(null)
+        }
+      })
+    return () => { cancelled = true }
+  }, [appliedSubjectId])
 
   const handleHApplyFilter = () => {
     setAppliedCollegeId(hSelectedCollegeId)
@@ -641,7 +898,9 @@ export default function Courses() {
     }
   }
 
-  const published = courses.filter(c => c.status === 'Published')
+  // Only individual courses are displayed in 'All Courses' — courses uploaded
+  // under a Subject Bundle belong to the bundle curriculum and show there.
+  const published = courses.filter(c => c.status === 'Published' && !c.isBundleOnly)
 
   // Academic Filter (College → Course → Branch → Semester → Subject) and
   // the Category list are kept separate, not combined: if an academic
@@ -691,6 +950,22 @@ export default function Courses() {
       return true
     })
   }, [published, activeGroup, activeSub, activeLevel, activePrice, search, appliedCollegeId, appliedCourseId, appliedBranchId, appliedSemesterId, appliedSubjectId])
+
+  const filteredBundles = useMemo(() => {
+    return subjectBundles.filter(b => {
+      if (appliedSubjectId && b.subjectId !== appliedSubjectId) return false
+      if (search) {
+        const q = search.toLowerCase()
+        const name = (b.subjectName || '').toLowerCase()
+        const code = (b.subjectCode || '').toLowerCase()
+        const course = (b.academicCourseName || '').toLowerCase()
+        const branch = (b.branchName || '').toLowerCase()
+        const college = (b.collegeName || '').toLowerCase()
+        if (!name.includes(q) && !code.includes(q) && !course.includes(q) && !branch.includes(q) && !college.includes(q)) return false
+      }
+      return true
+    })
+  }, [subjectBundles, appliedSubjectId, search])
 
   // Scroll the (now-updated) results into view and confirm the count whenever
   // an Academic Filter search is actually run — otherwise, on desktop the
@@ -744,11 +1019,49 @@ export default function Courses() {
         </div>
       </div>
 
-      {/* Course / Webinar switcher */}
+      {/* Course / Bundle / Webinar switcher */}
       <div className="max-w-7xl mx-auto px-4 pt-6">
-        <div className="inline-flex rounded-2xl border border-gray-100 dark:border-brand-dark-border bg-white dark:bg-brand-dark-card p-1 shadow-sm">
-          <button onClick={() => setCourseSection('courses')} className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 ${courseSection === 'courses' ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black' : 'text-brand-muted dark:text-brand-dark-muted'}`}><BookOpen size={15}/> Courses</button>
-          <button onClick={() => setCourseSection('webinars')} className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 ${courseSection === 'webinars' ? 'bg-gradient-to-r from-violet-600 to-cyan-500 text-white shadow-md' : 'text-brand-muted dark:text-brand-dark-muted'}`}><Radio size={15}/> Webinars</button>
+        <div className="inline-flex rounded-2xl border border-gray-100 dark:border-brand-dark-border bg-white dark:bg-brand-dark-card p-1 shadow-sm flex-wrap gap-1">
+          <button
+            onClick={() => setCourseSection('bundles')}
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
+              courseSection === 'bundles'
+                ? 'bg-gradient-to-r from-primary-600 to-indigo-600 text-white shadow-md'
+                : 'text-brand-muted dark:text-brand-dark-muted hover:text-brand-text dark:hover:text-brand-dark-text'
+            }`}
+          >
+            <Package size={15} /> Subject Bundles
+            {subjectBundles.length > 0 && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${courseSection === 'bundles' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-white/10'}`}>
+                {subjectBundles.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setCourseSection('courses')}
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
+              courseSection === 'courses'
+                ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black shadow-md'
+                : 'text-brand-muted dark:text-brand-dark-muted hover:text-brand-text dark:hover:text-brand-dark-text'
+            }`}
+          >
+            <BookOpen size={15} /> All Courses
+            {published.length > 0 && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${courseSection === 'courses' ? 'bg-white/20 text-white dark:bg-black/20' : 'bg-gray-100 dark:bg-white/10'}`}>
+                {published.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setCourseSection('webinars')}
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
+              courseSection === 'webinars'
+                ? 'bg-gradient-to-r from-violet-600 to-cyan-500 text-white shadow-md'
+                : 'text-brand-muted dark:text-brand-dark-muted hover:text-brand-text dark:hover:text-brand-dark-text'
+            }`}
+          >
+            <Radio size={15} /> Webinars
+          </button>
         </div>
       </div>
 
@@ -890,6 +1203,165 @@ export default function Courses() {
             </>
           )}
         </section>
+      ) : courseSection === 'bundles' ? (
+        <div className="max-w-7xl mx-auto px-4 py-8 flex gap-6">
+          {/* Sidebar — desktop */}
+          <aside className="hidden md:block w-64 flex-shrink-0">
+            <div className="sticky top-32">
+              <div className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border p-4 mb-4">
+                <div className="flex items-center justify-between mb-4 border-b border-gray-100 dark:border-brand-dark-border pb-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-brand-text dark:text-brand-dark-text">Academic Filter</h3>
+                  {(hSelectedCollegeId || hSelectedCourseId || hSelectedBranchId || hSelectedSemesterId || hSelectedSubjectId) && (
+                    <button
+                      onClick={handleHResetHierarchy}
+                      className="text-[10px] font-bold text-red-500 hover:text-red-600 transition-colors uppercase tracking-wider"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+
+                {renderHHierarchyDropdown(
+                  'College',
+                  'Select College...',
+                  hColleges,
+                  hSelectedCollegeId,
+                  handleHCollegeSelect,
+                  'college',
+                  false
+                )}
+
+                {renderHHierarchyDropdown(
+                  'Course',
+                  hSelectedCollegeId ? 'Select Course...' : 'Select College first',
+                  hCourses,
+                  hSelectedCourseId,
+                  handleHCourseSelect,
+                  'course',
+                  !hSelectedCollegeId
+                )}
+
+                {renderHHierarchyDropdown(
+                  'Branch',
+                  hSelectedCourseId ? 'Select Branch...' : 'Select Course first',
+                  hBranches,
+                  hSelectedBranchId,
+                  handleHBranchSelect,
+                  'branch',
+                  !hSelectedCourseId
+                )}
+
+                {renderHHierarchyDropdown(
+                  'Semester',
+                  hSelectedBranchId ? 'Select Semester...' : 'Select Branch first',
+                  hSemesters.map(s => ({ id: s.id, name: `Semester ${s.semester_number}` })),
+                  hSelectedSemesterId,
+                  handleHSemesterSelect,
+                  'semester',
+                  !hSelectedBranchId
+                )}
+
+                {renderHHierarchyDropdown(
+                  'Subject',
+                  hSelectedSemesterId ? 'Select Subject...' : 'Select Semester first',
+                  hSubjects,
+                  hSelectedSubjectId,
+                  handleHSubjectSelect,
+                  'subject',
+                  !hSelectedSemesterId
+                )}
+
+                <button
+                  onClick={handleHApplyFilter}
+                  disabled={!(hSelectedCollegeId || hSelectedCourseId || hSelectedBranchId || hSelectedSemesterId || hSelectedSubjectId)}
+                  className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-primary-500 hover:bg-primary-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Search size={14} /> Search
+                </button>
+              </div>
+
+              {/* Subject Bundle Information Card */}
+              <div className="bg-gradient-to-br from-primary-50 to-indigo-50 dark:from-primary-950/20 dark:to-indigo-950/20 rounded-2xl border border-primary-100 dark:border-primary-900/30 p-4 text-xs leading-relaxed text-brand-muted dark:text-brand-dark-muted space-y-2">
+                <div className="font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-1.5 text-primary-600 dark:text-primary-400">
+                  <Sparkles size={14} /> Complete Subject Bundles
+                </div>
+                <p>
+                  Get full semester syllabus coverage with <strong>all unit video lectures</strong>, <strong>chapter notes</strong>, and <strong>revision PDFs</strong> in one package.
+                </p>
+                <p>
+                  Choose between <strong>6-Month</strong> and <strong>Lifetime Access</strong> plans.
+                </p>
+              </div>
+            </div>
+          </aside>
+
+          {/* Main content */}
+          <main id="subject-bundles-list" className="flex-1 min-w-0 scroll-mt-24">
+            <div className="flex items-center justify-between mb-6 gap-3">
+              <div className="min-w-0">
+                <h2 className="text-xl font-bold text-brand-text dark:text-brand-dark-text truncate">
+                  {appliedHierarchyLabel || 'All Subject Bundles'}
+                </h2>
+                <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">
+                  {filteredBundles.length} subject bundle{filteredBundles.length !== 1 ? 's' : ''} available
+                </p>
+              </div>
+
+              <button
+                onClick={() => setMobileFiltersOpen(true)}
+                className="md:hidden flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+              >
+                <SlidersHorizontal size={15} />
+                Filters
+                {activeFilterCount > 0 && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary-500 text-white">{activeFilterCount}</span>
+                )}
+              </button>
+            </div>
+
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <Loader2 size={32} className="animate-spin text-brand-muted dark:text-brand-dark-muted mb-3" />
+                <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Loading subject bundles...</p>
+              </div>
+            ) : filteredBundles.length === 0 ? (
+              <div className="text-center py-20 bg-gray-50 dark:bg-white/5 rounded-3xl border border-dashed border-gray-200 dark:border-white/10 p-8">
+                <Package size={48} className="mx-auto text-gray-300 dark:text-brand-dark-muted mb-4 opacity-50" />
+                <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text mb-2">No subject bundles found</h3>
+                <p className="text-brand-muted dark:text-brand-dark-muted text-sm max-w-md mx-auto mb-4">
+                  {hierarchyActive
+                    ? 'No subject bundles matched your academic filter. Try selecting a different college, course, branch, or semester, or reset the filter.'
+                    : 'No published subject bundles were found. You can browse all individual courses instead.'}
+                </p>
+                {hierarchyActive ? (
+                  <button
+                    onClick={handleHResetHierarchy}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                  >
+                    Reset Academic Filter
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setCourseSection('courses')}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-primary-500 text-white hover:bg-primary-600 transition-colors"
+                  >
+                    <BookOpen size={15} /> Browse All Courses
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+                {filteredBundles.map(bundle => (
+                  <SubjectBundleCard
+                    key={bundle.id}
+                    bundle={bundle}
+                    isUnlocked={unlockedSubjectIds.has(bundle.subjectId)}
+                  />
+                ))}
+              </div>
+            )}
+          </main>
+        </div>
       ) : (
       <>
       <div className="sticky top-16 z-30 bg-white dark:bg-brand-dark-bg border-b border-gray-100 dark:border-brand-dark-border shadow-sm">
@@ -1022,12 +1494,6 @@ export default function Courses() {
                 ))}
               </AccordionSection>
 
-              <AccordionSection title="Price" badge={activePrice !== 'All' ? 1 : 0}>
-                {PRICES.map(p => (
-                  <button key={p} onClick={() => setActivePrice(p)} className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-0.5 transition-colors ${activePrice === p ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}>{p}</button>
-                ))}
-              </AccordionSection>
-
               {activeFilterCount > 0 && (
                 <button
                   onClick={() => { setActiveSub(null); setActiveLevel('All Levels'); setActivePrice('All'); handleHResetHierarchy() }}
@@ -1042,6 +1508,49 @@ export default function Courses() {
 
         {/* Main */}
         <main id="courses-list" className="flex-1 min-w-0 scroll-mt-24">
+          {appliedSubjectId && (activeSubjectBundle || activeResourceBundle) && (
+            <div className="mb-6 p-6 rounded-2xl bg-gradient-to-r from-primary-600 via-indigo-600 to-primary-700 text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {activeSubjectBundle && activeSubjectBundle.isActive && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/20 backdrop-blur-sm border border-white/20 text-white">
+                      <Package size={13} /> Complete Subject Bundle
+                    </span>
+                  )}
+                  {activeResourceBundle && activeResourceBundle.isActive && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/10 backdrop-blur-sm border border-white/10 text-white/90">
+                      <FileText size={13} /> Resource Bundle (Notes Only)
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-xl font-black">
+                  {appliedHierarchyLabel || 'Unlock this Subject'}
+                </h3>
+                <p className="text-sm text-white/80 max-w-xl">
+                  Choose between the <strong>Complete Subject Bundle</strong> (All lectures + notes) or the <strong>Resource Bundle</strong> (Notes & PDFs only).
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
+                {unlockedSubjectIds.has(appliedSubjectId) ? (
+                  <Link
+                    to={`/courses/bundles/${appliedSubjectId}`}
+                    className="px-5 py-2.5 rounded-xl font-bold text-sm bg-green-500 text-white hover:bg-green-600 shadow-md flex items-center gap-2 transition-all"
+                  >
+                    <CheckCircle2 size={16} /> Subject Unlocked
+                  </Link>
+                ) : (
+                  <Link
+                    to={`/courses/bundles/${appliedSubjectId}`}
+                    className="px-5 py-2.5 rounded-xl font-bold text-sm bg-white text-primary-600 hover:bg-gray-100 shadow-md flex items-center gap-2 transition-all"
+                  >
+                    <Package size={16} /> View Subject & Bundles
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between mb-6 gap-3">
             <div className="min-w-0">
               <h2 className="text-xl font-bold text-brand-text dark:text-brand-dark-text truncate">{appliedHierarchyLabel || activeSub || activeGroup}</h2>
@@ -1094,10 +1603,11 @@ export default function Courses() {
                   isPremium={Boolean(user?.isPremium)}
                   isEnrolled={enrolledIds.has(course.id)}
                   isPending={pendingIds.has(course.id)}
+                  isSubjectBundleUnlocked={Boolean(course.isBundleOnly && course.subjectId && unlockedSubjectIds.has(course.subjectId))}
+                  isResourceBundleUnlocked={course.subjectId ? unlockedResourceSubjectIds.has(course.subjectId) : false}
                   onPlay={handlePlay}
                   onEnroll={handleEnroll}
                   onRated={handleCourseRated}
-                  activeDiscount={courseDiscountsMap.get(course.id) ?? null}
                 />
               ))}
             </div>
@@ -1254,7 +1764,13 @@ export default function Courses() {
           userId={userId ?? ''}
           userName={user?.name ?? 'Guest'}
           isAdmin={isAdmin}
-          canWatch={isAdmin || Boolean(user?.isPremium) || enrolledIds.has(playCourse.id) || playCourse.price === 'FREE' || playCourse.price === 0}
+          canWatch={
+            isAdmin ||
+            Boolean(user?.isPremium) ||
+            enrolledIds.has(playCourse.id) ||
+            (!playCourse.isBundleOnly && (playCourse.price === 'FREE' || playCourse.price === 0)) ||
+            Boolean(playCourse.isBundleOnly && playCourse.subjectId && unlockedSubjectIds.has(playCourse.subjectId))
+          }
           onClose={() => setPlayCourse(null)}
         />
       )}

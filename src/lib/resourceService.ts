@@ -1,6 +1,40 @@
 import { supabase } from './supabase'
 import type { Resource } from '../store/contentStore'
+export type { Resource }
 import { getBackblazeVideoUrl, uploadToBackblaze, deleteBackblazeFile, isBackblazeRef } from './backblazeService'
+import { ensureResourceBundleForSubject } from './resourceBundleService'
+import { ensureSubjectBundleForSubject } from './subjectBundleService'
+
+// ─── Auto-link Resource to Subject Bundle & Resource Bundle ──────────────────
+export async function linkResourceToBundles(subjectId: number, resourceId: number) {
+  try {
+    const subjId = Number(subjectId)
+    // 1. Ensure active Resource Bundle exists
+    const rb = await ensureResourceBundleForSubject(subjId)
+    if (rb?.id) {
+      // Check if already mapped
+      const { data: existingMap } = await supabase
+        .from('resource_bundle_items')
+        .select('bundle_id')
+        .eq('bundle_id', rb.id)
+        .eq('resource_id', resourceId)
+        .maybeSingle()
+
+      if (!existingMap) {
+        await supabase.from('resource_bundle_items').insert({
+          bundle_id: rb.id,
+          resource_id: resourceId,
+          sort_order: 1,
+        })
+      }
+    }
+
+    // 2. Ensure active Subject Bundle exists
+    await ensureSubjectBundleForSubject(subjId)
+  } catch (autoErr) {
+    console.warn('[resourceService] linkResourceToBundles failed:', autoErr)
+  }
+}
 
 // ─── Hierarchy entity types ─────────────────────────────────────────────────
 export interface College  { id: number; name: string; short_name: string | null; city: string | null; state: string | null }
@@ -48,10 +82,33 @@ export async function fetchResourceTypes(): Promise<ResourceTypeRow[]> {
   return data as ResourceTypeRow[]
 }
 
+// ─── Bundle marker for description fallback ──────────────────────────────────
+const BUNDLE_ONLY_MARKER = '<!--bundle_only-->'
+
 // ─── Relational select string (used for both published + all) ───────────────
-const RESOURCE_SELECT = `
+const RESOURCE_SELECT_BASE = `
   id, title, description, file_url, thumbnail_url, author,
   is_premium, price, downloads, status, created_at, updated_at,
+  resource_types ( id, name ),
+  subjects (
+    id, name, code,
+    semesters (
+      id, semester_number,
+      branches (
+        id, name, code,
+        courses (
+          id, name, duration,
+          colleges ( id, name, short_name, city, state )
+        )
+      )
+    )
+  )
+`
+
+const RESOURCE_SELECT_WITH_BUNDLE = `
+  id, title, description, file_url, thumbnail_url, author,
+  is_premium, price, downloads, status, created_at, updated_at,
+  is_bundle_only,
   resource_types ( id, name ),
   subjects (
     id, name, code,
@@ -77,10 +134,15 @@ function mapRowToResource(row: any): Resource {
   const crs  = br?.courses
   const clg  = crs?.colleges
 
+  const rawDesc = row.description ?? ''
+  const isBundleMarker = rawDesc.includes(BUNDLE_ONLY_MARKER)
+  const cleanDescription = rawDesc.replace(/\n?<!--bundle_only-->/g, '').trim()
+  const isBundleOnly = Boolean(row.is_bundle_only || isBundleMarker)
+
   return {
     id:           String(row.id),
     title:        row.title ?? '',
-    description:  row.description ?? '',
+    description:  cleanDescription,
     type:         row.resource_types?.name ?? '',
     college:      clg?.name ?? '',
     course:       crs?.name ?? '',
@@ -102,19 +164,34 @@ function mapRowToResource(row: any): Resource {
     downloads:    row.downloads ?? 0,
     bookmarks:    0,
     createdAt:    row.created_at ?? '',
+    isBundleOnly: isBundleOnly,
   }
 }
 
 // ─── Fetch Published Resources (Student page) ───────────────────────────────
 export async function fetchPublishedResources(): Promise<Resource[]> {
+  let resRows: any[] = []
   const { data, error } = await supabase
     .from('resources')
-    .select(RESOURCE_SELECT)
+    .select(RESOURCE_SELECT_WITH_BUNDLE)
     .eq('status', 'Published')
     .order('created_at', { ascending: false })
 
-  if (error) throw new Error(`Failed to fetch published resources: ${error.message}`)
-  return (data ?? []).map(mapRowToResource)
+  if (error && (error.message?.includes('is_bundle_only') || error.code === 'PGRST204')) {
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('resources')
+      .select(RESOURCE_SELECT_BASE)
+      .eq('status', 'Published')
+      .order('created_at', { ascending: false })
+    if (fallbackError) throw new Error(`Failed to fetch published resources: ${fallbackError.message}`)
+    resRows = (fallbackData as any[]) ?? []
+  } else if (error) {
+    throw new Error(`Failed to fetch published resources: ${error.message}`)
+  } else {
+    resRows = (data as any[]) ?? []
+  }
+
+  return resRows.map(mapRowToResource)
 }
 
 // Uses a server-side join filter instead of fetching all resources client-side.
@@ -183,13 +260,26 @@ export async function fetchNotesForSubject(subjectName: string): Promise<Resourc
 
 // ─── Fetch All Resources (Admin) ────────────────────────────────────────────
 export async function fetchAllResources(): Promise<Resource[]> {
+  let resRows: any[] = []
   const { data, error } = await supabase
     .from('resources')
-    .select(RESOURCE_SELECT)
+    .select(RESOURCE_SELECT_WITH_BUNDLE)
     .order('created_at', { ascending: false })
 
-  if (error) throw new Error(`Failed to fetch resources: ${error.message}`)
-  return (data ?? []).map(mapRowToResource)
+  if (error && (error.message?.includes('is_bundle_only') || error.code === 'PGRST204')) {
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('resources')
+      .select(RESOURCE_SELECT_BASE)
+      .order('created_at', { ascending: false })
+    if (fallbackError) throw new Error(`Failed to fetch resources: ${fallbackError.message}`)
+    resRows = (fallbackData as any[]) ?? []
+  } else if (error) {
+    throw new Error(`Failed to fetch resources: ${error.message}`)
+  } else {
+    resRows = (data as any[]) ?? []
+  }
+
+  return resRows.map(mapRowToResource)
 }
 
 // ─── Create Resource ────────────────────────────────────────────────────────
@@ -204,29 +294,56 @@ export interface CreateResourceInput {
   isPremium: boolean
   price?: number
   status: 'Published' | 'Draft'
+  isBundleOnly?: boolean
 }
 
 export async function createResource(input: CreateResourceInput): Promise<Resource> {
+  const isBundle = Boolean(input.isBundleOnly)
+  const cleanDescription = (input.description || '').replace(/\n?<!--bundle_only-->/g, '').trim()
+  const descriptionToSave = isBundle ? `${cleanDescription}\n${BUNDLE_ONLY_MARKER}` : cleanDescription
+
+  const baseInsert: any = {
+    subject_id:       input.subjectId,
+    resource_type_id: input.resourceTypeId,
+    title:            input.title,
+    description:      descriptionToSave,
+    file_url:         input.fileUrl || null,
+    thumbnail_url:    input.thumbnailUrl || null,
+    author:           input.author,
+    is_premium:       isBundle ? true : Boolean(input.isPremium),
+    price:            isBundle ? null : (input.isPremium ? (input.price ?? 0) : null),
+    downloads:        0,
+    status:           input.status,
+  }
+
+  let createdRow: any = null
   const { data, error } = await supabase
     .from('resources')
-    .insert({
-      subject_id:       input.subjectId,
-      resource_type_id: input.resourceTypeId,
-      title:            input.title,
-      description:      input.description,
-      file_url:         input.fileUrl || null,
-      thumbnail_url:    input.thumbnailUrl || null,
-      author:           input.author,
-      is_premium:       input.isPremium,
-      price:            input.isPremium ? (input.price ?? 0) : null,
-      downloads:        0,
-      status:           input.status,
-    })
-    .select(RESOURCE_SELECT)
+    .insert({ ...baseInsert, is_bundle_only: isBundle })
+    .select(RESOURCE_SELECT_WITH_BUNDLE)
     .single()
 
-  if (error) throw new Error(`Failed to create resource: ${error.message}`)
-  return mapRowToResource(data)
+  if (error && (error.message?.includes('is_bundle_only') || error.code === 'PGRST204')) {
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('resources')
+      .insert(baseInsert)
+      .select(RESOURCE_SELECT_BASE)
+      .single()
+    if (fallbackError) throw new Error(`Failed to create resource: ${fallbackError.message}`)
+    createdRow = fallbackData
+  } else if (error) {
+    throw new Error(`Failed to create resource: ${error.message}`)
+  } else {
+    createdRow = data
+  }
+
+  // Auto-save under Subject Bundle & Resource Bundle ONLY when uploaded under bundle
+  if (isBundle && input.subjectId && createdRow?.id) {
+    linkResourceToBundles(Number(input.subjectId), Number(createdRow.id))
+      .catch(err => console.warn('[createResource] Auto-mapping resource to bundle failed:', err))
+  }
+
+  return mapRowToResource(createdRow)
 }
 
 // ─── Update Resource ────────────────────────────────────────────────────────
@@ -241,32 +358,85 @@ export interface UpdateResourceInput {
   status?: 'Published' | 'Draft'
   subjectId?: number
   resourceTypeId?: number
+  isBundleOnly?: boolean
 }
 
 export async function updateResource(id: string, input: UpdateResourceInput): Promise<Resource> {
+  const isBundle = input.isBundleOnly !== undefined ? Boolean(input.isBundleOnly) : undefined
   // Build the update payload — only include fields that are defined
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const payload: Record<string, any> = {}
+
   if (input.title !== undefined)          payload.title = input.title
-  if (input.description !== undefined)    payload.description = input.description
+  if (input.description !== undefined || isBundle !== undefined) {
+    let desc = (input.description ?? '').replace(/\n?<!--bundle_only-->/g, '').trim()
+    if (isBundle === true) {
+      desc = `${desc}\n${BUNDLE_ONLY_MARKER}`
+    }
+    payload.description = desc
+  }
   if (input.fileUrl !== undefined)        payload.file_url = input.fileUrl
   if (input.thumbnailUrl !== undefined)   payload.thumbnail_url = input.thumbnailUrl
   if (input.author !== undefined)         payload.author = input.author
-  if (input.isPremium !== undefined)      payload.is_premium = input.isPremium
-  if (input.price !== undefined)          payload.price = input.price
+
+  if (isBundle !== undefined) {
+    if (isBundle) {
+      payload.is_premium = true
+      payload.price = null
+      payload.is_bundle_only = true
+    } else {
+      payload.is_bundle_only = false
+      if (input.isPremium !== undefined) payload.is_premium = input.isPremium
+      if (input.price !== undefined) payload.price = input.isPremium ? input.price : null
+    }
+  } else {
+    if (input.isPremium !== undefined)      payload.is_premium = input.isPremium
+    if (input.price !== undefined)          payload.price = input.price
+  }
+
   if (input.status !== undefined)         payload.status = input.status
   if (input.subjectId !== undefined)      payload.subject_id = input.subjectId
   if (input.resourceTypeId !== undefined) payload.resource_type_id = input.resourceTypeId
 
+  let updatedRow: any = null
   const { data, error } = await supabase
     .from('resources')
     .update(payload)
     .eq('id', id)
-    .select(RESOURCE_SELECT)
+    .select(RESOURCE_SELECT_WITH_BUNDLE)
     .single()
 
-  if (error) throw new Error(`Failed to update resource: ${error.message}`)
-  return mapRowToResource(data)
+  if (error && (error.message?.includes('is_bundle_only') || error.code === 'PGRST204')) {
+    delete payload.is_bundle_only
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('resources')
+      .update(payload)
+      .eq('id', id)
+      .select(RESOURCE_SELECT_BASE)
+      .single()
+    if (fallbackError) throw new Error(`Failed to update resource: ${fallbackError.message}`)
+    updatedRow = fallbackData
+  } else if (error) {
+    throw new Error(`Failed to update resource: ${error.message}`)
+  } else {
+    updatedRow = data
+  }
+
+  // Auto-save under Subject Bundle & Resource Bundle ONLY when uploaded under bundle
+  const targetSubjectId = (updatedRow as any)?.subjects?.id ?? (updatedRow as any)?.subject_id
+  if (isBundle === true && targetSubjectId && updatedRow?.id) {
+    linkResourceToBundles(Number(targetSubjectId), Number(updatedRow.id))
+      .catch(err => console.warn('[updateResource] Auto-mapping resource to bundle failed:', err))
+  } else if (isBundle === false && updatedRow?.id) {
+    // If switched to individual, remove from resource_bundle_items
+    try {
+      await supabase.from('resource_bundle_items').delete().eq('resource_id', updatedRow.id)
+    } catch (removeErr) {
+      console.warn('[updateResource] Removing resource from bundle failed:', removeErr)
+    }
+  }
+
+  return mapRowToResource(updatedRow)
 }
 
 // ─── Delete Resource ────────────────────────────────────────────────────────

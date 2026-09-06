@@ -7,7 +7,9 @@ import {
   X, Shield, TrendingUp, Eye, Download, EyeOff,
   CheckCircle, Zap, Video, Loader2, RotateCw, Compass, ListVideo, Clock, Briefcase, Mail, Phone, Trophy, Minus, Save, LogOut, ChevronDown, Check, Radio,
   CreditCard, DollarSign, ExternalLink, RefreshCw, ChevronRight, Copy, ShieldAlert,
-  QrCode, UploadCloud, Sparkles, GraduationCap, Calendar, UserCheck, Award
+  QrCode, UploadCloud, Sparkles, GraduationCap, Calendar, UserCheck, Award,
+  Package, Layers, PlayCircle, FolderPlus,
+  Upload, Image as ImageIcon, AlertCircle
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import LogoutConfirmModal from '../components/LogoutConfirmModal'
@@ -268,6 +270,7 @@ import type {
   PathFinderExamType,
 } from '../lib/pathfinderTypes'
 import {
+  supabase,
   fetchAllUsersWithEnrollments,
   toggleUserPremiumStatus,
   upsertUserProfile,
@@ -309,6 +312,44 @@ import type {
   CreateCouponInput,
   UpdateCouponInput,
 } from '../lib/pricingTypes'
+import {
+  fetchSubjectBundle,
+  fetchAllSubjectBundles,
+  createSubjectBundle,
+  updateSubjectBundle,
+  deleteSubjectBundle,
+  toggleSubjectBundleActive,
+  fetchSubjectCurriculum,
+  createSubjectUnit,
+  updateSubjectUnit,
+  deleteSubjectUnit,
+  createSubjectVideo,
+  updateSubjectVideo,
+  deleteSubjectVideo,
+} from '../lib/subjectBundleService'
+import type {
+  SubjectBundle,
+  CreateSubjectBundleInput,
+  UpdateSubjectBundleInput,
+  SubjectUnit,
+  SubjectVideo,
+  SubjectUnitResource,
+} from '../lib/subjectBundleTypes'
+import {
+  fetchAllResourceBundles,
+  createResourceBundle,
+  updateResourceBundle,
+  deleteResourceBundle,
+  toggleResourceBundleActive,
+  fetchResourceBundleItems,
+  updateResourceBundleMappings,
+} from '../lib/resourceBundleService'
+import type {
+  ResourceBundle,
+  ResourceBundleItem,
+  CreateResourceBundleInput,
+  UpdateResourceBundleInput,
+} from '../lib/resourceBundleTypes'
 
 type AdminTab =
   | 'overview' | 'courses' | 'resources' | 'quizzes' | 'roadmaps'
@@ -316,6 +357,7 @@ type AdminTab =
   | 'pathfinder-careers' | 'pathfinder-exams' | 'pathfinder-mappings'
   | 'career-applications'
   | 'hackathons' | 'payment-approvals'
+  | 'subject-bundles' | 'resource-bundles'
   | 'course-discounts' | 'resource-discounts' | 'coupons' | 'coupon-usage'
 
 const sidebarItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard; group?: string }[] = [
@@ -333,10 +375,12 @@ const sidebarItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard;
   { id: 'pathfinder-careers', label: 'Career Paths', icon: Compass, group: '🧭 Skills021 PathFinder' },
   { id: 'pathfinder-exams', label: 'Exams', icon: FileText, group: '🧭 Skills021 PathFinder' },
   { id: 'pathfinder-mappings', label: 'Career Mapping', icon: Map, group: '🧭 Skills021 PathFinder' },
-  { id: 'course-discounts', label: 'Course Discounts', icon: DollarSign, group: '💰 Pricing & Promotions' },
-  { id: 'resource-discounts', label: 'Resource Discounts', icon: DollarSign, group: '💰 Pricing & Promotions' },
-  { id: 'coupons', label: 'Coupon Codes', icon: Sparkles, group: '💰 Pricing & Promotions' },
-  { id: 'coupon-usage', label: 'Coupon Usage', icon: TrendingUp, group: '💰 Pricing & Promotions' },
+  { id: 'subject-bundles', label: 'Subject Bundles', icon: Package, group: '💰 Pricing & Bundles' },
+  { id: 'resource-bundles', label: 'Resource Bundles', icon: Layers, group: '💰 Pricing & Bundles' },
+  { id: 'course-discounts', label: 'Subject Bundle Discounts', icon: DollarSign, group: '💰 Pricing & Bundles' },
+  { id: 'resource-discounts', label: 'Resource Bundle Discounts', icon: DollarSign, group: '💰 Pricing & Bundles' },
+  { id: 'coupons', label: 'Coupon Codes', icon: Sparkles, group: '💰 Pricing & Bundles' },
+  { id: 'coupon-usage', label: 'Coupon Usage', icon: TrendingUp, group: '💰 Pricing & Bundles' },
   { id: 'payment-approvals', label: 'Payment Approvals', icon: CreditCard, group: 'Admin' },
   { id: 'users', label: 'Users', icon: Users, group: 'Admin' },
   { id: 'settings', label: 'Settings', icon: Settings, group: 'Admin' },
@@ -1622,9 +1666,16 @@ export default function AdminDashboard() {
   const [resUploadProgress, setResUploadProgress] = useState(0)
   const [resUploadStatus, setResUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle')
   const [resExistingFileUrl, setResExistingFileUrl] = useState('')
+  const [resUploadMode, setResUploadMode] = useState<'bundle' | 'individual'>('bundle')
   const [resIsPremium, setResIsPremium] = useState(false)
   const [resPrice, setResPrice] = useState<number>(0)
   const [resStatus, setResStatus] = useState<'Published' | 'Draft'>('Draft')
+
+  // Subject Bundle live lookup states for Course & Resource modals
+  const [courseSubjectBundle, setCourseSubjectBundle] = useState<SubjectBundle | null | undefined>(undefined)
+  const [loadingCourseBundle, setLoadingCourseBundle] = useState(false)
+  const [resourceSubjectBundle, setResourceSubjectBundle] = useState<SubjectBundle | null | undefined>(undefined)
+  const [loadingResourceBundle, setLoadingResourceBundle] = useState(false)
 
   // ─── Academic Hierarchy States ──────────────────────────────────────────
   const [hColleges, setHColleges] = useState<College[]>([])
@@ -2000,6 +2051,37 @@ export default function AdminDashboard() {
     }
   }, [cSelectedSemesterId])
 
+  // Lookup active Subject Bundle for Course Modal
+  useEffect(() => {
+    if (showModal && editItem?._type === 'course') {
+      if (cSelectedSubjectId) {
+        setLoadingCourseBundle(true)
+        fetchSubjectBundle(Number(cSelectedSubjectId))
+          .then(b => setCourseSubjectBundle(b))
+          .catch(() => setCourseSubjectBundle(null))
+          .finally(() => setLoadingCourseBundle(false))
+      } else {
+        setCourseSubjectBundle(undefined)
+      }
+    }
+  }, [showModal, editItem?._type, cSelectedSubjectId])
+
+  // Lookup active Subject Bundle for Resource Modal
+  useEffect(() => {
+    if (showModal && editItem?._type === 'resource') {
+      const activeSubjId = selectedSubjectId || editItem?.subjectId
+      if (activeSubjId) {
+        setLoadingResourceBundle(true)
+        fetchSubjectBundle(Number(activeSubjId))
+          .then(b => setResourceSubjectBundle(b))
+          .catch(() => setResourceSubjectBundle(null))
+          .finally(() => setLoadingResourceBundle(false))
+      } else {
+        setResourceSubjectBundle(undefined)
+      }
+    }
+  }, [showModal, editItem?._type, selectedSubjectId, editItem?.subjectId])
+
   // ─── Hierarchy Loader Callback ─────────────────────────────────────────────
   const loadHierarchyData = useCallback(async (tabName: string) => {
     setHierarchyLoading(true)
@@ -2303,6 +2385,7 @@ export default function AdminDashboard() {
       // Reset resource form
       setResTitle(''); setResDescription(''); setResAuthor('Skills021 Team')
       setResUploadFile(null); setResUploadProgress(0); setResUploadStatus('idle'); setResExistingFileUrl('')
+      setResUploadMode('bundle')
       setResIsPremium(false); setResPrice(0); setResStatus('Published')
       setSelectedCollegeId(''); setSelectedCourseId(''); setSelectedBranchId('')
       setSelectedSemesterId(''); setSelectedSubjectId(''); setSelectedResourceTypeId('')
@@ -2316,7 +2399,21 @@ export default function AdminDashboard() {
     } else if (type === 'pathfinder-mapping') {
       setEditItem({ _type: type, career_path_id: '', exam_ids: [] })
     } else if (type === 'course') {
-      setEditItem({ _type: type, status: 'Published', group: 'College & Tech Courses', subcategory: 'DSA', level: 'Beginner', isFree: true, price: 'FREE' })
+      setCSelectedCollegeId(''); setCSelectedCourseId(''); setCSelectedBranchId('')
+      setCSelectedSemesterId(''); setCSelectedSubjectId('')
+      setCCourses([]); setCBranches([]); setCSemesters([]); setCSubjects([])
+      setCourseVideoFile(null); setCourseVideoUploadStatus('idle'); setCourseExistingVideoUrl('')
+      setCourseThumbFile(null); setCourseThumbUploadStatus('idle'); setCourseExistingThumbUrl('')
+      setEditItem({
+        _type: type,
+        status: 'Published',
+        group: 'College & Tech Courses',
+        subcategory: 'DSA',
+        level: 'Beginner',
+        isFree: false,
+        price: '',
+        uploadMode: 'bundle',
+      })
     } else {
       setEditItem({ _type: type })
     }
@@ -2324,6 +2421,7 @@ export default function AdminDashboard() {
   }
   const openEdit = async (item: any) => {
     if (item._type === 'course') {
+      item.uploadMode = item.isBundleOnly ? 'bundle' : 'individual'
       setCourseVideoFile(null); setCourseVideoUploadStatus('idle'); setCourseVideoUploadProgress(0); setCourseExistingVideoUrl(item.videoUrl || '')
       setCourseThumbFile(null); setCourseThumbUploadStatus('idle'); setCourseExistingThumbUrl(item.thumbnail || '')
       setNewTimestampTime(''); setNewTimestampLabel('')
@@ -2387,6 +2485,7 @@ export default function AdminDashboard() {
       setResTitle(item.title || ''); setResDescription(item.description || '')
       setResAuthor(item.author || '')
       setResUploadFile(null); setResUploadProgress(0); setResUploadStatus('idle'); setResExistingFileUrl(item.downloadUrl || '')
+      setResUploadMode(item.isBundleOnly ? 'bundle' : 'individual')
       setResIsPremium(item.isPremium || false)
       setResPrice(item.price || 0); setResStatus(item.status || 'Draft')
       // Note: hierarchy dropdowns won't be pre-selected on edit since we don't store IDs in Resource
@@ -2434,7 +2533,13 @@ export default function AdminDashboard() {
       setShowModal(true)
     }
   }
-  const closeModal = () => { setShowModal(false); setEditItem(null); setPathfinderErrors({}) }
+  const closeModal = () => {
+    setShowModal(false)
+    setEditItem(null)
+    setPathfinderErrors({})
+    setCourseSubjectBundle(undefined)
+    setResourceSubjectBundle(undefined)
+  }
 
   // Adds a chapter/timestamp for the course currently being edited, with
   // validation against the video's actual detected duration so admins can't
@@ -2603,8 +2708,17 @@ export default function AdminDashboard() {
                     <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
                       <td className="px-4 py-3 font-medium text-brand-text dark:text-brand-dark-text max-w-[180px] truncate">{c.title}</td>
                       <td className="px-4 py-3 text-xs text-brand-muted dark:text-brand-dark-muted whitespace-nowrap">{c.group}</td>
-                      <td className="px-4 py-3"><span className="badge bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 text-xs">{c.subcategory}</span></td>
-                      <td className="px-4 py-3 font-medium">{c.price === 'FREE' ? <span className="text-green-500">FREE</span> : `₹${c.price}`}</td>
+                      <td className="px-4 py-3 font-medium">
+                        {c.isBundleOnly ? (
+                          <span className="badge bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-xs inline-flex items-center gap-1 font-bold">
+                            <Package size={12} /> Under Bundle
+                          </span>
+                        ) : c.price === 'FREE' ? (
+                          <span className="text-green-500 font-bold">FREE</span>
+                        ) : (
+                          `₹${c.price}`
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         {c.videoUrl ? (
                           <span className="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-600 font-semibold px-2 py-0.5 rounded-md">Uploaded</span>
@@ -2676,7 +2790,17 @@ export default function AdminDashboard() {
                       <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{r.subject || '—'}</td>
                       <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted text-xs">{r.author}</td>
                       <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted">{(r.downloads ?? 0).toLocaleString()}</td>
-                      <td className="px-4 py-3">{r.isPremium ? <span className="badge bg-amber-50 dark:bg-amber-900/20 text-amber-600 text-xs">₹{r.price ?? 0}</span> : <span className="badge bg-green-50 dark:bg-green-900/20 text-green-600 text-xs">Free</span>}</td>
+                      <td className="px-4 py-3">
+                        {r.isBundleOnly ? (
+                          <span className="badge bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-xs inline-flex items-center gap-1 font-bold">
+                            <Package size={12} /> Under Bundle
+                          </span>
+                        ) : r.isPremium ? (
+                          <span className="badge bg-amber-50 dark:bg-amber-900/20 text-amber-600 text-xs">₹{r.price ?? 0}</span>
+                        ) : (
+                          <span className="badge bg-green-50 dark:bg-green-900/20 text-green-600 text-xs">Free</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
@@ -4852,16 +4976,23 @@ export default function AdminDashboard() {
                       <td className="px-4 py-3.5">
                         <div className="space-y-1">
                           <span
-                            className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider ${req.itemType === 'premium_membership'
+                            className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider ${req.itemType === 'subject_bundle'
+                              ? 'bg-purple-50 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/40'
+                              : req.itemType === 'resource_bundle'
+                              ? 'bg-indigo-50 text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/40'
+                              : req.itemType === 'premium_membership'
                               ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/40'
                               : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300'
                               }`}
                           >
-                            {req.itemType === 'premium_membership' ? '⭐ PREMIUM PASS' : 'COURSE PURCHASE'}
+                            {req.itemType === 'subject_bundle' ? '📦 SUBJECT BUNDLE' : req.itemType === 'resource_bundle' ? '📄 RESOURCE BUNDLE' : req.itemType === 'premium_membership' ? '⭐ PREMIUM PASS' : 'COURSE PURCHASE'}
                           </span>
                           <p className="text-xs font-semibold text-brand-text dark:text-brand-dark-text line-clamp-1">
                             {req.itemTitle || `Course #${req.courseId}`}
                           </p>
+                          {req.notes && (
+                            <p className="text-[10px] text-brand-muted font-mono">{req.notes}</p>
+                          )}
                         </div>
                       </td>
 
@@ -6409,6 +6540,13 @@ export default function AdminDashboard() {
             }
           }
 
+          const isUnderBundle = resUploadMode === 'bundle'
+          if (isUnderBundle && !selectedSubjectId && !editItem?.subjectId) {
+            toast.error('Please select a Subject in the Hierarchy to place this resource under its Bundle.')
+            setResourceSaving(false)
+            return
+          }
+
           if (isEditing) {
             // Update existing resource
             const updatePayload: any = {
@@ -6416,9 +6554,10 @@ export default function AdminDashboard() {
               description: resDescription,
               author: resAuthor,
               fileUrl: fileUrl,
-              isPremium: resIsPremium,
-              price: resIsPremium ? resPrice : undefined,
+              isPremium: isUnderBundle ? true : resIsPremium,
+              price: isUnderBundle ? null : (resIsPremium ? resPrice : null),
               status: resStatus,
+              isBundleOnly: isUnderBundle,
             }
             if (selectedSubjectId) updatePayload.subjectId = selectedSubjectId
             if (selectedResourceTypeId) updatePayload.resourceTypeId = selectedResourceTypeId
@@ -6438,9 +6577,10 @@ export default function AdminDashboard() {
               description: resDescription,
               fileUrl: fileUrl,
               author: resAuthor || 'Skills021 Team',
-              isPremium: resIsPremium,
-              price: resIsPremium ? resPrice : undefined,
+              isPremium: isUnderBundle ? true : resIsPremium,
+              price: isUnderBundle ? undefined : (resIsPremium ? resPrice : undefined),
               status: resStatus,
+              isBundleOnly: isUnderBundle,
             }
             const created = await createResourceApi(input)
             setDbResources(prev => [created, ...prev])
@@ -6464,6 +6604,56 @@ export default function AdminDashboard() {
               <button onClick={closeModal}><X size={18} className="text-brand-muted" /></button>
             </div>
             <div className="space-y-4">
+              {/* Content Type Selector: Subject Bundle vs Individual */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-brand-text dark:text-brand-dark-text">
+                  Content Type *
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setResUploadMode('bundle')}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                      resUploadMode === 'bundle'
+                        ? 'border-primary-500 bg-primary-50/70 dark:bg-primary-950/30 ring-2 ring-primary-500/20 shadow-xs'
+                        : 'border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card hover:bg-gray-50 dark:hover:bg-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${resUploadMode === 'bundle' ? 'border-primary-500 bg-primary-500' : 'border-gray-400'}`}>
+                        {resUploadMode === 'bundle' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </div>
+                      <Package size={16} className="text-primary-500 shrink-0" />
+                      <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text">Subject Bundle</span>
+                    </div>
+                    <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted leading-relaxed pl-5">
+                      Curriculum under Subject Bundle. Access & pricing are managed by the Subject Bundle.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setResUploadMode('individual')}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                      resUploadMode === 'individual'
+                        ? 'border-violet-500 bg-violet-50/70 dark:bg-violet-950/30 ring-2 ring-violet-500/20 shadow-xs'
+                        : 'border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card hover:bg-gray-50 dark:hover:bg-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${resUploadMode === 'individual' ? 'border-violet-500 bg-violet-500' : 'border-gray-400'}`}>
+                        {resUploadMode === 'individual' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </div>
+                      <FileText size={16} className="text-violet-500 shrink-0" />
+                      <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text">Individual</span>
+                    </div>
+                    <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted leading-relaxed pl-5">
+                      Associated with Subject only. Maintains individual Free / Paid pricing.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
               <Field label="Title *"><input value={resTitle} onChange={e => setResTitle(e.target.value)} className={inputCls} placeholder="Resource title" /></Field>
               <Field label="Description"><textarea value={resDescription} onChange={e => setResDescription(e.target.value)} rows={3} className={inputCls + ' resize-none'} placeholder="Resource description" /></Field>
 
@@ -6501,14 +6691,64 @@ export default function AdminDashboard() {
                       {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                   </Field>
+
+                  {/* Show already-created Subject Bundle for this subject */}
+                  {resUploadMode === 'bundle' && selectedSubjectId && (
+                    <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-800/40">
+                      {loadingResourceBundle ? (
+                        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-2 text-xs text-amber-800 dark:text-amber-300">
+                          <Loader2 size={13} className="animate-spin text-amber-500" />
+                          <span>Checking for existing Subject Bundle...</span>
+                        </div>
+                      ) : resourceSubjectBundle ? (
+                        <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 text-xs space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                              <Package size={14} className="text-amber-500 shrink-0" />
+                              Existing Subject Bundle: {resourceSubjectBundle.subjectName || 'Subject Bundle'}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${resourceSubjectBundle.isActive ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300' : 'bg-red-100 text-red-700'}`}>
+                              {resourceSubjectBundle.isActive ? 'Active Bundle' : 'Inactive Bundle'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 text-[11px] text-amber-900/80 dark:text-amber-200/80">
+                            <span>6-Month Plan: <strong>₹{resourceSubjectBundle.sixMonthPrice}</strong> {resourceSubjectBundle.sixMonthEnabled ? '' : '(Disabled)'}</span>
+                            <span>•</span>
+                            <span>Lifetime Plan: <strong>₹{resourceSubjectBundle.lifetimePrice}</strong> {resourceSubjectBundle.lifetimeEnabled ? '' : '(Disabled)'}</span>
+                          </div>
+                          <p className="text-[11px] text-amber-800 dark:text-amber-300 font-medium">
+                            ✔ Resource uploaded here will become part of this Subject Bundle.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 space-y-1">
+                          <div className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-400">
+                            <AlertCircle size={14} />
+                            <span>No Subject Bundle Created Yet</span>
+                          </div>
+                          <p className="text-[11px] leading-relaxed">
+                            Please create a Subject Bundle in the <strong>Subject Bundles</strong> tab first for this subject, or this resource will automatically initialize the bundle upon saving.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
               {isEditing && (
-                <div className="p-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-200 dark:border-amber-800">
+                <div className="p-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-200 dark:border-amber-800 space-y-2">
                   <p className="text-xs text-amber-700 dark:text-amber-300">
                     <strong>Current:</strong> {editItem.college} → {editItem.course} → {editItem.branch} → Sem {editItem.semester} → {editItem.subject}
                   </p>
+                  {resUploadMode === 'bundle' && editItem?.subjectId && resourceSubjectBundle && (
+                    <div className="pt-2 border-t border-amber-200 dark:border-amber-800/50">
+                      <div className="text-[11px] text-amber-800 dark:text-amber-300 flex items-center justify-between">
+                        <span>Subject Bundle: <strong>{resourceSubjectBundle.subjectName}</strong> (6-Mo: ₹{resourceSubjectBundle.sixMonthPrice} | Lifetime: ₹{resourceSubjectBundle.lifetimePrice})</span>
+                        <span className="text-[10px] font-bold text-green-600">Active</span>
+                      </div>
+                    </div>
+                  )}
                   <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Hierarchy cannot be changed during edit. To reassign, delete and re-create.</p>
                 </div>
               )}
@@ -6615,15 +6855,36 @@ export default function AdminDashboard() {
                 )}
               </div>
 
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 text-sm text-brand-text dark:text-brand-dark-text">
-                  <input type="checkbox" checked={resIsPremium} onChange={e => setResIsPremium(e.target.checked)} className="rounded" />
-                  Premium Resource
-                </label>
-                {resIsPremium && (
-                  <Field label="Price (₹)"><input type="number" value={resPrice} onChange={e => setResPrice(Number(e.target.value))} className={inputCls} placeholder="99" /></Field>
-                )}
-              </div>
+              {resUploadMode === 'bundle' ? (
+                <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                  <Sparkles size={15} className="text-amber-500 shrink-0" />
+                  <span><strong>Subject Bundle Pricing:</strong> Access is controlled by the Subject Bundle pricing. No individual price needed at upload time.</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-4 p-3 rounded-xl bg-gray-50 dark:bg-white/5 border border-brand-border dark:border-brand-dark-border">
+                  <label className="flex items-center gap-2 text-sm text-brand-text dark:text-brand-dark-text cursor-pointer">
+                    <input type="checkbox" checked={resIsPremium} onChange={e => setResIsPremium(e.target.checked)} className="rounded text-primary-500" />
+                    Premium Resource
+                  </label>
+                  {resIsPremium ? (
+                    <div className="flex-1">
+                      <Field label="Price (₹)">
+                        <input
+                          type="number"
+                          value={resPrice || ''}
+                          onChange={e => setResPrice(Number(e.target.value) || 0)}
+                          className={inputCls}
+                          placeholder="99"
+                        />
+                      </Field>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-green-600 font-semibold bg-green-50 dark:bg-green-950/30 px-2.5 py-1 rounded-md">
+                      Free for all users
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex gap-3 mt-5">
               <button onClick={closeModal} className="flex-1 py-3 border border-brand-border dark:border-brand-dark-border rounded-xl text-sm font-semibold text-brand-text dark:text-brand-dark-text" disabled={resUploadStatus === 'uploading'}>Cancel</button>
@@ -6680,7 +6941,14 @@ export default function AdminDashboard() {
             }
           }
 
-          const isFree = editItem.price === 'FREE'
+          const isUnderBundle = (editItem.uploadMode ?? (editItem.id ? (editItem.isBundleOnly ? 'bundle' : 'individual') : 'bundle')) === 'bundle'
+          if (isUnderBundle && !cSelectedSubjectId) {
+            toast.error('Please select a Subject in the Academic Hierarchy to place this course under its Subject Bundle.')
+            setCourseSaving(false)
+            return
+          }
+
+          const isFree = !isUnderBundle && editItem.price === 'FREE'
           const payload = {
             title: editItem.title,
             description: editItem.description || '',
@@ -6690,14 +6958,15 @@ export default function AdminDashboard() {
             duration: editItem.duration || '',
             lectures: editItem.lectures ?? 0,
             level: editItem.level || 'Beginner',
-            isFree,
-            price: isFree ? 0 : (Number(editItem.price) || 0),
+            isFree: isUnderBundle ? false : isFree,
+            price: isUnderBundle ? 0 : (isFree ? 0 : (Number(editItem.price) || 0)),
             tags: editItem.tags || [],
             thumbnailUrl: thumbnailUrl || undefined,
             videoUrl: videoUrl || undefined,
             status: editItem.status || 'Draft',
             notesSubject: editItem.notesSubject || '',
             subjectId: cSelectedSubjectId ? Number(cSelectedSubjectId) : null,
+            isBundleOnly: isUnderBundle,
           }
 
           let savedCourseId: string
@@ -6755,6 +7024,7 @@ export default function AdminDashboard() {
       }
 
       const uploadBusy = courseVideoUploadStatus === 'uploading' || courseSaving
+      const isUnderBundle = (editItem.uploadMode ?? (editItem.id ? (editItem.isBundleOnly ? 'bundle' : 'individual') : 'bundle')) === 'bundle'
 
       return (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
@@ -6764,6 +7034,56 @@ export default function AdminDashboard() {
               <button onClick={closeModal}><X size={18} className="text-brand-muted" /></button>
             </div>
             <div className="space-y-4">
+              {/* Content Type Selector: Subject Bundle vs Individual */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-brand-text dark:text-brand-dark-text">
+                  Content Type *
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setEditItem((p: any) => ({ ...p, uploadMode: 'bundle' }))}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                      isUnderBundle
+                        ? 'border-primary-500 bg-primary-50/70 dark:bg-primary-950/30 ring-2 ring-primary-500/20 shadow-xs'
+                        : 'border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card hover:bg-gray-50 dark:hover:bg-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${isUnderBundle ? 'border-primary-500 bg-primary-500' : 'border-gray-400'}`}>
+                        {isUnderBundle && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </div>
+                      <Package size={16} className="text-primary-500 shrink-0" />
+                      <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text">Subject Bundle</span>
+                    </div>
+                    <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted leading-relaxed pl-5">
+                      Curriculum under Subject Bundle. Access & pricing are managed by the Subject Bundle.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEditItem((p: any) => ({ ...p, uploadMode: 'individual' }))}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                      !isUnderBundle
+                        ? 'border-violet-500 bg-violet-50/70 dark:bg-violet-950/30 ring-2 ring-violet-500/20 shadow-xs'
+                        : 'border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card hover:bg-gray-50 dark:hover:bg-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${!isUnderBundle ? 'border-violet-500 bg-violet-500' : 'border-gray-400'}`}>
+                        {!isUnderBundle && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </div>
+                      <BookOpen size={16} className="text-violet-500 shrink-0" />
+                      <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text">Individual</span>
+                    </div>
+                    <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted leading-relaxed pl-5">
+                      Standalone course under this Subject. Maintains individual Free / Paid pricing.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
               <Field label="Title *"><input value={editItem.title || ''} onChange={e => setEditItem((p: any) => ({ ...p, title: e.target.value }))} className={inputCls} placeholder="Course title" /></Field>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Group">
@@ -6781,9 +7101,16 @@ export default function AdminDashboard() {
                     {['Beginner', 'Intermediate', 'Advanced'].map(l => <option key={l}>{l}</option>)}
                   </select>
                 </Field>
-                <Field label="Price">
-                  <input value={editItem.price === 'FREE' ? 'FREE' : (editItem.price || '')} onChange={e => { const v = e.target.value.toUpperCase(); setEditItem((p: any) => ({ ...p, price: v === 'FREE' ? 'FREE' : parseInt(v) || 0 })) }} className={inputCls} placeholder="FREE or 999" />
-                </Field>
+                {isUnderBundle ? (
+                  <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 text-[11px] text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                    <Sparkles size={13} className="text-amber-500 shrink-0" />
+                    <span>Bundle Pricing (No price needed here)</span>
+                  </div>
+                ) : (
+                  <Field label="Price">
+                    <input value={editItem.price === 'FREE' ? 'FREE' : (editItem.price || '')} onChange={e => { const v = e.target.value.toUpperCase(); setEditItem((p: any) => ({ ...p, price: v === 'FREE' ? 'FREE' : parseInt(v) || 0 })) }} className={inputCls} placeholder="FREE or 999" />
+                  </Field>
+                )}
                 <Field label="Duration"><input value={editItem.duration || ''} onChange={e => setEditItem((p: any) => ({ ...p, duration: e.target.value }))} className={inputCls} placeholder="40 hours" /></Field>
                 <Field label="Status">
                   <select value={editItem.status || 'Draft'} onChange={e => setEditItem((p: any) => ({ ...p, status: e.target.value }))} className={inputCls}>
@@ -6792,11 +7119,24 @@ export default function AdminDashboard() {
                 </Field>
               </div>
 
-              {/* Academic Hierarchy — same College → Course → Branch → Semester →
-                  Subject cascade used by the Resources panel. Optional: leave
-                  unset to keep filtering this course only by Group/Category. */}
-              <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-200 dark:border-blue-800 space-y-3">
-                <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-wider">Academic Hierarchy (optional)</p>
+              {/* Academic Hierarchy */}
+              <div className={`p-4 rounded-xl border space-y-3 ${
+                isUnderBundle
+                  ? 'bg-amber-50/50 dark:bg-amber-950/10 border-amber-200 dark:border-amber-900/40'
+                  : 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <p className={`text-xs font-semibold uppercase tracking-wider ${
+                    isUnderBundle ? 'text-amber-700 dark:text-amber-300' : 'text-blue-700 dark:text-blue-300'
+                  }`}>
+                    Academic Hierarchy {isUnderBundle ? '(Required for Subject Bundle)' : '(Optional)'}
+                  </p>
+                  {isUnderBundle && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">
+                      Target Bundle
+                    </span>
+                  )}
+                </div>
                 <Field label="College">
                   <select value={cSelectedCollegeId} onChange={e => setCSelectedCollegeId(e.target.value ? Number(e.target.value) : '')} className={inputCls}>
                     <option value="">Select College...</option>
@@ -6827,6 +7167,49 @@ export default function AdminDashboard() {
                     {cSubjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </Field>
+
+                {/* Show already-created Subject Bundle for this subject */}
+                {isUnderBundle && cSelectedSubjectId && (
+                  <div className="mt-2 pt-2 border-t border-amber-200 dark:border-amber-800/40">
+                    {loadingCourseBundle ? (
+                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-2 text-xs text-amber-800 dark:text-amber-300">
+                        <Loader2 size={13} className="animate-spin text-amber-500" />
+                        <span>Checking for existing Subject Bundle...</span>
+                      </div>
+                    ) : courseSubjectBundle ? (
+                      <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 text-xs space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                            <Package size={14} className="text-amber-500 shrink-0" />
+                            Existing Subject Bundle: {courseSubjectBundle.subjectName || 'Subject Bundle'}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${courseSubjectBundle.isActive ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300' : 'bg-red-100 text-red-700'}`}>
+                            {courseSubjectBundle.isActive ? 'Active Bundle' : 'Inactive Bundle'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px] text-amber-900/80 dark:text-amber-200/80">
+                          <span>6-Month Plan: <strong>₹{courseSubjectBundle.sixMonthPrice}</strong> {courseSubjectBundle.sixMonthEnabled ? '' : '(Disabled)'}</span>
+                          <span>•</span>
+                          <span>Lifetime Plan: <strong>₹{courseSubjectBundle.lifetimePrice}</strong> {courseSubjectBundle.lifetimeEnabled ? '' : '(Disabled)'}</span>
+                        </div>
+                        <p className="text-[11px] text-amber-800 dark:text-amber-300 font-medium">
+                          ✔ Content uploaded here will become part of this Subject Bundle.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 space-y-1">
+                        <div className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-400">
+                          <AlertCircle size={14} />
+                          <span>No Subject Bundle Created Yet</span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed">
+                          Please create a Subject Bundle in the <strong>Subject Bundles</strong> tab first for this subject, or this course will automatically initialize the bundle upon saving.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <p className="text-[11px] text-blue-600 dark:text-blue-400">
                   Sets this course's place in the same hierarchy students use to filter the Courses panel.
                 </p>
@@ -7655,7 +8038,7 @@ export default function AdminDashboard() {
   // ─── Pricing Sections ─────────────────────────────────────────────────────
 
   // ── Shared Discount Section (course OR resource) ─────────────────────────
-  function DiscountSection({ productType }: { productType: 'course' | 'resource' }) {
+  function DiscountSection({ productType }: { productType: ProductType }) {
     const [discounts, setDiscounts] = useState<ProductDiscount[]>([])
     const [loading, setLoading] = useState(true)
     const [discSearch, setDiscSearch] = useState('')
@@ -7770,7 +8153,7 @@ export default function AdminDashboard() {
       Disabled: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
     }[status] || 'bg-gray-100 text-gray-600')
 
-    const label = productType === 'course' ? 'Course' : 'Resource'
+    const label = productType === 'subject_bundle' ? 'Subject Bundle' : productType === 'resource_bundle' ? 'Resource Bundle' : productType === 'course' ? 'Course' : 'Resource'
 
     return (
       <div>
@@ -8278,6 +8661,2148 @@ export default function AdminDashboard() {
     )
   }
 
+  // ── Subject Bundles Section ───────────────────────────────────────────────
+  function SubjectBundlesSection() {
+    const [bundles, setBundles] = useState<SubjectBundle[]>([])
+    const [loading, setLoading] = useState(true)
+    const [search, setSearch] = useState('')
+    const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+
+    // Modals
+    const [showBundleModal, setShowBundleModal] = useState(false)
+    const [editingBundle, setEditingBundle] = useState<SubjectBundle | null>(null)
+    const [deletingBundle, setDeletingBundle] = useState<SubjectBundle | null>(null)
+    const [curriculumBundle, setCurriculumBundle] = useState<SubjectBundle | null>(null)
+
+    // Form fields for Bundle modal
+    const [formSubjectId, setFormSubjectId] = useState<number | null>(null)
+    const [formSixMonthPrice, setFormSixMonthPrice] = useState('499')
+    const [formLifetimePrice, setFormLifetimePrice] = useState('999')
+    const [formSixMonthEnabled, setFormSixMonthEnabled] = useState(true)
+    const [formLifetimeEnabled, setFormLifetimeEnabled] = useState(true)
+    const [formIsActive, setFormIsActive] = useState(true)
+    const [formThumbnailUrl, setFormThumbnailUrl] = useState('')
+    const [formDescription, setFormDescription] = useState('')
+    const [formThumbFile, setFormThumbFile] = useState<File | null>(null)
+    const [formThumbPreview, setFormThumbPreview] = useState<string | null>(null)
+    const [savingBundle, setSavingBundle] = useState(false)
+
+    // Available subjects for dropdown
+    const [subjectOptions, setSubjectOptions] = useState<any[]>([])
+    const [loadingSubjects, setLoadingSubjects] = useState(false)
+    const [subjectSearchQuery, setSubjectSearchQuery] = useState('')
+
+    // Curriculum manager state
+    const [curriculumUnits, setCurriculumUnits] = useState<SubjectUnit[]>([])
+    const [curriculumVideos, setCurriculumVideos] = useState<SubjectVideo[]>([])
+    const [curriculumResources, setCurriculumResources] = useState<SubjectUnitResource[]>([])
+    const [loadingCurriculum, setLoadingCurriculum] = useState(false)
+    const [activeCurriculumUnitId, setActiveCurriculumUnitId] = useState<string | null>(null)
+
+    // Unit modal
+    const [showUnitModal, setShowUnitModal] = useState(false)
+    const [editingUnit, setEditingUnit] = useState<SubjectUnit | null>(null)
+    const [unitNumber, setUnitNumber] = useState(1)
+    const [unitTitle, setUnitTitle] = useState('')
+    const [unitDescription, setUnitDescription] = useState('')
+    const [savingUnit, setSavingUnit] = useState(false)
+
+    // Video modal
+    const [showVideoModal, setShowVideoModal] = useState(false)
+    const [editingVideo, setEditingVideo] = useState<SubjectVideo | null>(null)
+    const [videoTitle, setVideoTitle] = useState('')
+    const [videoDescription, setVideoDescription] = useState('')
+    const [videoUrl, setVideoUrl] = useState('')
+    const [videoDuration, setVideoDuration] = useState('')
+    const [videoSortOrder, setVideoSortOrder] = useState(0)
+    const [videoIsFreePreview, setVideoIsFreePreview] = useState(false)
+    const [savingVideo, setSavingVideo] = useState(false)
+
+    const loadBundles = useCallback(async () => {
+      setLoading(true)
+      try {
+        const data = await fetchAllSubjectBundles()
+        setBundles(data)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to load subject bundles')
+      } finally {
+        setLoading(false)
+      }
+    }, [])
+
+    useEffect(() => {
+      loadBundles()
+    }, [loadBundles])
+
+    const openCreateModal = async () => {
+      setEditingBundle(null)
+      setFormSubjectId(null)
+      setFormSixMonthPrice('499')
+      setFormLifetimePrice('999')
+      setFormSixMonthEnabled(true)
+      setFormLifetimeEnabled(true)
+      setFormIsActive(true)
+      setFormThumbnailUrl('')
+      setFormDescription('')
+      setFormThumbFile(null)
+      setFormThumbPreview(null)
+      setSubjectSearchQuery('')
+      setShowBundleModal(true)
+
+      if (subjectOptions.length === 0) {
+        setLoadingSubjects(true)
+        try {
+          const list = await fetchAllSubjectsWithDetails()
+          setSubjectOptions(list)
+        } catch {
+          toast.error('Failed to load subjects list')
+        } finally {
+          setLoadingSubjects(false)
+        }
+      }
+    }
+
+    const openEditModal = (b: SubjectBundle) => {
+      setEditingBundle(b)
+      setFormSubjectId(b.subjectId)
+      setFormSixMonthPrice(String(b.sixMonthPrice))
+      setFormLifetimePrice(String(b.lifetimePrice))
+      setFormSixMonthEnabled(b.sixMonthEnabled)
+      setFormLifetimeEnabled(b.lifetimeEnabled)
+      setFormIsActive(b.isActive)
+      setFormThumbnailUrl(b.thumbnailUrl || '')
+      setFormDescription(b.description || '')
+      setFormThumbFile(null)
+      setFormThumbPreview(b.thumbnailUrl || null)
+      setShowBundleModal(true)
+    }
+
+    const handleSaveBundle = async () => {
+      if (!formSubjectId) {
+        toast.error('Please select a subject')
+        return
+      }
+      const smPrice = parseFloat(formSixMonthPrice)
+      const ltPrice = parseFloat(formLifetimePrice)
+
+      if (isNaN(smPrice) || smPrice < 0 || isNaN(ltPrice) || ltPrice < 0) {
+        toast.error('Prices must be non-negative numbers')
+        return
+      }
+      if (!formSixMonthEnabled && !formLifetimeEnabled) {
+        toast.error('At least one plan (6-Month or Lifetime) must be enabled')
+        return
+      }
+
+      setSavingBundle(true)
+      try {
+        let finalThumbnailUrl = formThumbnailUrl.trim()
+        if (formThumbFile) {
+          const cleanName = formThumbFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+          const path = `bundle_${Date.now()}_${cleanName}`
+          finalThumbnailUrl = await uploadCourseThumbnail(formThumbFile, path)
+        }
+
+        if (editingBundle) {
+          const updated = await updateSubjectBundle(editingBundle.id, {
+            sixMonthPrice: smPrice,
+            lifetimePrice: ltPrice,
+            sixMonthEnabled: formSixMonthEnabled,
+            lifetimeEnabled: formLifetimeEnabled,
+            isActive: formIsActive,
+            thumbnailUrl: finalThumbnailUrl || undefined,
+            description: formDescription.trim() || null,
+          })
+          setBundles(prev => prev.map(b => b.id === updated.id ? { ...b, ...updated } : b))
+          toast.success('Subject bundle updated!')
+        } else {
+          const created = await createSubjectBundle({
+            subjectId: formSubjectId,
+            sixMonthPrice: smPrice,
+            lifetimePrice: ltPrice,
+            sixMonthEnabled: formSixMonthEnabled,
+            lifetimeEnabled: formLifetimeEnabled,
+            isActive: formIsActive,
+            thumbnailUrl: finalThumbnailUrl || undefined,
+            description: formDescription.trim() || null,
+          })
+          setBundles(prev => [created, ...prev])
+          toast.success('Subject bundle created!')
+        }
+        setShowBundleModal(false)
+        await loadBundles()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to save subject bundle')
+      } finally {
+        setSavingBundle(false)
+      }
+    }
+
+    const handleToggleActive = async (b: SubjectBundle) => {
+      try {
+        const next = !b.isActive
+        await toggleSubjectBundleActive(b.id, next)
+        setBundles(prev => prev.map(x => x.id === b.id ? { ...x, isActive: next } : x))
+        toast.success(next ? 'Bundle activated' : 'Bundle deactivated')
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to toggle bundle status')
+      }
+    }
+
+    const handleDeleteBundle = async () => {
+      if (!deletingBundle) return
+      try {
+        await deleteSubjectBundle(deletingBundle.id)
+        setBundles(prev => prev.filter(b => b.id !== deletingBundle.id))
+        toast.success('Subject bundle deleted')
+        setDeletingBundle(null)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to delete bundle')
+      }
+    }
+
+    // Load curriculum for subject
+    const openCurriculumManager = async (b: SubjectBundle) => {
+      setCurriculumBundle(b)
+      setLoadingCurriculum(true)
+      setActiveCurriculumUnitId(null)
+      try {
+        const curr = await fetchSubjectCurriculum(b.subjectId)
+        setCurriculumUnits(curr.units)
+        setCurriculumVideos(curr.videos)
+        setCurriculumResources(curr.resources)
+        if (curr.units.length > 0) {
+          setActiveCurriculumUnitId(curr.units[0].id)
+        }
+      } catch {
+        toast.error('Failed to load subject curriculum')
+      } finally {
+        setLoadingCurriculum(false)
+      }
+    }
+
+    const reloadCurriculum = async () => {
+      if (!curriculumBundle) return
+      try {
+        const curr = await fetchSubjectCurriculum(curriculumBundle.subjectId)
+        setCurriculumUnits(curr.units)
+        setCurriculumVideos(curr.videos)
+        setCurriculumResources(curr.resources)
+        if (!activeCurriculumUnitId && curr.units.length > 0) {
+          setActiveCurriculumUnitId(curr.units[0].id)
+        }
+      } catch (err) {
+        console.error('Failed to reload curriculum:', err)
+      }
+    }
+
+    const handleSaveUnit = async () => {
+      if (!curriculumBundle || !unitTitle.trim()) {
+        toast.error('Unit title is required')
+        return
+      }
+      setSavingUnit(true)
+      try {
+        if (editingUnit) {
+          await updateSubjectUnit(editingUnit.id, {
+            unitNumber,
+            title: unitTitle.trim(),
+            description: unitDescription.trim(),
+          })
+          toast.success('Unit updated')
+        } else {
+          const newUnit = await createSubjectUnit({
+            subjectId: curriculumBundle.subjectId,
+            unitNumber,
+            title: unitTitle.trim(),
+            description: unitDescription.trim(),
+          })
+          setActiveCurriculumUnitId(newUnit.id)
+          toast.success('Unit created')
+        }
+        setShowUnitModal(false)
+        await reloadCurriculum()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to save unit')
+      } finally {
+        setSavingUnit(false)
+      }
+    }
+
+    const handleDeleteUnit = async (uId: string) => {
+      if (!window.confirm('Delete this unit and all its lecture videos?')) return
+      try {
+        await deleteSubjectUnit(uId)
+        toast.success('Unit deleted')
+        if (activeCurriculumUnitId === uId) setActiveCurriculumUnitId(null)
+        await reloadCurriculum()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to delete unit')
+      }
+    }
+
+    const handleSaveVideo = async () => {
+      if (!curriculumBundle || !activeCurriculumUnitId || !videoTitle.trim() || !videoUrl.trim()) {
+        toast.error('Lecture title and Video URL are required')
+        return
+      }
+      setSavingVideo(true)
+      try {
+        if (editingVideo) {
+          await updateSubjectVideo(editingVideo.id, {
+            title: videoTitle.trim(),
+            description: videoDescription.trim(),
+            videoUrl: videoUrl.trim(),
+            duration: videoDuration.trim(),
+            sortOrder: videoSortOrder,
+            isFreePreview: videoIsFreePreview,
+            unitId: activeCurriculumUnitId,
+          })
+          toast.success('Lecture updated')
+        } else {
+          await createSubjectVideo({
+            subjectId: curriculumBundle.subjectId,
+            unitId: activeCurriculumUnitId,
+            title: videoTitle.trim(),
+            description: videoDescription.trim(),
+            videoUrl: videoUrl.trim(),
+            duration: videoDuration.trim(),
+            sortOrder: videoSortOrder,
+            isFreePreview: videoIsFreePreview,
+          })
+          toast.success('Lecture video added')
+        }
+        setShowVideoModal(false)
+        await reloadCurriculum()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to save video')
+      } finally {
+        setSavingVideo(false)
+      }
+    }
+
+    const handleDeleteVideo = async (vId: string) => {
+      if (!window.confirm('Delete this lecture video?')) return
+      try {
+        await deleteSubjectVideo(vId)
+        toast.success('Lecture deleted')
+        await reloadCurriculum()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to delete video')
+      }
+    }
+
+    // Filter bundles
+    const filteredBundles = bundles.filter(b => {
+      const q = search.toLowerCase()
+      const matchesSearch = !q ||
+        (b.subjectName?.toLowerCase() || '').includes(q) ||
+        (b.subjectCode?.toLowerCase() || '').includes(q) ||
+        (b.branchName?.toLowerCase() || '').includes(q) ||
+        (b.collegeName?.toLowerCase() || '').includes(q)
+
+      const matchesStatus =
+        statusFilter === 'all' ? true :
+        statusFilter === 'active' ? b.isActive :
+        !b.isActive
+
+      return matchesSearch && matchesStatus
+    })
+
+    // Aggregates
+    const totalBundles = bundles.length
+    const activeBundles = bundles.filter(b => b.isActive).length
+    const totalPurchasers = bundles.reduce((acc, b) => acc + (b.totalPurchases || 0), 0)
+    const totalRevenue = bundles.reduce((acc, b) => acc + (b.totalRevenue || 0), 0)
+
+    const activeUnit = curriculumUnits.find(u => u.id === activeCurriculumUnitId)
+    const activeUnitVideos = curriculumVideos.filter(v => v.unitId === activeCurriculumUnitId)
+    const activeUnitResources = curriculumResources.filter(r => r.unitId === activeCurriculumUnitId)
+
+    const availableSubjectList = subjectOptions.filter(s => {
+      if (!subjectSearchQuery.trim()) return true
+      const q = subjectSearchQuery.toLowerCase()
+      const sName = (s.name || '').toLowerCase()
+      const sCode = (s.code || '').toLowerCase()
+      const crsName = (s.semesters?.branches?.courses?.name || '').toLowerCase()
+      const brName = (s.semesters?.branches?.name || '').toLowerCase()
+      return sName.includes(q) || sCode.includes(q) || crsName.includes(q) || brName.includes(q)
+    })
+
+    return (
+      <div className="space-y-6">
+        <SectionHeader
+          title="Subject Bundles"
+          count={bundles.length}
+          onAdd={openCreateModal}
+          addLabel="Create Subject Bundle"
+        />
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { label: 'Total Bundles', value: totalBundles, color: 'text-brand-text dark:text-brand-dark-text' },
+            { label: 'Active Bundles', value: activeBundles, color: 'text-emerald-500' },
+            { label: 'Active Students', value: totalPurchasers, color: 'text-primary-500' },
+            { label: 'Total Revenue', value: `₹${totalRevenue.toLocaleString('en-IN')}`, color: 'text-violet-500' },
+          ].map(stat => (
+            <div key={stat.label} className="card p-4">
+              <p className="text-xs text-brand-muted dark:text-brand-dark-muted font-medium">{stat.label}</p>
+              <p className={`text-2xl font-black mt-1 ${stat.color}`}>{stat.value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Search & Filter Toolbar */}
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+          <SearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="Search subjects, codes, colleges..."
+          />
+          <div className="flex gap-2 w-full sm:w-auto">
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value as any)}
+              className="text-xs font-semibold px-3 py-2 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg text-brand-text dark:text-brand-dark-text"
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active Only</option>
+              <option value="inactive">Inactive Only</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Table of Bundles */}
+        {loading ? (
+          <div className="flex justify-center py-16">
+            <Loader2 size={32} className="animate-spin text-primary-500" />
+          </div>
+        ) : filteredBundles.length === 0 ? (
+          <div className="card p-12 text-center text-sm text-brand-muted">
+            <Package size={40} className="mx-auto mb-3 opacity-30 text-primary-500" />
+            <p className="font-semibold text-brand-text dark:text-brand-dark-text">No Subject Bundles found</p>
+            <p className="text-xs mt-1">Create your first subject bundle to offer 6-Month and Lifetime complete curriculum access.</p>
+            <button
+              onClick={openCreateModal}
+              className="mt-4 px-4 py-2 bg-primary-500 text-white rounded-xl text-xs font-bold hover:bg-primary-600 transition-colors"
+            >
+              Create Subject Bundle
+            </button>
+          </div>
+        ) : (
+          <div className="card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-white/5 border-b border-brand-border dark:border-brand-dark-border">
+                  <tr>
+                    {['Subject & Academic Path', '6-Month Plan', 'Lifetime Plan', 'Status', 'Sales & Revenue', 'Actions'].map(h => (
+                      <th
+                        key={h}
+                        className="px-4 py-3 text-left text-xs font-semibold text-brand-muted dark:text-brand-dark-muted uppercase tracking-wider"
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
+                  {filteredBundles.map(b => (
+                    <tr key={b.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                      {/* Subject info */}
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-3">
+                          {b.thumbnailUrl ? (
+                            <img
+                              src={b.thumbnailUrl}
+                              alt={b.subjectName || 'Bundle'}
+                              className="w-10 h-10 rounded-xl object-cover border border-brand-border dark:border-brand-dark-border flex-shrink-0 shadow-xs"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-xl bg-primary-50 dark:bg-primary-950/40 text-primary-600 flex items-center justify-center font-bold text-xs flex-shrink-0 border border-primary-200/50">
+                              <BookOpen size={18} />
+                            </div>
+                          )}
+                          <div>
+                            <p className="font-bold text-brand-text dark:text-brand-dark-text">
+                              {b.subjectName || `Subject #${b.subjectId}`}
+                            </p>
+                            <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted flex items-center gap-1.5 flex-wrap mt-0.5">
+                              {b.subjectCode && (
+                                <span className="font-mono px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/10 font-semibold text-[10px]">
+                                  {b.subjectCode}
+                                </span>
+                              )}
+                              <span>
+                                {[b.collegeName, b.academicCourseName, b.branchName, b.semesterNumber != null ? `Sem ${b.semesterNumber}` : null]
+                                  .filter(Boolean)
+                                  .join(' · ')}
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* 6-Month Plan */}
+                      <td className="px-4 py-3.5">
+                        <div className="space-y-1">
+                          <span className="font-bold text-brand-text dark:text-brand-dark-text text-sm">
+                            ₹{b.sixMonthPrice}
+                          </span>
+                          <div>
+                            {b.sixMonthEnabled ? (
+                              <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">
+                                Enabled
+                              </span>
+                            ) : (
+                              <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400">
+                                Disabled
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Lifetime Plan */}
+                      <td className="px-4 py-3.5">
+                        <div className="space-y-1">
+                          <span className="font-bold text-brand-text dark:text-brand-dark-text text-sm">
+                            ₹{b.lifetimePrice}
+                          </span>
+                          <div>
+                            {b.lifetimeEnabled ? (
+                              <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-purple-50 text-purple-600 dark:bg-purple-950/30 dark:text-purple-400">
+                                Enabled
+                              </span>
+                            ) : (
+                              <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400">
+                                Disabled
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Status Toggle */}
+                      <td className="px-4 py-3.5">
+                        <button
+                          onClick={() => handleToggleActive(b)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
+                            b.isActive
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 hover:bg-emerald-200'
+                              : 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400 hover:bg-gray-200'
+                          }`}
+                        >
+                          <span className={`w-2 h-2 rounded-full ${b.isActive ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                          {b.isActive ? 'Active' : 'Inactive'}
+                        </button>
+                      </td>
+
+                      {/* Sales Stats */}
+                      <td className="px-4 py-3.5">
+                        <div className="space-y-0.5 text-xs">
+                          <p className="font-bold text-brand-text dark:text-brand-dark-text">
+                            {b.activePurchases ?? 0} active users
+                          </p>
+                          <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted font-medium">
+                            {b.totalPurchases ?? 0} sales · ₹{(b.totalRevenue ?? 0).toLocaleString('en-IN')}
+                          </p>
+                        </div>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => openCurriculumManager(b)}
+                            className="px-2.5 py-1.5 rounded-lg bg-primary-50 dark:bg-primary-950/30 text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/40 text-xs font-semibold flex items-center gap-1 transition-colors"
+                            title="Manage Units & Video Lectures"
+                          >
+                            <Layers size={13} /> Curriculum
+                          </button>
+                          <button
+                            onClick={() => openEditModal(b)}
+                            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted hover:text-brand-text transition-colors"
+                            title="Edit Pricing & Plans"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={() => setDeletingBundle(b)}
+                            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-red-500 transition-colors"
+                            title="Delete Bundle"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── Modal: Create / Edit Subject Bundle ─────────────────────────── */}
+        <AnimatePresence>
+          {showBundleModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 overflow-y-auto"
+              onClick={() => !savingBundle && setShowBundleModal(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.95 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0.95 }}
+                onClick={e => e.stopPropagation()}
+                className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto"
+              >
+                <div className="flex items-center justify-between border-b border-brand-border dark:border-brand-dark-border pb-4">
+                  <div className="flex items-center gap-2.5">
+                    <Package className="text-primary-500" size={20} />
+                    <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">
+                      {editingBundle ? 'Edit Subject Bundle' : 'Create Subject Bundle'}
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setShowBundleModal(false)}
+                    className="p-1.5 rounded-lg text-brand-muted hover:bg-gray-100 dark:hover:bg-white/10"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Subject Selector */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-brand-muted dark:text-brand-dark-muted mb-1.5">
+                    Subject *
+                  </label>
+                  {editingBundle ? (
+                    <div className="p-3 rounded-xl bg-gray-50 dark:bg-white/5 border border-brand-border dark:border-brand-dark-border">
+                      <p className="font-bold text-sm text-brand-text dark:text-brand-dark-text">
+                        {editingBundle.subjectName}
+                      </p>
+                      <p className="text-xs text-brand-muted mt-0.5">
+                        {editingBundle.subjectCode} · {[editingBundle.collegeName, editingBundle.academicCourseName, editingBundle.branchName].filter(Boolean).join(' · ')}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <input
+                        value={subjectSearchQuery}
+                        onChange={e => setSubjectSearchQuery(e.target.value)}
+                        placeholder="Search subject by name or code..."
+                        className={inputCls}
+                      />
+                      <select
+                        value={formSubjectId ?? ''}
+                        onChange={e => setFormSubjectId(e.target.value ? Number(e.target.value) : null)}
+                        className={inputCls}
+                      >
+                        <option value="">-- Select Subject ({availableSubjectList.length} available) --</option>
+                        {availableSubjectList.map(s => {
+                          const crs = s.semesters?.branches?.courses?.name
+                          const sem = s.semesters?.semester_number
+                          const br = s.semesters?.branches?.name
+                          return (
+                            <option key={s.id} value={s.id}>
+                              {s.name} ({s.code || 'NO-CODE'}) {crs ? `— ${crs} ${br ? `· ${br}` : ''} Sem ${sem}` : ''}
+                            </option>
+                          )
+                        })}
+                      </select>
+                      {loadingSubjects && (
+                        <p className="text-xs text-primary-500 flex items-center gap-1.5">
+                          <Loader2 size={12} className="animate-spin" /> Loading subjects from catalog...
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Bundle Thumbnail */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-brand-muted dark:text-brand-dark-muted">
+                    Bundle Thumbnail
+                  </label>
+                  <div className="flex items-center gap-3.5 p-3 rounded-xl border border-brand-border dark:border-brand-dark-border bg-gray-50/60 dark:bg-white/5">
+                    {/* Thumbnail preview */}
+                    <div className="w-24 h-16 rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card flex items-center justify-center overflow-hidden flex-shrink-0 relative group shadow-xs">
+                      {formThumbPreview ? (
+                        <img
+                          src={formThumbPreview}
+                          alt="Bundle thumbnail"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center text-brand-muted p-1 text-center">
+                          <ImageIcon size={20} className="opacity-40 mb-0.5" />
+                          <span className="text-[9px]">No image</span>
+                        </div>
+                      )}
+                      {formThumbPreview && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormThumbFile(null)
+                            setFormThumbnailUrl('')
+                            setFormThumbPreview(null)
+                          }}
+                          className="absolute inset-0 bg-black/65 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold cursor-pointer"
+                          title="Remove thumbnail"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+
+                    {/* File upload + URL input */}
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-50 dark:bg-primary-950/40 text-primary-600 dark:text-primary-400 hover:bg-primary-100 text-xs font-semibold cursor-pointer transition-colors border border-primary-200 dark:border-primary-800/40">
+                        <Upload size={12} />
+                        <span className="truncate max-w-[170px]">
+                          {formThumbFile ? formThumbFile.name : formThumbPreview ? 'Change Thumbnail File' : 'Upload Thumbnail File'}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={e => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              setFormThumbFile(file)
+                              setFormThumbPreview(URL.createObjectURL(file))
+                            }
+                          }}
+                        />
+                      </label>
+                      <input
+                        type="url"
+                        value={formThumbnailUrl}
+                        onChange={e => {
+                          setFormThumbnailUrl(e.target.value)
+                          if (!formThumbFile) {
+                            setFormThumbPreview(e.target.value.trim() || null)
+                          }
+                        }}
+                        placeholder="Or paste image URL (https://...)"
+                        className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card text-brand-text dark:text-brand-dark-text placeholder:text-brand-muted"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-brand-muted">
+                    16:9 banner (e.g. 1280×720 or 640×360) displayed on course cards and bundle details page.
+                  </p>
+                </div>
+
+                {/* Bundle Description */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-brand-muted dark:text-brand-dark-muted">
+                      Bundle Description
+                    </label>
+                    <span className="text-[10px] text-brand-muted">Optional</span>
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={formDescription}
+                    onChange={e => setFormDescription(e.target.value)}
+                    placeholder="Enter custom curriculum summary, highlights, or leave empty for default description..."
+                    className={inputCls + ' resize-none'}
+                  />
+                  <p className="text-[11px] text-brand-muted">
+                    Displays below the subject title on the public course & bundle overview page.
+                  </p>
+                </div>
+
+                {/* 6-Month Plan */}
+                <div className="p-4 rounded-xl border border-brand-border dark:border-brand-dark-border bg-gray-50/50 dark:bg-white/5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-brand-text dark:text-brand-dark-text">
+                      6-Month Plan
+                    </span>
+                    <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formSixMonthEnabled}
+                        onChange={e => setFormSixMonthEnabled(e.target.checked)}
+                        className="rounded text-primary-500 focus:ring-primary-500"
+                      />
+                      Enable Plan
+                    </label>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-brand-muted mb-1">Price (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={formSixMonthPrice}
+                      onChange={e => setFormSixMonthPrice(e.target.value)}
+                      disabled={!formSixMonthEnabled}
+                      className={inputCls}
+                      placeholder="499"
+                    />
+                  </div>
+                </div>
+
+                {/* Lifetime Plan */}
+                <div className="p-4 rounded-xl border border-brand-border dark:border-brand-dark-border bg-gray-50/50 dark:bg-white/5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-brand-text dark:text-brand-dark-text">
+                      Lifetime Plan
+                    </span>
+                    <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formLifetimeEnabled}
+                        onChange={e => setFormLifetimeEnabled(e.target.checked)}
+                        className="rounded text-primary-500 focus:ring-primary-500"
+                      />
+                      Enable Plan
+                    </label>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-brand-muted mb-1">Price (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={formLifetimePrice}
+                      onChange={e => setFormLifetimePrice(e.target.value)}
+                      disabled={!formLifetimeEnabled}
+                      className={inputCls}
+                      placeholder="999"
+                    />
+                  </div>
+                </div>
+
+                {/* Bundle Status */}
+                <label className="flex items-center gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={formIsActive}
+                    onChange={e => setFormIsActive(e.target.checked)}
+                    className="w-4 h-4 rounded text-primary-500 focus:ring-primary-500"
+                  />
+                  <div>
+                    <p className="text-sm font-bold text-brand-text dark:text-brand-dark-text">Bundle Active</p>
+                    <p className="text-xs text-brand-muted">Visible for students to purchase on Courses & Subject Bundle pages</p>
+                  </div>
+                </label>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setShowBundleModal(false)}
+                    disabled={savingBundle}
+                    className="flex-1 py-2.5 rounded-xl border border-brand-border text-sm font-semibold hover:bg-gray-100 dark:hover:bg-white/5"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveBundle}
+                    disabled={savingBundle}
+                    className="flex-1 py-2.5 rounded-xl bg-primary-500 text-white text-sm font-bold hover:bg-primary-600 flex items-center justify-center gap-2"
+                  >
+                    {savingBundle && <Loader2 size={14} className="animate-spin" />}
+                    {editingBundle ? 'Update Bundle' : 'Create Bundle'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── Modal: Curriculum Manager (Units & Videos) ────────────────── */}
+        <AnimatePresence>
+          {curriculumBundle && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 overflow-y-auto"
+              onClick={() => setCurriculumBundle(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.95 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0.95 }}
+                onClick={e => e.stopPropagation()}
+                className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-4xl w-full shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-brand-border dark:border-brand-dark-border pb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Layers className="text-primary-500" size={20} />
+                      <h3 className="text-lg font-bold text-brand-text dark:text-brand-dark-text">
+                        Curriculum: {curriculumBundle.subjectName}
+                      </h3>
+                      {curriculumBundle.subjectCode && (
+                        <span className="font-mono text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-white/10 font-bold">
+                          {curriculumBundle.subjectCode}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-brand-muted mt-1">
+                      {[curriculumBundle.collegeName, curriculumBundle.academicCourseName, curriculumBundle.branchName, curriculumBundle.semesterNumber != null ? `Sem ${curriculumBundle.semesterNumber}` : null].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setCurriculumBundle(null)}
+                    className="p-1.5 rounded-lg text-brand-muted hover:bg-gray-100 dark:hover:bg-white/10"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {loadingCurriculum ? (
+                  <div className="flex justify-center py-16">
+                    <Loader2 size={32} className="animate-spin text-primary-500" />
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    {/* Unit Tabs & Add Unit */}
+                    <div className="flex items-center justify-between gap-3 overflow-x-auto pb-2 border-b border-brand-border dark:border-brand-dark-border">
+                      <div className="flex items-center gap-2 overflow-x-auto">
+                        {curriculumUnits.map(u => (
+                          <button
+                            key={u.id}
+                            onClick={() => setActiveCurriculumUnitId(u.id)}
+                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                              activeCurriculumUnitId === u.id
+                                ? 'bg-primary-500 text-white shadow-sm'
+                                : 'bg-gray-100 dark:bg-white/5 text-brand-text dark:text-brand-dark-text hover:bg-gray-200'
+                            }`}
+                          >
+                            <span>Unit {u.unitNumber}</span>
+                            <span className="text-[10px] opacity-75">
+                              ({curriculumVideos.filter(v => v.unitId === u.id).length})
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => {
+                          setEditingUnit(null)
+                          setUnitNumber(curriculumUnits.length + 1)
+                          setUnitTitle('')
+                          setUnitDescription('')
+                          setShowUnitModal(true)
+                        }}
+                        className="flex-shrink-0 px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-white/10 text-xs font-bold hover:bg-gray-200 flex items-center gap-1 text-primary-600 dark:text-primary-400"
+                      >
+                        <Plus size={14} /> Add Unit
+                      </button>
+                    </div>
+
+                    {/* Active Unit Details */}
+                    {activeUnit ? (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-white/5 border border-brand-border dark:border-brand-dark-border">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wider text-primary-500">
+                              Unit {activeUnit.unitNumber}
+                            </p>
+                            <h4 className="text-base font-bold text-brand-text dark:text-brand-dark-text mt-0.5">
+                              {activeUnit.title}
+                            </h4>
+                            {activeUnit.description && (
+                              <p className="text-xs text-brand-muted mt-1">{activeUnit.description}</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                setEditingUnit(activeUnit)
+                                setUnitNumber(activeUnit.unitNumber)
+                                setUnitTitle(activeUnit.title)
+                                setUnitDescription(activeUnit.description || '')
+                                setShowUnitModal(true)
+                              }}
+                              className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-white/10 text-brand-muted"
+                              title="Edit Unit"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUnit(activeUnit.id)}
+                              className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-950/30 text-red-500"
+                              title="Delete Unit"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Lecture Videos in this unit */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <h5 className="text-xs font-bold uppercase tracking-wider text-brand-text dark:text-brand-dark-text flex items-center gap-1.5">
+                              <Video size={14} className="text-primary-500" />
+                              Lecture Videos ({activeUnitVideos.length})
+                            </h5>
+                            <button
+                              onClick={() => {
+                                setEditingVideo(null)
+                                setVideoTitle('')
+                                setVideoDescription('')
+                                setVideoUrl('')
+                                setVideoDuration('')
+                                setVideoSortOrder(activeUnitVideos.length + 1)
+                                setVideoIsFreePreview(false)
+                                setShowVideoModal(true)
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-primary-50 text-primary-600 dark:bg-primary-950/40 dark:text-primary-400 text-xs font-bold flex items-center gap-1 hover:bg-primary-100"
+                            >
+                              <Plus size={13} /> Add Lecture
+                            </button>
+                          </div>
+
+                          {activeUnitVideos.length === 0 ? (
+                            <div className="p-6 rounded-xl border border-dashed border-gray-200 dark:border-white/10 text-center text-xs text-brand-muted">
+                              No video lectures added to this unit yet.
+                            </div>
+                          ) : (
+                            <div className="divide-y divide-brand-border dark:divide-brand-dark-border border border-brand-border dark:border-brand-dark-border rounded-xl overflow-hidden">
+                              {activeUnitVideos.map(v => (
+                                <div key={v.id} className="p-3 flex items-center justify-between gap-3 hover:bg-gray-50/50 dark:hover:bg-white/5">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-950/30 text-red-500 flex items-center justify-center flex-shrink-0">
+                                      <PlayCircle size={18} />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-bold text-brand-text dark:text-brand-dark-text truncate">
+                                        {v.title}
+                                      </p>
+                                      <p className="text-[11px] text-brand-muted flex items-center gap-2 mt-0.5">
+                                        {v.duration && <span>{v.duration}</span>}
+                                        {v.isFreePreview && (
+                                          <span className="px-1.5 py-0.2 rounded bg-green-100 text-green-700 text-[10px] font-bold">
+                                            Free Preview
+                                          </span>
+                                        )}
+                                        <span className="font-mono text-[10px] truncate max-w-[200px] opacity-70">
+                                          {v.videoUrl}
+                                        </span>
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    <button
+                                      onClick={() => {
+                                        setEditingVideo(v)
+                                        setVideoTitle(v.title)
+                                        setVideoDescription(v.description || '')
+                                        setVideoUrl(v.videoUrl)
+                                        setVideoDuration(v.duration || '')
+                                        setVideoSortOrder(v.sortOrder)
+                                        setVideoIsFreePreview(v.isFreePreview)
+                                        setShowVideoModal(true)
+                                      }}
+                                      className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted"
+                                      title="Edit Lecture"
+                                    >
+                                      <Edit2 size={13} />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteVideo(v.id)}
+                                      className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-red-500"
+                                      title="Delete Lecture"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Associated Notes & Resources for this unit */}
+                        {activeUnitResources.length > 0 && (
+                          <div className="space-y-2 pt-2">
+                            <h5 className="text-xs font-bold uppercase tracking-wider text-brand-text dark:text-brand-dark-text flex items-center gap-1.5">
+                              <FileText size={14} className="text-violet-500" />
+                              Associated Notes & Resources ({activeUnitResources.length})
+                            </h5>
+                            <div className="divide-y divide-brand-border dark:divide-brand-dark-border border border-brand-border dark:border-brand-dark-border rounded-xl overflow-hidden">
+                              {activeUnitResources.map(r => (
+                                <div key={r.id} className="p-3 flex items-center justify-between text-xs">
+                                  <div className="flex items-center gap-2">
+                                    <FileText size={15} className="text-brand-muted" />
+                                    <span className="font-bold text-brand-text dark:text-brand-dark-text">{r.title}</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/10 font-medium">
+                                      {r.typeName}
+                                    </span>
+                                  </div>
+                                  <span className="text-brand-muted text-[11px]">{r.downloads} downloads</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="p-12 text-center text-xs text-brand-muted border border-dashed rounded-xl">
+                        No units created yet. Click "+ Add Unit" above to add Unit 1.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── Modal: Add / Edit Unit ──────────────────────────────────────── */}
+        <AnimatePresence>
+          {showUnitModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-60 bg-black/70 flex items-center justify-center p-4"
+              onClick={() => !savingUnit && setShowUnitModal(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.95 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0.95 }}
+                onClick={e => e.stopPropagation()}
+                className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4"
+              >
+                <div className="flex items-center justify-between border-b pb-3 border-brand-border">
+                  <h4 className="font-bold text-brand-text dark:text-brand-dark-text text-sm">
+                    {editingUnit ? 'Edit Unit' : 'Add New Unit'}
+                  </h4>
+                  <button onClick={() => setShowUnitModal(false)} className="text-brand-muted">
+                    <X size={16} />
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-brand-muted mb-1">Unit Number</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={unitNumber}
+                      onChange={e => setUnitNumber(Number(e.target.value))}
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-brand-muted mb-1">Unit Title *</label>
+                    <input
+                      value={unitTitle}
+                      onChange={e => setUnitTitle(e.target.value)}
+                      placeholder="e.g. Unit 1: Introduction to Data Structures"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-brand-muted mb-1">Description (Optional)</label>
+                    <textarea
+                      value={unitDescription}
+                      onChange={e => setUnitDescription(e.target.value)}
+                      placeholder="Topics covered in this unit..."
+                      rows={3}
+                      className={inputCls + ' resize-none'}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button
+                    onClick={() => setShowUnitModal(false)}
+                    disabled={savingUnit}
+                    className="flex-1 py-2 rounded-xl border border-brand-border text-xs font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveUnit}
+                    disabled={savingUnit}
+                    className="flex-1 py-2 rounded-xl bg-primary-500 text-white text-xs font-bold flex items-center justify-center gap-1.5"
+                  >
+                    {savingUnit && <Loader2 size={12} className="animate-spin" />}
+                    {editingUnit ? 'Update Unit' : 'Create Unit'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── Modal: Add / Edit Video ─────────────────────────────────────── */}
+        <AnimatePresence>
+          {showVideoModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-60 bg-black/70 flex items-center justify-center p-4"
+              onClick={() => !savingVideo && setShowVideoModal(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.95 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0.95 }}
+                onClick={e => e.stopPropagation()}
+                className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4"
+              >
+                <div className="flex items-center justify-between border-b pb-3 border-brand-border">
+                  <h4 className="font-bold text-brand-text dark:text-brand-dark-text text-sm">
+                    {editingVideo ? 'Edit Lecture Video' : 'Add Lecture Video'}
+                  </h4>
+                  <button onClick={() => setShowVideoModal(false)} className="text-brand-muted">
+                    <X size={16} />
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-brand-muted mb-1">Lecture Title *</label>
+                    <input
+                      value={videoTitle}
+                      onChange={e => setVideoTitle(e.target.value)}
+                      placeholder="e.g. Lecture 1: Arrays & Memory Representation"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-brand-muted mb-1">
+                      Video URL (or Backblaze b2:// ref) *
+                    </label>
+                    <input
+                      value={videoUrl}
+                      onChange={e => setVideoUrl(e.target.value)}
+                      placeholder="b2://courses/videos/lecture1.mp4 or https://..."
+                      className={inputCls}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-brand-muted mb-1">Duration</label>
+                      <input
+                        value={videoDuration}
+                        onChange={e => setVideoDuration(e.target.value)}
+                        placeholder="e.g. 45 mins"
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-brand-muted mb-1">Sort Order</label>
+                      <input
+                        type="number"
+                        value={videoSortOrder}
+                        onChange={e => setVideoSortOrder(Number(e.target.value))}
+                        className={inputCls}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-brand-muted mb-1">Description (Optional)</label>
+                    <textarea
+                      value={videoDescription}
+                      onChange={e => setVideoDescription(e.target.value)}
+                      rows={2}
+                      className={inputCls + ' resize-none'}
+                      placeholder="Lecture overview..."
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer pt-1">
+                    <input
+                      type="checkbox"
+                      checked={videoIsFreePreview}
+                      onChange={e => setVideoIsFreePreview(e.target.checked)}
+                      className="rounded text-primary-500 focus:ring-primary-500"
+                    />
+                    <span className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
+                      Free Preview (allow all visitors to watch without bundle)
+                    </span>
+                  </label>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button
+                    onClick={() => setShowVideoModal(false)}
+                    disabled={savingVideo}
+                    className="flex-1 py-2 rounded-xl border border-brand-border text-xs font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveVideo}
+                    disabled={savingVideo}
+                    className="flex-1 py-2 rounded-xl bg-primary-500 text-white text-xs font-bold flex items-center justify-center gap-1.5"
+                  >
+                    {savingVideo && <Loader2 size={12} className="animate-spin" />}
+                    {editingVideo ? 'Update Lecture' : 'Add Lecture'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Delete Modal */}
+        <AnimatePresence>
+          {deletingBundle && (
+            <DeleteModal
+              title={`Subject Bundle for ${deletingBundle.subjectName || `Subject #${deletingBundle.subjectId}`}`}
+              itemType="bundle"
+              onConfirm={handleDeleteBundle}
+              onCancel={() => setDeletingBundle(null)}
+            />
+          )}
+        </AnimatePresence>
+      </div>
+    )
+  }
+
+  // ─── Resource Bundles Section (Notes & PDFs only, never videos) ───────────
+  function ResourceBundlesSection() {
+    const [bundles, setBundles] = useState<ResourceBundle[]>([])
+    const [loading, setLoading] = useState(true)
+    const [search, setSearch] = useState('')
+    const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+
+    // Modals
+    const [showBundleModal, setShowBundleModal] = useState(false)
+    const [editingBundle, setEditingBundle] = useState<ResourceBundle | null>(null)
+    const [deletingBundle, setDeletingBundle] = useState<ResourceBundle | null>(null)
+    const [managingBundle, setManagingBundle] = useState<ResourceBundle | null>(null)
+
+    // Form fields for Bundle modal
+    const [formSubjectId, setFormSubjectId] = useState<number | null>(null)
+    const [formTitle, setFormTitle] = useState('')
+    const [formDescription, setFormDescription] = useState('')
+    const [formSixMonthPrice, setFormSixMonthPrice] = useState('299')
+    const [formLifetimePrice, setFormLifetimePrice] = useState('599')
+    const [formSixMonthEnabled, setFormSixMonthEnabled] = useState(true)
+    const [formLifetimeEnabled, setFormLifetimeEnabled] = useState(true)
+    const [formIsActive, setFormIsActive] = useState(true)
+    const [savingBundle, setSavingBundle] = useState(false)
+
+    // Available subjects for dropdown
+    const [subjectOptions, setSubjectOptions] = useState<any[]>([])
+    const [loadingSubjects, setLoadingSubjects] = useState(false)
+    const [subjectSearchQuery, setSubjectSearchQuery] = useState('')
+
+    // Resource selector modal state (Notes & PDFs only)
+    const [availableResources, setAvailableResources] = useState<any[]>([])
+    const [selectedResourceIds, setSelectedResourceIds] = useState<Set<number>>(new Set())
+    const [loadingResources, setLoadingResources] = useState(false)
+    const [savingResources, setSavingResources] = useState(false)
+    const [resourceSearch, setResourceSearch] = useState('')
+
+    const loadBundles = useCallback(async () => {
+      setLoading(true)
+      try {
+        const data = await fetchAllResourceBundles()
+        setBundles(data)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to load resource bundles')
+      } finally {
+        setLoading(false)
+      }
+    }, [])
+
+    useEffect(() => {
+      loadBundles()
+    }, [loadBundles])
+
+    const openCreateModal = async () => {
+      setEditingBundle(null)
+      setFormSubjectId(null)
+      setFormTitle('')
+      setFormDescription('')
+      setFormSixMonthPrice('299')
+      setFormLifetimePrice('599')
+      setFormSixMonthEnabled(true)
+      setFormLifetimeEnabled(true)
+      setFormIsActive(true)
+      setSubjectSearchQuery('')
+      setShowBundleModal(true)
+
+      if (subjectOptions.length === 0) {
+        setLoadingSubjects(true)
+        try {
+          const list = await fetchAllSubjectsWithDetails()
+          setSubjectOptions(list)
+        } catch {
+          toast.error('Failed to load subjects list')
+        } finally {
+          setLoadingSubjects(false)
+        }
+      }
+    }
+
+    const openEditModal = (b: ResourceBundle) => {
+      setEditingBundle(b)
+      setFormSubjectId(b.subjectId)
+      setFormTitle(b.title)
+      setFormDescription(b.description)
+      setFormSixMonthPrice(String(b.sixMonthPrice))
+      setFormLifetimePrice(String(b.lifetimePrice))
+      setFormSixMonthEnabled(b.sixMonthEnabled)
+      setFormLifetimeEnabled(b.lifetimeEnabled)
+      setFormIsActive(b.isActive)
+      setShowBundleModal(true)
+    }
+
+    const handleSaveBundle = async () => {
+      if (!formSubjectId) {
+        toast.error('Please select a subject')
+        return
+      }
+      const smPrice = parseFloat(formSixMonthPrice)
+      const ltPrice = parseFloat(formLifetimePrice)
+
+      if (isNaN(smPrice) || smPrice < 0) {
+        toast.error('Please enter a valid 6-month price')
+        return
+      }
+      if (isNaN(ltPrice) || ltPrice < 0) {
+        toast.error('Please enter a valid lifetime price')
+        return
+      }
+      if (!formSixMonthEnabled && !formLifetimeEnabled) {
+        toast.error('At least one duration plan (6-Month or Lifetime) must be enabled')
+        return
+      }
+
+      setSavingBundle(true)
+      try {
+        if (editingBundle) {
+          const input: UpdateResourceBundleInput = {
+            title: formTitle.trim() || undefined,
+            description: formDescription.trim() || undefined,
+            sixMonthPrice: smPrice,
+            lifetimePrice: ltPrice,
+            sixMonthEnabled: formSixMonthEnabled,
+            lifetimeEnabled: formLifetimeEnabled,
+            isActive: formIsActive,
+          }
+          await updateResourceBundle(editingBundle.id, input)
+          toast.success('Resource bundle updated successfully!')
+        } else {
+          const selectedSubj = subjectOptions.find(s => s.id === formSubjectId)
+          const defaultTitle = formTitle.trim() || `${selectedSubj?.name || 'Subject'} Complete Notes`
+
+          const input: CreateResourceBundleInput = {
+            subjectId: formSubjectId,
+            title: defaultTitle,
+            description: formDescription.trim() || 'Complete notes, previous year solved questions, and study material.',
+            sixMonthPrice: smPrice,
+            lifetimePrice: ltPrice,
+            sixMonthEnabled: formSixMonthEnabled,
+            lifetimeEnabled: formLifetimeEnabled,
+            isActive: formIsActive,
+          }
+          await createResourceBundle(input)
+          toast.success('Resource bundle created successfully!')
+        }
+
+        setShowBundleModal(false)
+        loadBundles()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to save resource bundle')
+      } finally {
+        setSavingBundle(false)
+      }
+    }
+
+    const handleToggleActive = async (b: ResourceBundle) => {
+      try {
+        await toggleResourceBundleActive(b.id, !b.isActive)
+        setBundles(prev => prev.map(item => item.id === b.id ? { ...item, isActive: !item.isActive } : item))
+        toast.success(`Bundle ${!b.isActive ? 'activated' : 'deactivated'}`)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to update bundle status')
+      }
+    }
+
+    const handleDeleteBundle = async () => {
+      if (!deletingBundle) return
+      try {
+        await deleteResourceBundle(deletingBundle.id)
+        toast.success('Resource bundle deleted')
+        setDeletingBundle(null)
+        loadBundles()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to delete bundle')
+      }
+    }
+
+    // Open Resource Selector Modal
+    const openManageResources = async (b: ResourceBundle) => {
+      setManagingBundle(b)
+      setLoadingResources(true)
+      setResourceSearch('')
+      try {
+        const currentItems = await fetchResourceBundleItems(b.id)
+        setSelectedResourceIds(new Set(currentItems.map(item => item.resourceId)))
+
+        const { data, error } = await supabase
+          .from('resources')
+          .select(`
+            id,
+            title,
+            description,
+            file_url,
+            is_premium,
+            subject_id,
+            resource_types ( name )
+          `)
+          .order('title', { ascending: true })
+
+        if (error) throw error
+        setAvailableResources(data || [])
+      } catch (err) {
+        toast.error('Failed to load resources for bundle')
+      } finally {
+        setLoadingResources(false)
+      }
+    }
+
+    const handleSaveResourceMappings = async () => {
+      if (!managingBundle) return
+      setSavingResources(true)
+      try {
+        await updateResourceBundleMappings(managingBundle.id, Array.from(selectedResourceIds))
+        toast.success(`Updated included notes (${selectedResourceIds.size} notes saved)!`)
+        setManagingBundle(null)
+        loadBundles()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to save resource mappings')
+      } finally {
+        setSavingResources(false)
+      }
+    }
+
+    const toggleResourceSelect = (resId: number) => {
+      setSelectedResourceIds(prev => {
+        const next = new Set(prev)
+        if (next.has(resId)) next.delete(resId)
+        else next.add(resId)
+        return next
+      })
+    }
+
+    const filtered = bundles.filter(b => {
+      const matchText =
+        (b.title || '').toLowerCase().includes(search.toLowerCase()) ||
+        (b.subjectName || '').toLowerCase().includes(search.toLowerCase()) ||
+        (b.subjectCode || '').toLowerCase().includes(search.toLowerCase()) ||
+        (b.courseName || '').toLowerCase().includes(search.toLowerCase())
+      if (!matchText) return false
+      if (statusFilter === 'active') return b.isActive
+      if (statusFilter === 'inactive') return !b.isActive
+      return true
+    })
+
+    const totalBundles = bundles.length
+    const activeBundles = bundles.filter(b => b.isActive).length
+    const totalPurchasers = bundles.reduce((sum, b) => sum + (b.totalPurchasers || 0), 0)
+    const totalRevenue = bundles.reduce((sum, b) => sum + (b.revenue || 0), 0)
+
+    const filteredSubjects = subjectOptions.filter(s =>
+      (s.name || '').toLowerCase().includes(subjectSearchQuery.toLowerCase()) ||
+      (s.code || '').toLowerCase().includes(subjectSearchQuery.toLowerCase()) ||
+      (s.course_name || '').toLowerCase().includes(subjectSearchQuery.toLowerCase())
+    )
+
+    const filteredResources = availableResources.filter(r => {
+      const matchSearch =
+        (r.title || '').toLowerCase().includes(resourceSearch.toLowerCase()) ||
+        (r.description || '').toLowerCase().includes(resourceSearch.toLowerCase()) ||
+        (r.resource_types?.name || '').toLowerCase().includes(resourceSearch.toLowerCase())
+      return matchSearch
+    })
+
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-2.5">
+              <Layers className="text-indigo-500" size={24} />
+              <span>Resource Bundles (Notes & Documents Only)</span>
+            </h2>
+            <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">
+              Curate standalone PDF notes, formula cheat sheets, and question banks. Videos are strictly excluded.
+            </p>
+          </div>
+          <button
+            onClick={openCreateModal}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition-colors"
+          >
+            <Plus size={16} /> Create Resource Bundle
+          </button>
+        </div>
+
+        {/* Stats Row */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="card p-4 border border-brand-border dark:border-brand-dark-border">
+            <p className="text-xs text-brand-muted font-medium">Total Resource Bundles</p>
+            <p className="text-2xl font-bold text-brand-text dark:text-brand-dark-text mt-1">{totalBundles}</p>
+          </div>
+          <div className="card p-4 border border-brand-border dark:border-brand-dark-border">
+            <p className="text-xs text-brand-muted font-medium">Active Bundles</p>
+            <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{activeBundles}</p>
+          </div>
+          <div className="card p-4 border border-brand-border dark:border-brand-dark-border">
+            <p className="text-xs text-brand-muted font-medium">Total Purchasers</p>
+            <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">{totalPurchasers}</p>
+          </div>
+          <div className="card p-4 border border-brand-border dark:border-brand-dark-border">
+            <p className="text-xs text-brand-muted font-medium">Verified Revenue</p>
+            <p className="text-2xl font-bold text-primary-500 mt-1">₹{totalRevenue.toLocaleString()}</p>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex-1">
+            <SearchBar value={search} onChange={setSearch} placeholder="Search resource bundles by title, subject, code..." />
+          </div>
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-gray-100 dark:bg-white/5 border border-brand-border dark:border-brand-dark-border text-xs font-semibold">
+            {(['all', 'active', 'inactive'] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setStatusFilter(tab)}
+                className={`px-3 py-1.5 rounded-lg capitalize transition-all ${
+                  statusFilter === tab
+                    ? 'bg-white dark:bg-brand-dark-card shadow-xs text-brand-text dark:text-brand-dark-text font-bold'
+                    : 'text-brand-muted hover:text-brand-text dark:hover:text-white'
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Table / List */}
+        {loading ? (
+          <div className="flex justify-center py-16">
+            <Loader2 size={32} className="animate-spin text-indigo-500" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="card p-12 text-center border border-brand-border dark:border-brand-dark-border">
+            <Layers size={40} className="mx-auto mb-3 text-brand-muted opacity-40" />
+            <h3 className="text-base font-bold text-brand-text dark:text-brand-dark-text">No resource bundles found</h3>
+            <p className="text-xs text-brand-muted mt-1 mb-4">
+              {search ? 'Try adjusting your search criteria.' : 'Create your first notes & resource bundle to get started.'}
+            </p>
+            <button
+              onClick={openCreateModal}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold"
+            >
+              <Plus size={14} /> Create Resource Bundle
+            </button>
+          </div>
+        ) : (
+          <div className="card overflow-hidden border border-brand-border dark:border-brand-dark-border">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-gray-50/80 dark:bg-white/5 border-b border-brand-border dark:border-brand-dark-border text-[11px] font-bold text-brand-muted uppercase tracking-wider">
+                  <tr>
+                    <th className="px-4 py-3.5">Bundle & Academic Subject</th>
+                    <th className="px-4 py-3.5">Included Notes</th>
+                    <th className="px-4 py-3.5">6-Month Price</th>
+                    <th className="px-4 py-3.5">Lifetime Price</th>
+                    <th className="px-4 py-3.5">Purchasers</th>
+                    <th className="px-4 py-3.5">Status</th>
+                    <th className="px-4 py-3.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
+                  {filtered.map(b => (
+                    <tr key={b.id} className="hover:bg-gray-50/50 dark:hover:bg-white/[0.02] transition-colors">
+                      {/* Bundle Name & Subject */}
+                      <td className="px-4 py-3.5">
+                        <div className="space-y-1 max-w-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-brand-text dark:text-brand-dark-text">
+                              {b.title || `${b.subjectName} Complete Notes`}
+                            </span>
+                            {b.subjectCode && (
+                              <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/10 text-brand-muted">
+                                {b.subjectCode}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-brand-muted line-clamp-1">
+                            {[b.collegeName, b.courseName, b.branchName, b.semesterNumber != null ? `Sem ${b.semesterNumber}` : null].filter(Boolean).join(' › ')}
+                          </p>
+                        </div>
+                      </td>
+
+                      {/* Included Notes */}
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => openManageResources(b)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-semibold text-[11px] transition-colors"
+                          >
+                            <FileText size={13} />
+                            <span>{b.itemCount ?? b.items?.length ?? 0} notes included</span>
+                            <ChevronRight size={12} />
+                          </button>
+                        </div>
+                      </td>
+
+                      {/* 6-Month Price */}
+                      <td className="px-4 py-3.5 font-medium text-brand-text dark:text-brand-dark-text">
+                        {b.sixMonthEnabled ? (
+                          <span className="font-bold font-mono">₹{b.sixMonthPrice}</span>
+                        ) : (
+                          <span className="text-brand-muted italic text-[11px]">Disabled</span>
+                        )}
+                      </td>
+
+                      {/* Lifetime Price */}
+                      <td className="px-4 py-3.5 font-medium text-brand-text dark:text-brand-dark-text">
+                        {b.lifetimeEnabled ? (
+                          <span className="font-bold font-mono text-indigo-600 dark:text-indigo-400">₹{b.lifetimePrice}</span>
+                        ) : (
+                          <span className="text-brand-muted italic text-[11px]">Disabled</span>
+                        )}
+                      </td>
+
+                      {/* Purchasers */}
+                      <td className="px-4 py-3.5 font-medium text-brand-muted">
+                        <span className="font-bold text-brand-text dark:text-brand-dark-text">{b.totalPurchasers || 0}</span>
+                        <span className="text-[10px] ml-1">students</span>
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-4 py-3.5">
+                        <button
+                          onClick={() => handleToggleActive(b)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                            b.isActive
+                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40'
+                              : 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400'
+                          }`}
+                        >
+                          {b.isActive ? 'Active' : 'Inactive'}
+                        </button>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-4 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => openManageResources(b)}
+                            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted hover:text-brand-text"
+                            title="Manage Notes & Resources"
+                          >
+                            <FileText size={15} />
+                          </button>
+                          <button
+                            onClick={() => openEditModal(b)}
+                            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted hover:text-brand-text"
+                            title="Edit Bundle Pricing"
+                          >
+                            <Edit2 size={15} />
+                          </button>
+                          <button
+                            onClick={() => setDeletingBundle(b)}
+                            className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/20 text-brand-muted hover:text-rose-500"
+                            title="Delete Bundle"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── Modal: Create / Edit Resource Bundle ─────────────────────────── */}
+        <AnimatePresence>
+          {showBundleModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+              onClick={() => !savingBundle && setShowBundleModal(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.95 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0.95 }}
+                onClick={e => e.stopPropagation()}
+                className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4 my-8"
+              >
+                <div className="flex items-center justify-between border-b pb-3 border-brand-border">
+                  <div className="flex items-center gap-2">
+                    <Layers size={18} className="text-indigo-500" />
+                    <h3 className="font-bold text-brand-text dark:text-brand-dark-text text-base">
+                      {editingBundle ? 'Edit Resource Bundle' : 'Create Resource Bundle'}
+                    </h3>
+                  </div>
+                  <button onClick={() => setShowBundleModal(false)} className="text-brand-muted hover:text-brand-text">
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Subject Selection (when creating) */}
+                  {!editingBundle ? (
+                    <div>
+                      <label className="block text-xs font-bold text-brand-muted mb-1">
+                        Select Academic Subject *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Search subject by name, code, or course..."
+                        value={subjectSearchQuery}
+                        onChange={e => setSubjectSearchQuery(e.target.value)}
+                        className={inputCls + ' mb-2 text-xs'}
+                      />
+                      <div className="max-h-40 overflow-y-auto rounded-xl border border-brand-border dark:border-brand-dark-border divide-y divide-brand-border dark:divide-brand-dark-border">
+                        {loadingSubjects ? (
+                          <div className="p-4 text-center text-xs text-brand-muted">Loading subjects...</div>
+                        ) : filteredSubjects.length === 0 ? (
+                          <div className="p-4 text-center text-xs text-brand-muted">No matching subjects found</div>
+                        ) : (
+                          filteredSubjects.slice(0, 50).map(s => (
+                            <button
+                              key={s.id}
+                              type="button"
+                              onClick={() => {
+                                setFormSubjectId(s.id)
+                                if (!formTitle) setFormTitle(`${s.name} Complete Notes`)
+                              }}
+                              className={`w-full p-2.5 text-left text-xs transition-colors flex items-center justify-between ${
+                                formSubjectId === s.id
+                                  ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-bold'
+                                  : 'hover:bg-gray-50 dark:hover:bg-white/5'
+                              }`}
+                            >
+                              <div>
+                                <p className="font-semibold">{s.name}</p>
+                                <p className="text-[10px] text-brand-muted">
+                                  {[s.course_name, s.branch_name, s.semester_number != null ? `Sem ${s.semester_number}` : null].filter(Boolean).join(' · ')}
+                                </p>
+                              </div>
+                              {formSubjectId === s.id && <Check size={14} className="text-indigo-600" />}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl bg-gray-50 dark:bg-white/5 border border-brand-border">
+                      <p className="text-[10px] uppercase font-bold text-brand-muted">Academic Subject</p>
+                      <p className="text-sm font-bold text-brand-text dark:text-brand-dark-text mt-0.5">
+                        {editingBundle.subjectName}
+                      </p>
+                      <p className="text-xs text-brand-muted">
+                        {[editingBundle.courseName, editingBundle.branchName, editingBundle.semesterNumber != null ? `Sem ${editingBundle.semesterNumber}` : null].filter(Boolean).join(' · ')}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Bundle Title */}
+                  <div>
+                    <label className="block text-xs font-bold text-brand-muted mb-1">Bundle Title *</label>
+                    <input
+                      value={formTitle}
+                      onChange={e => setFormTitle(e.target.value)}
+                      placeholder="e.g. DBMS Complete Notes & Cheat Sheets"
+                      className={inputCls}
+                    />
+                  </div>
+
+                  {/* Bundle Description */}
+                  <div>
+                    <label className="block text-xs font-bold text-brand-muted mb-1">Description (Optional)</label>
+                    <textarea
+                      value={formDescription}
+                      onChange={e => setFormDescription(e.target.value)}
+                      rows={2}
+                      placeholder="Includes all chapter notes, previous years questions, formula sheets..."
+                      className={inputCls + ' resize-none'}
+                    />
+                  </div>
+
+                  {/* Pricing Matrix */}
+                  <div className="grid grid-cols-2 gap-4 p-3 rounded-xl bg-gray-50 dark:bg-white/5 border border-brand-border">
+                    {/* 6-Month Plan */}
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formSixMonthEnabled}
+                          onChange={e => setFormSixMonthEnabled(e.target.checked)}
+                          className="rounded text-indigo-600"
+                        />
+                        <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text">6-Month Plan</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-xs text-brand-muted font-bold">₹</span>
+                        <input
+                          type="number"
+                          disabled={!formSixMonthEnabled}
+                          value={formSixMonthPrice}
+                          onChange={e => setFormSixMonthPrice(e.target.value)}
+                          className={inputCls + ' pl-7 text-xs disabled:opacity-50'}
+                          placeholder="299"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Lifetime Plan */}
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formLifetimeEnabled}
+                          onChange={e => setFormLifetimeEnabled(e.target.checked)}
+                          className="rounded text-indigo-600"
+                        />
+                        <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text">Lifetime Plan</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-xs text-brand-muted font-bold">₹</span>
+                        <input
+                          type="number"
+                          disabled={!formLifetimeEnabled}
+                          value={formLifetimePrice}
+                          onChange={e => setFormLifetimePrice(e.target.value)}
+                          className={inputCls + ' pl-7 text-xs disabled:opacity-50'}
+                          placeholder="599"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Active Toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer pt-1">
+                    <input
+                      type="checkbox"
+                      checked={formIsActive}
+                      onChange={e => setFormIsActive(e.target.checked)}
+                      className="rounded text-indigo-600"
+                    />
+                    <span className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
+                      Active (visible to students for purchase)
+                    </span>
+                  </label>
+                </div>
+
+                <div className="flex gap-2 pt-3 border-t border-brand-border">
+                  <button
+                    onClick={() => setShowBundleModal(false)}
+                    disabled={savingBundle}
+                    className="flex-1 py-2.5 rounded-xl border border-brand-border text-xs font-semibold text-brand-muted"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveBundle}
+                    disabled={savingBundle}
+                    className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-xs"
+                  >
+                    {savingBundle && <Loader2 size={13} className="animate-spin" />}
+                    {editingBundle ? 'Update Bundle' : 'Create Bundle'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── Modal: Manage Included Notes (PDFs/Resources only) ───────────── */}
+        <AnimatePresence>
+          {managingBundle && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+              onClick={() => !savingResources && setManagingBundle(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.95 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0.95 }}
+                onClick={e => e.stopPropagation()}
+                className="bg-white dark:bg-brand-dark-card rounded-2xl p-6 max-w-2xl w-full shadow-2xl space-y-4 my-8"
+              >
+                <div className="flex items-center justify-between border-b pb-3 border-brand-border">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <FileText size={18} className="text-indigo-500" />
+                      <h3 className="font-bold text-brand-text dark:text-brand-dark-text text-base">
+                        Manage Included Notes & PDFs
+                      </h3>
+                    </div>
+                    <p className="text-xs text-brand-muted mt-0.5">
+                      {managingBundle.title} · {managingBundle.subjectName}
+                    </p>
+                  </div>
+                  <button onClick={() => setManagingBundle(null)} className="text-brand-muted hover:text-brand-text">
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Important notice: Videos are strictly excluded */}
+                <div className="p-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-800/40 text-xs text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
+                  <Shield size={16} className="text-indigo-600 flex-shrink-0" />
+                  <span>
+                    This selector lists only documents, handwritten notes, and PDF materials. Videos cannot be included in Resource Bundles.
+                  </span>
+                </div>
+
+                {/* Search & Bulk Select */}
+                <div className="flex items-center justify-between gap-3">
+                  <input
+                    type="text"
+                    placeholder="Search notes by title or type..."
+                    value={resourceSearch}
+                    onChange={e => setResourceSearch(e.target.value)}
+                    className={inputCls + ' text-xs py-2'}
+                  />
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allIds = new Set(filteredResources.map(r => Number(r.id)))
+                        setSelectedResourceIds(allIds)
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg border border-brand-border text-xs font-semibold text-brand-muted hover:text-brand-text"
+                    >
+                      Select All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedResourceIds(new Set())}
+                      className="px-2.5 py-1.5 rounded-lg border border-brand-border text-xs font-semibold text-brand-muted hover:text-brand-text"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                </div>
+
+                {/* Resource List with Checkboxes */}
+                <div className="max-h-72 overflow-y-auto rounded-xl border border-brand-border dark:border-brand-dark-border divide-y divide-brand-border dark:divide-brand-dark-border">
+                  {loadingResources ? (
+                    <div className="p-8 text-center text-xs text-brand-muted">Loading available notes...</div>
+                  ) : filteredResources.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-brand-muted">
+                      No resources found in the library matching your search.
+                    </div>
+                  ) : (
+                    filteredResources.map(res => {
+                      const isSelected = selectedResourceIds.has(Number(res.id))
+                      const isSubjectMatch = res.subject_id === managingBundle.subjectId
+
+                      return (
+                        <div
+                          key={res.id}
+                          onClick={() => toggleResourceSelect(Number(res.id))}
+                          className={`p-3 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
+                            isSelected
+                              ? 'bg-indigo-50/50 dark:bg-indigo-950/30'
+                              : 'hover:bg-gray-50 dark:hover:bg-white/5'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleResourceSelect(Number(res.id))}
+                              className="rounded text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs font-bold text-brand-text dark:text-brand-dark-text truncate">
+                                  {res.title}
+                                </p>
+                                {isSubjectMatch && (
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                                    Subject Match
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-brand-muted">
+                                {res.resource_types?.name || 'Document'} {res.description && `· ${res.description}`}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex-shrink-0 text-right">
+                            {isSelected ? (
+                              <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                                ✓ Included
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-brand-muted">Excluded</span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-between pt-3 border-t border-brand-border">
+                  <span className="text-xs font-semibold text-brand-muted">
+                    {selectedResourceIds.size} note(s) selected
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setManagingBundle(null)}
+                      disabled={savingResources}
+                      className="px-4 py-2 rounded-xl border border-brand-border text-xs font-semibold text-brand-muted"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveResourceMappings}
+                      disabled={savingResources}
+                      className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-2 shadow-xs"
+                    >
+                      {savingResources && <Loader2 size={13} className="animate-spin" />}
+                      Save Included Notes
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Delete Confirmation Modal */}
+        <AnimatePresence>
+          {deletingBundle && (
+            <DeleteModal
+              title={`Resource Bundle "${deletingBundle.title || deletingBundle.subjectName}"`}
+              itemType="bundle"
+              onConfirm={handleDeleteBundle}
+              onCancel={() => setDeletingBundle(null)}
+            />
+          )}
+        </AnimatePresence>
+      </div>
+    )
+  }
+
   const renderContent = () => {
     switch (activeTab) {
       case 'overview': return renderOverview()
@@ -8294,8 +10819,10 @@ export default function AdminDashboard() {
       case 'pathfinder-careers': return renderPathfinderCareers()
       case 'pathfinder-exams': return renderPathfinderExams()
       case 'pathfinder-mappings': return renderPathfinderMappings()
-      case 'course-discounts': return <DiscountSection productType="course" />
-      case 'resource-discounts': return <DiscountSection productType="resource" />
+      case 'subject-bundles': return <SubjectBundlesSection />
+      case 'resource-bundles': return <ResourceBundlesSection />
+      case 'course-discounts': return <DiscountSection productType="subject_bundle" />
+      case 'resource-discounts': return <DiscountSection productType="resource_bundle" />
       case 'coupons': return <CouponsSection />
       case 'coupon-usage': return <CouponUsageSection />
       case 'payment-approvals': return renderPaymentApprovals()

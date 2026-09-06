@@ -1,6 +1,122 @@
 import { supabase } from './supabase'
 import { uploadToBackblaze, deleteBackblazeFile, isBackblazeRef } from './backblazeService'
 import type { Course, CourseGroup, CourseSubcategory } from '../store/contentStore'
+import { ensureSubjectBundleForSubject } from './subjectBundleService'
+
+// ─── Auto-link Course & Video to Subject Bundle Curriculum ────────────────────
+export async function linkCourseToSubjectBundleAndUnits(
+  subjectId: number,
+  courseTitle: string,
+  courseDescription?: string,
+  videoUrl?: string | null,
+  duration?: string | null,
+  thumbnailUrl?: string | null,
+  instructor?: string | null,
+  level?: string | null,
+  courseId?: number | null
+) {
+  try {
+    // 1. Ensure Subject Bundle exists
+    await ensureSubjectBundleForSubject(subjectId)
+
+    // 2. Set bundle thumbnail if provided and not yet set
+    if (thumbnailUrl) {
+      try {
+        await supabase
+          .from('subject_bundles')
+          .update({ thumbnail_url: thumbnailUrl })
+          .eq('subject_id', subjectId)
+          .is('thumbnail_url', null)
+      } catch {
+        // Safe fallback if column not yet applied
+      }
+    }
+
+    // 3. If video URL exists, ensure it is organized under a unit in subject_videos
+    if (videoUrl) {
+      // Find or create Unit 1
+      let unitId: string | null = null
+      const { data: existingUnit } = await supabase
+        .from('subject_units')
+        .select('id')
+        .eq('subject_id', subjectId)
+        .order('unit_number', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+
+      if (existingUnit?.id) {
+        unitId = String(existingUnit.id)
+      } else {
+        const { data: newUnit, error: unitErr } = await supabase
+          .from('subject_units')
+          .insert({
+            subject_id: subjectId,
+            unit_number: 1,
+            title: 'Unit 1: Core Lectures & Concepts',
+            description: 'Video lectures and core syllabus coverage for this subject.',
+            sort_order: 1,
+          })
+          .select('id')
+          .single()
+
+        if (!unitErr && newUnit?.id) {
+          unitId = String(newUnit.id)
+        }
+      }
+
+      // Check if video already exists in subject_videos
+      const { data: existingVideo } = await supabase
+        .from('subject_videos')
+        .select('id, thumbnail_url')
+        .eq('subject_id', subjectId)
+        .eq('video_url', videoUrl)
+        .maybeSingle()
+
+      if (!existingVideo) {
+        const videoPayload: Record<string, any> = {
+          subject_id: subjectId,
+          unit_id: unitId,
+          title: courseTitle,
+          description: courseDescription || '',
+          video_url: videoUrl,
+          duration: duration || '',
+          sort_order: 1,
+          is_free_preview: false,
+        }
+        if (thumbnailUrl) videoPayload.thumbnail_url = thumbnailUrl
+        if (instructor) videoPayload.instructor = instructor
+        if (level) videoPayload.level = level
+        if (courseId) videoPayload.course_id = courseId
+
+        const { error: insertErr } = await supabase.from('subject_videos').insert(videoPayload)
+        // If metadata columns fail due to pending migration, retry with base columns
+        if (insertErr) {
+          await supabase.from('subject_videos').insert({
+            subject_id: subjectId,
+            unit_id: unitId,
+            title: courseTitle,
+            description: courseDescription || '',
+            video_url: videoUrl,
+            duration: duration || '',
+            sort_order: 1,
+            is_free_preview: false,
+          })
+        }
+      } else if (thumbnailUrl && !existingVideo.thumbnail_url) {
+        try {
+          await supabase
+            .from('subject_videos')
+            .update({ thumbnail_url: thumbnailUrl })
+            .eq('id', existingVideo.id)
+        } catch {
+          // ignore
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[courseService] linkCourseToSubjectBundleAndUnits error:', err)
+  }
+}
 
 // A linked "Notes" subject is stored as a hidden entry inside the existing
 // `tags` column (e.g. "__notes:Data Structures") instead of a new database
@@ -11,6 +127,13 @@ const isNotesTag = (t: string) => t.startsWith(NOTES_TAG_PREFIX)
 const stripNotesTags = (tags: string[] | null | undefined) => (tags ?? []).filter(t => !isNotesTag(t))
 const extractNotesSubject = (tags: string[] | null | undefined) =>
   (tags ?? []).find(isNotesTag)?.slice(NOTES_TAG_PREFIX.length) ?? ''
+
+// Tag indicating this course is uploaded as curriculum directly under a Subject Bundle
+// rather than an individual standalone course sold in 'All Courses'.
+const BUNDLE_ONLY_TAG = '__bundle_only'
+const isBundleOnlyTag = (t: string) => t === BUNDLE_ONLY_TAG
+const stripInternalTags = (tags: string[] | null | undefined) =>
+  (tags ?? []).filter(t => !isNotesTag(t) && !isBundleOnlyTag(t))
 
 // ─── DB Row Shape (public.site_courses) ─────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -38,11 +161,33 @@ interface SiteCourseRow {
   created_at: string
   updated_at: string | null
   subject_id: number | null
+  is_bundle_only?: boolean | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   subjects?: any
 }
 
 const COURSE_SELECT = `
+  id, title, description, course_group, subcategory, instructor, duration,
+  lectures, level, rating, reviews, is_free, price, tags, thumbnail_url,
+  video_url, status, enrolled, gradient_from, gradient_to, created_at, updated_at,
+  subject_id, is_bundle_only,
+  subjects (
+    id, name, code,
+    semesters (
+      id, semester_number,
+      branches (
+        id, name, code,
+        courses (
+          id, name, duration,
+          colleges ( id, name, short_name, city, state )
+        )
+      )
+    )
+  )
+`
+
+// Used when is_bundle_only column is not yet present in site_courses table
+const COURSE_SELECT_NO_BUNDLE_COL = `
   id, title, description, course_group, subcategory, instructor, duration,
   lectures, level, rating, reviews, is_free, price, tags, thumbnail_url,
   video_url, status, enrolled, gradient_from, gradient_to, created_at, updated_at,
@@ -91,15 +236,18 @@ const COURSE_SELECT_LEGACY = `
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function queryCoursesWithFallback(build: (select: string) => any): Promise<SiteCourseRow[]> {
   const isSchemaIssue = (message: string) =>
-    /relationship|schema cache|column .* does not exist|subject_id/i.test(message)
+    /relationship|schema cache|column .* does not exist|subject_id|is_bundle_only/i.test(message)
 
   let { data, error } = await build(COURSE_SELECT)
+  if (error && isSchemaIssue(error.message)) {
+    ;({ data, error } = await build(COURSE_SELECT_NO_BUNDLE_COL))
+  }
   if (error && isSchemaIssue(error.message)) {
     console.warn('[courseService] Falling back without subjects join — run the academic hierarchy migration to enable it:', error.message)
     ;({ data, error } = await build(COURSE_SELECT_NO_JOIN))
   }
   if (error && isSchemaIssue(error.message)) {
-    console.warn('[courseService] Falling back without subject_id column — the academic hierarchy migration has not been run yet:', error.message)
+    console.warn('[courseService] Falling back without subject_id column:', error.message)
     ;({ data, error } = await build(COURSE_SELECT_LEGACY))
   }
   if (error) throw new Error(`Failed to fetch courses: ${error.message}`)
@@ -127,7 +275,7 @@ function mapRowToCourse(row: SiteCourseRow): Course {
     rating: row.rating ?? 4.5,
     reviews: row.reviews ?? 0,
     price: row.is_free ? 'FREE' : (row.price ?? 0),
-    tags: stripNotesTags(row.tags),
+    tags: stripInternalTags(row.tags),
     thumbnail: row.thumbnail_url ?? undefined,
     videoUrl: row.video_url ?? undefined,
     modules: [],
@@ -137,6 +285,7 @@ function mapRowToCourse(row: SiteCourseRow): Course {
     gradientTo: row.gradient_to ?? '#00BFA6',
     createdAt: row.created_at ?? '',
     notesSubject: extractNotesSubject(row.tags),
+    isBundleOnly: Boolean(row.is_bundle_only || (row.tags ?? []).includes(BUNDLE_ONLY_TAG)),
     college:          clg?.name ?? undefined,
     academicCourse:   crs?.name ?? undefined,
     branch:           br?.name ?? undefined,
@@ -203,9 +352,12 @@ export interface CreateSiteCourseInput {
   // chain used by the Resources panel. Only the leaf `subjectId` is stored;
   // the rest of the chain is derived automatically via joins.
   subjectId?: number | null
+  // True if uploaded under a Subject Bundle (no individual course price, hidden from 'All Courses')
+  isBundleOnly?: boolean
 }
 
 export async function createSiteCourse(input: CreateSiteCourseInput): Promise<Course> {
+  const isBundle = Boolean(input.isBundleOnly)
   const basePayload = {
     title: input.title,
     description: input.description,
@@ -215,9 +367,13 @@ export async function createSiteCourse(input: CreateSiteCourseInput): Promise<Co
     duration: input.duration,
     lectures: input.lectures ?? 0,
     level: input.level,
-    is_free: input.isFree,
-    price: input.isFree ? 0 : (input.price ?? 0),
-    tags: [...stripNotesTags(input.tags), ...(input.notesSubject?.trim() ? [encodeNotesTag(input.notesSubject.trim())] : [])],
+    is_free: isBundle ? false : input.isFree,
+    price: isBundle ? 0 : (input.isFree ? 0 : (input.price ?? 0)),
+    tags: [
+      ...stripInternalTags(input.tags),
+      ...(input.notesSubject?.trim() ? [encodeNotesTag(input.notesSubject.trim())] : []),
+      ...(isBundle ? [BUNDLE_ONLY_TAG] : []),
+    ],
     thumbnail_url: input.thumbnailUrl || null,
     video_url: input.videoUrl || null,
     status: input.status,
@@ -226,28 +382,50 @@ export async function createSiteCourse(input: CreateSiteCourseInput): Promise<Co
     reviews: 0,
     gradient_from: input.gradientFrom ?? '#6C63FF',
     gradient_to: input.gradientTo ?? '#00BFA6',
+    is_bundle_only: isBundle,
+  }
+
+  const fullPayload = {
+    ...basePayload,
+    subject_id: input.subjectId ? Number(input.subjectId) : null,
   }
 
   let { data, error } = await supabase
     .from('site_courses')
-    .insert({ ...basePayload, subject_id: input.subjectId || null })
+    .insert(fullPayload)
     .select(COURSE_SELECT)
     .single()
 
-  // The subject_id column/FK doesn't exist yet, or isn't visible in
-  // PostgREST's schema cache — retry without it so course creation still
-  // works; only the hierarchy link is skipped. We flag this on the return
-  // value (rather than only logging) so the Admin UI can warn the user
-  // that the College/Course/Branch/Semester/Subject assignment they picked
-  // did NOT actually get saved — otherwise it fails silently and the
-  // Courses page academic filter later won't find these courses.
   let subjectLinkFailed = false
-  if (error && isCourseSchemaIssue(error.message)) {
-    console.warn('[courseService] Creating course without subject_id — run the academic hierarchy migration to enable it:', error.message)
-    subjectLinkFailed = !!input.subjectId
+
+  // 1. If is_bundle_only column is missing from DB, retry with subject_id and COURSE_SELECT_NO_BUNDLE_COL
+  if (error && /is_bundle_only/i.test(error.message)) {
+    const { is_bundle_only: _drop, ...payloadWithoutBundle } = fullPayload
     ;({ data, error } = await supabase
       .from('site_courses')
-      .insert(basePayload)
+      .insert(payloadWithoutBundle)
+      .select(COURSE_SELECT_NO_BUNDLE_COL)
+      .single())
+  }
+
+  // 2. If subjects join relationship is unresolvable in PostgREST schema cache, retry without join
+  if (error && isCourseSchemaIssue(error.message) && !/subject_id.*does not exist/i.test(error.message)) {
+    const { is_bundle_only: _drop, ...payloadWithoutBundle } = fullPayload
+    ;({ data, error } = await supabase
+      .from('site_courses')
+      .insert(payloadWithoutBundle)
+      .select(COURSE_SELECT_NO_JOIN)
+      .single())
+  }
+
+  // 3. Only if subject_id column itself does NOT exist in DB, fallback without subject_id
+  if (error && isCourseSchemaIssue(error.message)) {
+    console.warn('[courseService] Creating course without subject_id — run migration to enable it:', error.message)
+    subjectLinkFailed = !!input.subjectId
+    const { is_bundle_only: _dropBundle, subject_id: _dropSubj, ...legacyPayload } = fullPayload
+    ;({ data, error } = await supabase
+      .from('site_courses')
+      .insert(legacyPayload)
       .select(COURSE_SELECT_LEGACY)
       .single())
   }
@@ -255,6 +433,22 @@ export async function createSiteCourse(input: CreateSiteCourseInput): Promise<Co
   if (error) throw new Error(`Failed to create course: ${error.message}`)
   const course = mapRowToCourse(data as unknown as SiteCourseRow)
   if (subjectLinkFailed) (course as Course & { _subjectLinkFailed?: boolean })._subjectLinkFailed = true
+
+  // Auto-save under Subject Bundle & Units ONLY when uploaded as bundle
+  if (isBundle && input.subjectId) {
+    linkCourseToSubjectBundleAndUnits(
+      Number(input.subjectId),
+      input.title,
+      input.description,
+      input.videoUrl,
+      input.duration,
+      input.thumbnailUrl,
+      input.instructor,
+      input.level,
+      Number(course.id)
+    ).catch(err => console.warn('[createSiteCourse] Auto-mapping to subject bundle failed:', err))
+  }
+
   return course
 }
 
@@ -276,6 +470,7 @@ export interface UpdateSiteCourseInput {
   status?: 'Published' | 'Draft'
   notesSubject?: string
   subjectId?: number | null
+  isBundleOnly?: boolean
 }
 
 export async function updateSiteCourse(id: string, input: UpdateSiteCourseInput): Promise<Course> {
@@ -289,13 +484,26 @@ export async function updateSiteCourse(id: string, input: UpdateSiteCourseInput)
   if (input.duration !== undefined) payload.duration = input.duration
   if (input.lectures !== undefined) payload.lectures = input.lectures
   if (input.level !== undefined) payload.level = input.level
-  if (input.isFree !== undefined) payload.is_free = input.isFree
-  if (input.price !== undefined) payload.price = input.price
-  if (input.tags !== undefined || input.notesSubject !== undefined) {
-    payload.tags = [
-      ...stripNotesTags(input.tags ?? []),
-      ...(input.notesSubject?.trim() ? [encodeNotesTag(input.notesSubject.trim())] : []),
-    ]
+  
+  if (input.isBundleOnly !== undefined) {
+    payload.is_bundle_only = input.isBundleOnly
+    if (input.isBundleOnly) {
+      payload.is_free = false
+      payload.price = 0
+    } else {
+      if (input.isFree !== undefined) payload.is_free = input.isFree
+      if (input.price !== undefined) payload.price = input.price
+    }
+  } else {
+    if (input.isFree !== undefined) payload.is_free = input.isFree
+    if (input.price !== undefined) payload.price = input.price
+  }
+
+  if (input.tags !== undefined || input.notesSubject !== undefined || input.isBundleOnly !== undefined) {
+    const rawTags = stripInternalTags(input.tags ?? [])
+    if (input.notesSubject?.trim()) rawTags.push(encodeNotesTag(input.notesSubject.trim()))
+    if (input.isBundleOnly) rawTags.push(BUNDLE_ONLY_TAG)
+    payload.tags = rawTags
   }
   if (input.thumbnailUrl !== undefined) payload.thumbnail_url = input.thumbnailUrl
   if (input.videoUrl !== undefined) payload.video_url = input.videoUrl
@@ -310,19 +518,38 @@ export async function updateSiteCourse(id: string, input: UpdateSiteCourseInput)
     .select(COURSE_SELECT)
     .single()
 
-  // Same graceful fallback as createSiteCourse — retry without subject_id
-  // if the migration hasn't been run yet, or the FK isn't in the schema
-  // cache yet. Flag it on the return value so the caller can warn the user
-  // instead of showing a plain "Course updated!" while the hierarchy pick
-  // silently didn't save.
   let subjectLinkFailed = false
-  if (error && isCourseSchemaIssue(error.message)) {
-    console.warn('[courseService] Updating course without subject_id — run the academic hierarchy migration to enable it:', error.message)
-    subjectLinkFailed = 'subject_id' in payload
-    const { subject_id: _drop, ...payloadWithoutSubject } = payload
+
+  // 1. If is_bundle_only column missing from DB, retry keeping subject_id
+  if (error && /is_bundle_only/i.test(error.message)) {
+    const { is_bundle_only: _drop, ...payloadWithoutBundle } = payload
     ;({ data, error } = await supabase
       .from('site_courses')
-      .update(payloadWithoutSubject)
+      .update(payloadWithoutBundle)
+      .eq('id', id)
+      .select(COURSE_SELECT_NO_BUNDLE_COL)
+      .single())
+  }
+
+  // 2. If subjects join relationship unresolvable in PostgREST schema cache, retry without join
+  if (error && isCourseSchemaIssue(error.message) && !/subject_id.*does not exist/i.test(error.message)) {
+    const { is_bundle_only: _drop, ...payloadWithoutBundle } = payload
+    ;({ data, error } = await supabase
+      .from('site_courses')
+      .update(payloadWithoutBundle)
+      .eq('id', id)
+      .select(COURSE_SELECT_NO_JOIN)
+      .single())
+  }
+
+  // 3. Only if subject_id column itself does NOT exist in DB, fallback without subject_id
+  if (error && isCourseSchemaIssue(error.message)) {
+    console.warn('[courseService] Updating course without subject_id:', error.message)
+    subjectLinkFailed = 'subject_id' in payload && !!payload.subject_id
+    const { subject_id: _dropSubj, is_bundle_only: _dropBundle, ...payloadFallback } = payload
+    ;({ data, error } = await supabase
+      .from('site_courses')
+      .update(payloadFallback)
       .eq('id', id)
       .select(COURSE_SELECT_LEGACY)
       .single())
@@ -331,6 +558,32 @@ export async function updateSiteCourse(id: string, input: UpdateSiteCourseInput)
   if (error) throw new Error(`Failed to update course: ${error.message}`)
   const course = mapRowToCourse(data as unknown as SiteCourseRow)
   if (subjectLinkFailed) (course as Course & { _subjectLinkFailed?: boolean })._subjectLinkFailed = true
+
+  // Auto-link to Subject Bundle & Curriculum ONLY if marked as bundle
+  if (input.isBundleOnly && course.subjectId) {
+    linkCourseToSubjectBundleAndUnits(
+      Number(course.subjectId),
+      course.title,
+      course.description,
+      course.videoUrl,
+      course.duration,
+      course.thumbnail,
+      course.instructor,
+      course.level,
+      Number(course.id)
+    ).catch(err => console.warn('[courseService] linkCourseToSubjectBundleAndUnits background error:', err))
+  } else if (input.isBundleOnly === false) {
+    // If explicitly switched to individual, remove from subject_videos to prevent bundle duplication
+    void supabase
+      .from('subject_videos')
+      .delete()
+      .eq('course_id', id)
+      .then(
+        () => {},
+        (err: unknown) => console.warn('[courseService] Cleanup from subject_videos failed:', err)
+      )
+  }
+
   return course
 }
 

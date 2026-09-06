@@ -5,7 +5,7 @@ export interface Enrollment {
   id: string
   courseId: string
   userId: string
-  itemType: 'course' | 'premium_membership' | 'resource'
+  itemType: 'course' | 'premium_membership' | 'resource' | 'subject_bundle' | 'resource_bundle'
   itemTitle?: string
   firstName: string
   lastName: string
@@ -18,6 +18,7 @@ export interface Enrollment {
   rejectionReason?: string
   reviewedAt?: string
   createdAt: string
+  notes?: string
 }
 
 export interface PaymentSettings {
@@ -163,7 +164,7 @@ export async function createEnrollment(input: EnrollInput): Promise<Enrollment> 
 
 export interface SubmitPaymentProofInput {
   userId: string
-  itemType: 'course' | 'premium_membership'
+  itemType: 'course' | 'premium_membership' | 'subject_bundle' | 'resource'
   itemId: string
   itemTitle: string
   firstName: string
@@ -263,6 +264,60 @@ export async function approvePaymentRequest(enrollmentId: string): Promise<Enrol
     } catch {}
   }
 
+  // If it was a subject bundle purchase, activate the entitlement atomically
+  if (data.item_type === 'subject_bundle') {
+    try {
+      const nowIso = new Date().toISOString()
+      // 1. Direct update into subject_bundle_purchases
+      await supabase
+        .from('subject_bundle_purchases')
+        .update({
+          payment_status: 'paid',
+          status: 'active',
+          approved_at: nowIso,
+          starts_at: nowIso,
+        })
+        .eq('enrollment_id', data.id)
+
+      // 2. Also attempt RPC if present
+      const authUser = (await supabase.auth.getUser()).data.user
+      const adminId = authUser?.id || data.user_id
+      await supabase.rpc('approve_subject_bundle_purchase', {
+        p_enrollment_id: data.id,
+        p_admin_id: adminId,
+      })
+    } catch (e) {
+      console.warn('Could not activate subject bundle via RPC:', e)
+    }
+  }
+
+  // If it was a resource bundle purchase, activate the entitlement atomically
+  if (data.item_type === 'resource_bundle') {
+    try {
+      const nowIso = new Date().toISOString()
+      // 1. Direct update into resource_bundle_purchases
+      await supabase
+        .from('resource_bundle_purchases')
+        .update({
+          payment_status: 'paid',
+          status: 'active',
+          approved_at: nowIso,
+          starts_at: nowIso,
+        })
+        .eq('enrollment_id', data.id)
+
+      // 2. Also attempt RPC if present
+      const authUser = (await supabase.auth.getUser()).data.user
+      const adminId = authUser?.id || data.user_id
+      await supabase.rpc('approve_resource_bundle_purchase', {
+        p_enrollment_id: data.id,
+        p_admin_id: adminId,
+      })
+    } catch (e) {
+      console.warn('Could not activate resource bundle via RPC:', e)
+    }
+  }
+
   return mapEnrollment(data)
 }
 
@@ -279,6 +334,39 @@ export async function rejectPaymentRequest(enrollmentId: string, reason: string)
     .single()
 
   if (error) throw new Error(`Failed to reject payment: ${error.message}`)
+
+  // Revoke subject bundle purchase entitlement if applicable
+  if (data.item_type === 'subject_bundle') {
+    try {
+      await supabase
+        .from('subject_bundle_purchases')
+        .update({
+          payment_status: 'rejected',
+          status: 'revoked',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('enrollment_id', data.id)
+    } catch (e) {
+      console.warn('Could not update subject_bundle_purchases:', e)
+    }
+  }
+
+  // Revoke resource bundle purchase entitlement if applicable
+  if (data.item_type === 'resource_bundle') {
+    try {
+      await supabase
+        .from('resource_bundle_purchases')
+        .update({
+          payment_status: 'rejected',
+          status: 'revoked',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('enrollment_id', data.id)
+    } catch (e) {
+      console.warn('Could not update resource_bundle_purchases:', e)
+    }
+  }
+
   return mapEnrollment(data)
 }
 
@@ -305,6 +393,38 @@ export async function revokeAccess(enrollmentId: string, reason = 'Access revoke
         .eq('id', data.user_id)
     } catch (e) {
       console.warn('Could not revoke is_premium on profile:', e)
+    }
+  }
+
+  // If this was a subject bundle, revoke entitlement
+  if (data.item_type === 'subject_bundle') {
+    try {
+      await supabase
+        .from('subject_bundle_purchases')
+        .update({
+          payment_status: 'rejected',
+          status: 'revoked',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('enrollment_id', data.id)
+    } catch (e) {
+      console.warn('Could not revoke subject_bundle_purchases:', e)
+    }
+  }
+
+  // If this was a resource bundle, revoke entitlement
+  if (data.item_type === 'resource_bundle') {
+    try {
+      await supabase
+        .from('resource_bundle_purchases')
+        .update({
+          payment_status: 'rejected',
+          status: 'revoked',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('enrollment_id', data.id)
+    } catch (e) {
+      console.warn('Could not revoke resource_bundle_purchases:', e)
     }
   }
 
@@ -342,6 +462,7 @@ function mapEnrollment(row: any): Enrollment {
     rejectionReason: row.rejection_reason || '',
     reviewedAt: row.reviewed_at || undefined,
     createdAt: row.created_at,
+    notes: row.notes || undefined,
   }
 }
 

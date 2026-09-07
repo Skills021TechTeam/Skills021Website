@@ -681,7 +681,7 @@ function AccordionSection({ title, defaultOpen = false, badge, children }: Accor
 }
 
 export default function Courses() {
-  const [courseSection, setCourseSection] = useState<'semester-bundles' | 'bundles' | 'courses' | 'webinars'>('bundles')
+  const [courseSection, setCourseSection] = useState<'semester-bundles' | 'bundles' | 'courses' | 'webinars'>('semester-bundles')
   const [liveWebinars, setLiveWebinars] = useState<LiveWebinar[]>([])
   const [webinarRecordings, setWebinarRecordings] = useState<WebinarRecording[]>([])
   const [webinarsLoading, setWebinarsLoading] = useState(false)
@@ -1302,7 +1302,7 @@ export default function Courses() {
               </span>
             )}
           </button>
-          <button
+          {/* <button
             onClick={() => setCourseSection('bundles')}
             className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
               courseSection === 'bundles'
@@ -1316,7 +1316,7 @@ export default function Courses() {
                 {subjectBundles.length}
               </span>
             )}
-          </button>
+          </button> */}
           <button
             onClick={() => setCourseSection('courses')}
             className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${

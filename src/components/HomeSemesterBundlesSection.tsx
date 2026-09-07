@@ -10,10 +10,36 @@ import {
   Layers,
   Zap,
   Star,
-  Clock,
 } from 'lucide-react'
 import { fetchPublishedSemesterBundles } from '../lib/semesterBundleService'
 import type { SemesterBundle } from '../lib/semesterBundleTypes'
+
+/**
+ * Dynamically computes effective daily and monthly pricing rates:
+ * - Semester Plan: 1 Semester = 180 days (~6 months)
+ * - 4-Year Degree Pass: 4 Years = 1,460 days (~48 months)
+ * 
+ * Examples:
+ * - ₹1,499 / 180 = ₹8.33 / day (₹250 / mo)
+ * - ₹699 / 180 = ₹3.88 / day (₹117 / mo) [e.g. Semester 8 bundle]
+ * - ₹5,080 / 1460 = ₹3.48 / day (₹106 / mo) [Complete 4-Year B.Tech Pass]
+ */
+export function calculateSemesterRates(price?: number, isFourYear: boolean = false) {
+  const numericPrice = Number(price || 0)
+  if (numericPrice <= 0) return { daily: '8.33', monthly: 250 }
+
+  if (isFourYear) {
+    return {
+      daily: (numericPrice / 1460).toFixed(2),
+      monthly: Math.round(numericPrice / 48),
+    }
+  }
+
+  return {
+    daily: (numericPrice / 180).toFixed(2),
+    monthly: Math.round(numericPrice / 6),
+  }
+}
 
 // Fallback known published semester bundles from Supabase in case offline/loading
 const FALLBACK_BUNDLES: Partial<SemesterBundle>[] = [
@@ -44,6 +70,15 @@ const FALLBACK_BUNDLES: Partial<SemesterBundle>[] = [
     lifetimePrice: 3896,
     rating: 5.0,
   },
+  {
+    id: 'sem-8-preset',
+    title: 'B-Tech CSE-IT — Semester 8 Complete Bundle',
+    semesterNumber: 8,
+    description: 'Final semester electives, major project guidance, cloud systems and placement viva prep.',
+    sixMonthPrice: 699,
+    lifetimePrice: 1899,
+    rating: 5.0,
+  },
 ]
 
 export default function HomeSemesterBundlesSection() {
@@ -58,7 +93,7 @@ export default function HomeSemesterBundlesSection() {
       .then((data) => {
         if (!active) return
         if (data && data.length > 0) {
-          // Sort by semester number (1, 3, 5, etc.)
+          // Sort by semester number (1, 2, 3... 8)
           const sorted = [...data].sort((a, b) => (a.semesterNumber || 0) - (b.semesterNumber || 0))
           setBundles(sorted)
         } else {
@@ -76,10 +111,7 @@ export default function HomeSemesterBundlesSection() {
     }
   }, [])
 
-  // Filter or prioritize odd semesters (1, 3, 5)
   const displayBundles = bundles.length > 0 ? bundles : (FALLBACK_BUNDLES as SemesterBundle[])
-  const oddBundles = displayBundles.filter((b) => [1, 3, 5].includes(b.semesterNumber || 0))
-  const renderList = oddBundles.length > 0 ? oddBundles : displayBundles.slice(0, 3)
 
   return (
     <section ref={ref} className="relative z-10 mx-auto max-w-7xl px-6 py-20 sm:px-8">
@@ -109,12 +141,13 @@ export default function HomeSemesterBundlesSection() {
         <div className="flex flex-wrap gap-3">
           <div className="rounded-2xl border border-violet-200/80 bg-white/80 p-3.5 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-brand-dark-card">
             <div className="text-[10px] font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400">
-              Semesters 1, 3 & 5
+              Semester Bundles (1 to 8)
             </div>
             <div className="mt-0.5 flex items-baseline gap-1">
-              <span className="text-2xl font-black text-brand-text dark:text-white">₹8.33</span>
+              <span className="text-2xl font-black text-brand-text dark:text-white">From ₹3.88</span>
               <span className="text-xs font-semibold text-brand-muted dark:text-brand-dark-muted">/ day</span>
             </div>
+            <div className="text-[10px] text-brand-muted font-medium">Sem 1, 3, 5: ₹8.33/day · Sem 8: ₹3.88/day</div>
           </div>
           <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/70 p-3.5 shadow-sm backdrop-blur-md dark:border-emerald-500/20 dark:bg-emerald-950/40">
             <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
@@ -124,6 +157,7 @@ export default function HomeSemesterBundlesSection() {
               <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">₹3.48</span>
               <span className="text-xs font-semibold text-brand-muted dark:text-brand-dark-muted">/ day</span>
             </div>
+            <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">All 8 Semesters Pass</div>
           </div>
         </div>
       </motion.div>
@@ -153,10 +187,10 @@ export default function HomeSemesterBundlesSection() {
                 <CheckCircle2 size={14} className="text-emerald-500" /> Complete 4-Year Syllabus (All 8 Semesters)
               </span>
               <span className="flex items-center gap-1.5">
-                <CheckCircle2 size={14} className="text-emerald-500" /> Solved University PYQs
+                <CheckCircle2 size={14} className="text-emerald-500" /> Solved University PYQs & Handouts
               </span>
               <span className="flex items-center gap-1.5">
-                <CheckCircle2 size={14} className="text-emerald-500" /> Lifetime Updates
+                <CheckCircle2 size={14} className="text-emerald-500" /> Lifetime Updates Included
               </span>
             </div>
           </div>
@@ -171,7 +205,7 @@ export default function HomeSemesterBundlesSection() {
                 <span className="text-sm font-semibold text-brand-muted">/ day</span>
               </div>
               <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                Calculated over complete 4-year degree (1,460 days)
+                ₹106/month · Calculated over 4 years (1,460 days)
               </span>
             </div>
             <Link
@@ -184,22 +218,23 @@ export default function HomeSemesterBundlesSection() {
         </div>
       </motion.div>
 
-      {/* ── Semester Cards Grid (1, 3, 5) ── */}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3 lg:gap-8">
-        {renderList.map((bundle, index) => {
-          const isOddSem = [1, 3, 5].includes(bundle.semesterNumber || 0)
-          const dailyRate = isOddSem ? '8.33' : '8.33'
+      {/* ── Dynamic Semester Cards Grid ── */}
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 lg:gap-8">
+        {displayBundles.map((bundle, index) => {
+          const rawPrice = bundle.sixMonthPrice || (bundle.semesterNumber === 8 ? 699 : 1499)
+          const isFourYear = bundle.title?.toLowerCase().includes('4-year')
+          const rates = calculateSemesterRates(rawPrice, isFourYear)
 
           return (
             <motion.div
               key={bundle.id}
               initial={{ opacity: 0, y: 30 }}
               animate={inView ? { opacity: 1, y: 0 } : {}}
-              transition={{ delay: 0.2 + index * 0.1, duration: 0.6 }}
+              transition={{ delay: 0.15 + index * 0.08, duration: 0.6 }}
               whileHover={{ y: -6 }}
               className="glass group relative flex h-full flex-col justify-between overflow-hidden rounded-3xl p-6 transition-all duration-300 hover:shadow-[0_20px_50px_-20px_rgba(139,92,246,0.35)]"
             >
-              {/* Subtle accent corner glow */}
+              {/* Accent corner glow */}
               <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-gradient-to-br from-violet-500/10 to-indigo-500/10 blur-2xl transition-transform group-hover:scale-125" />
 
               <div>
@@ -216,7 +251,7 @@ export default function HomeSemesterBundlesSection() {
                 </div>
 
                 {/* Title */}
-                <h3 className="mt-4 text-xl font-bold leading-snug text-brand-text dark:text-white group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
+                <h3 className="mt-4 text-lg font-bold leading-snug text-brand-text dark:text-white group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors line-clamp-2">
                   {bundle.title}
                 </h3>
                 <p className="mt-2 text-xs leading-relaxed text-brand-muted dark:text-brand-dark-muted line-clamp-2">
@@ -228,7 +263,7 @@ export default function HomeSemesterBundlesSection() {
                 <div className="mt-4 space-y-1.5 border-t border-black/5 pt-4 dark:border-white/10 text-xs text-brand-text dark:text-brand-dark-text">
                   <div className="flex items-center gap-2">
                     <BookOpen size={13} className="text-violet-500 shrink-0" />
-                    <span>All core semester theory & lab subjects</span>
+                    <span>All core theory & lab subjects</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Layers size={13} className="text-indigo-500 shrink-0" />
@@ -241,7 +276,7 @@ export default function HomeSemesterBundlesSection() {
                 </div>
               </div>
 
-              {/* ── Rs Section (Daily rate on preview, real price on click inside) ── */}
+              {/* ── Rs Section (Dynamic daily & monthly rates calculated automatically) ── */}
               <div className="mt-6 border-t border-black/5 pt-4 dark:border-white/10">
                 <div className="flex items-end justify-between">
                   <div>
@@ -250,12 +285,12 @@ export default function HomeSemesterBundlesSection() {
                     </span>
                     <div className="flex items-baseline gap-1">
                       <span className="text-2xl font-black text-violet-600 dark:text-violet-400">
-                        ₹{dailyRate}
+                        ₹{rates.daily}
                       </span>
                       <span className="text-xs font-semibold text-brand-muted">/ day</span>
                     </div>
-                    <span className="text-[10px] text-brand-muted">
-                      (₹{bundle.sixMonthPrice || 1499} for 6 months)
+                    <span className="text-[10px] text-brand-muted block mt-0.5">
+                      (₹{rates.monthly}/mo · ₹{rawPrice} full semester)
                     </span>
                   </div>
 

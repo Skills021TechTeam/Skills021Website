@@ -62,6 +62,7 @@ const PRICES = ['All', 'Free', 'Paid']
 import type { ProductDiscount } from '../lib/pricingTypes'
 import { applyDiscountToPrice, formatDiscountLabel } from '../lib/discountService'
 import { fetchAllDiscounts } from '../lib/discountService'
+import { calculateSemesterRates } from '../components/HomeSemesterBundlesSection'
 
 interface SemesterBundleCardProps {
   bundle: SemesterBundle
@@ -76,6 +77,10 @@ function SemesterBundleCard({ bundle, isUnlocked, discount }: SemesterBundleCard
 
   const finalSixMonth = discount ? applyDiscountToPrice(bundle.sixMonthPrice, discount) : bundle.sixMonthPrice
   const finalLifetime = discount ? applyDiscountToPrice(bundle.lifetimePrice, discount) : bundle.lifetimePrice
+
+  const isFourYear = bundle.title?.toLowerCase().includes('4-year')
+  const semRates = calculateSemesterRates(finalSixMonth || (bundle.semesterNumber === 8 ? 699 : 1499), isFourYear)
+  const lifetimeRates = calculateSemesterRates(finalLifetime || 5080, true)
 
   return (
     <motion.div
@@ -218,16 +223,16 @@ function SemesterBundleCard({ bundle, isUnlocked, discount }: SemesterBundleCard
           <div className="flex items-center justify-between gap-2">
             <div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-brand-muted dark:text-brand-dark-muted block">
-                {[1, 3, 5].includes(bundle.semesterNumber || 0) ? `Semester ${bundle.semesterNumber} Plan` : 'Semester Plan'}
+                {bundle.semesterNumber ? `Semester ${bundle.semesterNumber} Plan` : 'Semester Plan'}
               </span>
               <div className="flex items-baseline gap-1">
                 <span className="text-base sm:text-lg font-black text-violet-600 dark:text-violet-400">
-                  ₹8.33
+                  ₹{semRates.daily}
                 </span>
                 <span className="text-xs font-semibold text-brand-muted dark:text-brand-dark-muted">/ day</span>
               </div>
               <span className="text-[10px] text-brand-muted dark:text-brand-dark-muted block">
-                6-Month Access
+                (₹{semRates.monthly}/mo · 6 Months)
               </span>
             </div>
 

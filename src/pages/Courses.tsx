@@ -213,35 +213,45 @@ function SemesterBundleCard({ bundle, isUnlocked, discount }: SemesterBundleCard
           )}
         </div>
 
-        {/* Pricing */}
-        <div className="flex items-baseline justify-between pt-3 border-t border-gray-100 dark:border-brand-dark-border mt-auto">
-          {bundle.sixMonthEnabled && (
+        {/* Rs Pricing Section: Shows Rs 8.33/day for 1,3,5 and Rs 3.48/day for Complete 4-Year */}
+        <div className="pt-3 border-t border-gray-100 dark:border-brand-dark-border mt-auto">
+          <div className="flex items-center justify-between gap-2">
             <div>
-              <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">6-Month Access</span>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-sm font-bold text-brand-text dark:text-brand-dark-text">₹{finalSixMonth}</span>
-                {finalSixMonth < bundle.sixMonthPrice && (
-                  <span className="text-[11px] line-through text-brand-muted">₹{bundle.sixMonthPrice}</span>
-                )}
+              <span className="text-[10px] font-bold uppercase tracking-wider text-brand-muted dark:text-brand-dark-muted block">
+                {[1, 3, 5].includes(bundle.semesterNumber || 0) ? `Semester ${bundle.semesterNumber} Plan` : 'Semester Plan'}
+              </span>
+              <div className="flex items-baseline gap-1">
+                <span className="text-base sm:text-lg font-black text-violet-600 dark:text-violet-400">
+                  ₹8.33
+                </span>
+                <span className="text-xs font-semibold text-brand-muted dark:text-brand-dark-muted">/ day</span>
               </div>
+              <span className="text-[10px] text-brand-muted dark:text-brand-dark-muted block">
+                6-Month Access
+              </span>
             </div>
-          )}
-          {bundle.lifetimeEnabled && (
-            <div className={bundle.sixMonthEnabled ? 'text-right' : ''}>
-              <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">Lifetime Access</span>
-              <div className={`flex items-baseline gap-1.5 ${bundle.sixMonthEnabled ? 'justify-end' : ''}`}>
-                <span className="text-sm font-black text-primary-600 dark:text-primary-400">₹{finalLifetime}</span>
-                {finalLifetime < bundle.lifetimePrice && (
-                  <span className="text-[11px] line-through text-brand-muted">₹{bundle.lifetimePrice}</span>
-                )}
+
+            {bundle.lifetimeEnabled && (
+              <div className="text-right">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block">
+                  Complete 4-Year Pass
+                </span>
+                <div className="flex items-baseline gap-1 justify-end">
+                  <span className="text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400">₹3.48</span>
+                  <span className="text-xs font-semibold text-brand-muted dark:text-brand-dark-muted">/ day</span>
+                </div>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium block">
+                  All 8 Semesters Pass
+                </span>
               </div>
-            </div>
-          )}
-          {!bundle.sixMonthEnabled && !bundle.lifetimeEnabled && (
-            <div>
-              <span className="text-xs font-bold text-brand-muted">Pricing Unavailable</span>
-            </div>
-          )}
+            )}
+          </div>
+
+          <div className="mt-2 text-center">
+            <span className="text-[10px] font-medium text-primary-600 dark:text-primary-400">
+              Click below to view real bundle price & syllabus
+            </span>
+          </div>
         </div>
       </div>
 
@@ -261,7 +271,7 @@ function SemesterBundleCard({ bundle, isUnlocked, discount }: SemesterBundleCard
             </>
           ) : (
             <>
-              <Sparkles size={15} /> View Semester Bundle <ArrowRight size={13} />
+              <Sparkles size={15} /> View Bundle & Real Price <ArrowRight size={13} />
             </>
           )}
         </Link>
@@ -1568,15 +1578,25 @@ export default function Courses() {
               </div>
 
               {/* Semester Bundle Information Card */}
-              <div className="bg-gray-50 dark:bg-white/5 rounded-2xl border border-brand-border p-4 text-xs leading-relaxed text-brand-muted dark:text-brand-dark-muted space-y-2">
+              <div className="bg-gray-50 dark:bg-white/5 rounded-2xl border border-brand-border p-4 text-xs leading-relaxed text-brand-muted dark:text-brand-dark-muted space-y-2.5">
                 <div className="font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-1.5">
-                  <Sparkles size={14} className="text-brand-text dark:text-white" /> All-in-One Semester Pack
+                  <Sparkles size={14} className="text-violet-500" /> All-in-One Semester Pack
                 </div>
                 <p>
                   Get full semester syllabus coverage across <strong>all subjects</strong> with complete <strong>video lectures</strong>, <strong>unit notes</strong>, and <strong>revision PDFs</strong> in one combined package.
                 </p>
-                <p>
-                  Save up to <strong>50%</strong> compared to purchasing individual subject bundles!
+                <div className="pt-2 border-t border-brand-border space-y-1.5 text-[11px]">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-brand-text dark:text-white">Semesters 1, 3 & 5:</span>
+                    <span className="font-black text-violet-600 dark:text-violet-400">₹8.33 / day</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">Complete 4-Year Pass:</span>
+                    <span className="font-black text-emerald-600 dark:text-emerald-400">₹3.48 / day</span>
+                  </div>
+                </div>
+                <p className="text-[10px] text-brand-muted dark:text-brand-dark-muted">
+                  Click any bundle card to view its full real price, syllabus units & instant enrollment.
                 </p>
               </div>
             </div>

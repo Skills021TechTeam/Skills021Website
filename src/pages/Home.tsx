@@ -9,6 +9,7 @@ import CursorGlow from '../components/CursorGlow'
 import MagneticButton from '../components/MagneticButton'
 import LaptopIllustration from '../components/LaptopIllustration'
 import HomeCoursesSection from '../components/HomeCoursesSection'
+import HomeSemesterBundlesSection from '../components/HomeSemesterBundlesSection'
 import HomeHackathonsSection from '../components/HomeHackathonsSection'
 
 // Existing functional components
@@ -425,6 +426,7 @@ export default function Home() {
       <main className="relative">
         <WebinarSection />
         <HeroSection />
+        <HomeSemesterBundlesSection />
         <HomeCoursesSection />
            {/* <HomeHackathonsSection /> */}
         <VideoSection onVideoPlay={setSelectedVideo} />

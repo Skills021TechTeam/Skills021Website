@@ -1,5 +1,6 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
+import logoImg from '../assets/logo.png'
 
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg' | 'xl'
@@ -66,7 +67,7 @@ export default function Logo({
         className={`relative shrink-0 ${cfg.icon} ${cfg.rounded} ${cfg.padding} bg-white shadow-sm ring-1 ring-black/5 dark:ring-white/10 flex items-center justify-center overflow-hidden transition-transform duration-200 group-hover:scale-105 ${iconClassName}`}
       >
         <img
-          src="/logo-icon.png"
+          src={logoImg}
           alt="Skills021 Logo"
           className="w-full h-full object-contain"
           loading="eager"

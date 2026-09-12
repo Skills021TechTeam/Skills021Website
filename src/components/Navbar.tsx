@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import LogoutConfirmModal from './LogoutConfirmModal'
+import Logo from './Logo'
 import toast from 'react-hot-toast'
 import { haptic } from '../lib/haptics'
 
@@ -362,13 +363,8 @@ export default function Navbar() {
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
 
-          {/* ── Brand Text ── */}
-          <Link to="/" className="inline-flex items-center select-none focus:outline-none shrink-0" aria-label="Skills021 Home">
-            <span className="font-black tracking-tight text-lg sm:text-xl flex items-baseline">
-              <span className="text-[#0A0A0A] dark:text-white transition-colors">SKILLS</span>
-              <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 bg-clip-text text-transparent ml-0.5">021</span>
-            </span>
-          </Link>
+          {/* ── Brand Logo ── */}
+          <Logo size="sm" />
 
           {/* ── Desktop Navigation ── */}
           <div className="hidden xl:flex items-center gap-0.5">

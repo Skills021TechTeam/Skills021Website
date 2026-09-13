@@ -70,11 +70,47 @@ export async function fetchCheckoutPrice(
     }
   }
 
-  // Extract coupon error (if coupon was provided but invalid)
+  // Extract coupon error (if coupon was provided but invalid or unsaved)
   let couponError: string | undefined
-  const couponResult = result.coupon_result as Record<string, unknown> | null
-  if (couponCode && couponCode.trim() !== '' && couponResult && !couponResult.valid) {
-    couponError = (couponResult.error as string) ?? 'Invalid coupon.'
+  const cleanCode = couponCode?.trim().toUpperCase()
+  if (cleanCode && cleanCode !== '') {
+    const couponResult = result.coupon_result as Record<string, unknown> | null
+    if (couponResult && !couponResult.valid) {
+      couponError = (couponResult.error as string) ?? 'Coupon code is invalid.'
+    } else if (!result.coupon_id) {
+      try {
+        const valRes = await supabase.rpc('validate_coupon_for_product', {
+          p_code: cleanCode,
+          p_product_type: productType,
+          p_product_id: productId,
+          p_user_id: userId ?? null,
+          p_base_amount: Number(result.original_price ?? 0),
+        })
+        const valData = valRes.data as Record<string, unknown> | null
+        if (valData && !valData.valid) {
+          couponError = (valData.error as string) || 'Coupon code is invalid.'
+        } else {
+          // Check if coupon even exists in the database
+          const { data: dbCoupon } = await supabase
+            .from('coupons')
+            .select('id, is_active, expires_at, starts_at')
+            .eq('code', cleanCode)
+            .maybeSingle()
+
+          if (!dbCoupon) {
+            couponError = 'Coupon code is invalid. Only saved coupons can be applied.'
+          } else if (!dbCoupon.is_active) {
+            couponError = 'This coupon is inactive.'
+          } else if (dbCoupon.expires_at && new Date(dbCoupon.expires_at) <= new Date()) {
+            couponError = 'This coupon has expired.'
+          } else {
+            couponError = 'This coupon cannot be applied to this item.'
+          }
+        }
+      } catch {
+        couponError = 'Coupon code is invalid.'
+      }
+    }
   }
 
   return {

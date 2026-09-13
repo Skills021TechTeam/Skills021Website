@@ -664,6 +664,23 @@ export async function toggleSemesterBundleActive(id: string, isActive: boolean):
 export async function hasSemesterBundleAccess(userId: string | null, semesterId: number): Promise<boolean> {
   if (!userId || !semesterId) return false
 
+  // Direct check on enrollments table to immediately honor revocation
+  try {
+    const { data: enrRows } = await supabase
+      .from('enrollments')
+      .select('id, payment_status, status, item_id')
+      .eq('user_id', userId)
+      .eq('item_type', 'semester_bundle')
+      .order('created_at', { ascending: false })
+
+    if (enrRows && enrRows.length > 0) {
+      const matching = enrRows.find(e => e.item_id?.includes(String(semesterId)))
+      if (matching && (matching.payment_status === 'rejected' || matching.status === 'rejected' || matching.status === 'revoked' || matching.status === 'cancelled')) {
+        return false
+      }
+    }
+  } catch {}
+
   try {
     const { data, error } = await supabase.rpc('has_semester_bundle_access', {
       p_user_id: userId,
@@ -707,6 +724,46 @@ export async function getUserSemesterBundleEntitlement(
   const idStr = String(bundleIdOrSemesterId)
   let entitlement: SemesterBundleAccess = { hasAccess: false }
 
+  // 1. Check enrollments table first to strictly enforce any revoked/rejected state
+  try {
+    const { data: enrRows } = await supabase
+      .from('enrollments')
+      .select('id, payment_status, status, item_id, item_title, amount, utr_number')
+      .eq('user_id', userId)
+      .eq('item_type', 'semester_bundle')
+      .order('created_at', { ascending: false })
+
+    if (enrRows && enrRows.length > 0) {
+      const matching = enrRows.find(e => e.item_id?.includes(idStr))
+      if (matching) {
+        if (matching.payment_status === 'rejected' || matching.status === 'rejected' || matching.status === 'revoked' || matching.status === 'cancelled') {
+          return {
+            hasAccess: false,
+            isPending: false,
+            hasPending: false,
+            planType: matching.item_id?.includes('lifetime') ? 'lifetime' : 'six_month',
+            amount: matching.amount != null ? Number(matching.amount) : undefined,
+            utrNumber: matching.utr_number || undefined,
+          }
+        } else if ((matching.payment_status === 'paid' || matching.status === 'paid') && matching.status !== 'rejected' && matching.status !== 'revoked' && matching.status !== 'cancelled') {
+          entitlement.hasAccess = true
+          entitlement.isPending = false
+          entitlement.hasPending = false
+          entitlement.planType = matching.item_id?.includes('lifetime') ? 'lifetime' : 'six_month'
+          entitlement.amount = matching.amount != null ? Number(matching.amount) : undefined
+          entitlement.utrNumber = matching.utr_number || undefined
+          return entitlement
+        } else if (matching.payment_status === 'pending') {
+          entitlement.isPending = true
+          entitlement.hasPending = true
+          entitlement.planType = matching.item_id?.includes('lifetime') ? 'lifetime' : 'six_month'
+          entitlement.amount = matching.amount != null ? Number(matching.amount) : undefined
+          entitlement.utrNumber = matching.utr_number || undefined
+        }
+      }
+    }
+  } catch {}
+
   try {
     const { data, error } = await supabase.rpc('get_user_semester_bundle_entitlement', {
       p_user_id: userId,
@@ -731,31 +788,6 @@ export async function getUserSemesterBundleEntitlement(
   } catch (err) {
     console.warn('[semesterBundleService] RPC get_user_semester_bundle_entitlement failed:', err)
   }
-
-  // Fallback check on enrollments table
-  try {
-    const { data: enrRows } = await supabase
-      .from('enrollments')
-      .select('id, payment_status, status, item_id, item_title')
-      .eq('user_id', userId)
-      .eq('item_type', 'semester_bundle')
-      .order('created_at', { ascending: false })
-
-    if (enrRows && enrRows.length > 0) {
-      const matching = enrRows.find(e => e.item_id?.includes(idStr))
-      if (matching) {
-        if (matching.payment_status === 'paid') {
-          entitlement.hasAccess = true
-          entitlement.isPending = false
-          entitlement.hasPending = false
-          entitlement.planType = matching.item_id?.includes('lifetime') ? 'lifetime' : 'six_month'
-        } else if (matching.payment_status === 'pending' && !entitlement.hasAccess) {
-          entitlement.isPending = true
-          entitlement.hasPending = true
-        }
-      }
-    }
-  } catch {}
 
   return entitlement
 }

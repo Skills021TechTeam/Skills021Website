@@ -860,21 +860,6 @@ export async function deleteSubjectVideo(id: string): Promise<void> {
 // ─── Authoritative Entitlement & Access Check ──────────────────────────────
 export async function hasSubjectBundleAccess(userId: string | null, subjectId: number): Promise<boolean> {
   if (!userId || !subjectId) return false
-
-  try {
-    const { data, error } = await supabase.rpc('has_subject_bundle_access', {
-      p_user_id: userId,
-      p_subject_id: subjectId,
-    })
-
-    if (!error && data !== null && Boolean(data) === true) {
-      return true
-    }
-  } catch (err) {
-    console.warn('[subjectBundleService] RPC error on has_subject_bundle_access:', err)
-  }
-
-  // Fallback to comprehensive entitlement check
   const ent = await getUserSubjectBundleEntitlement(userId, subjectId)
   return ent.hasAccess
 }
@@ -888,7 +873,100 @@ export async function getUserSubjectBundleEntitlement(
   let entitlement: SubjectBundleAccess = { hasAccess: false }
   const now = new Date().toISOString()
 
-  // 1. Check RPC has_subject_bundle_access first
+  // 1. Authoritative check on enrollments table first to strictly catch revoked/rejected purchases
+  try {
+    const { data: enrRows } = await supabase
+      .from('enrollments')
+      .select('id, item_type, item_id, item_title, payment_status, status')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+
+    if (enrRows && enrRows.length > 0) {
+      const bundle = await fetchSubjectBundle(subjectId).catch(() => null)
+      const matching = enrRows.find(e => 
+        e.item_type === 'subject_bundle' && (
+          (bundle?.id && e.item_id?.includes(bundle.id)) ||
+          e.item_id?.includes(String(subjectId)) ||
+          (bundle?.subjectName && e.item_title?.toLowerCase().includes(bundle.subjectName.toLowerCase()))
+        )
+      )
+
+      if (matching) {
+        const isRejected = matching.payment_status === 'rejected' || matching.status === 'rejected' || matching.status === 'revoked' || matching.status === 'cancelled'
+        if (isRejected) {
+          return {
+            hasAccess: false,
+            hasPending: false,
+            paymentStatus: 'rejected',
+            status: 'revoked',
+          }
+        }
+
+        if ((matching.payment_status === 'paid' || matching.payment_status === 'free' || matching.status === 'paid' || matching.status === 'active')) {
+          entitlement.hasAccess = true
+          entitlement.hasPending = false
+          entitlement.paymentStatus = 'paid'
+          entitlement.status = 'active'
+          const plan = matching.item_id?.includes('lifetime') ? 'lifetime' : 'six_month'
+          entitlement.planType = plan as SubjectBundlePlan
+
+          // Auto-heal subject_bundle_purchases only if strictly approved
+          Promise.resolve(
+            supabase
+              .from('subject_bundle_purchases')
+              .update({
+                payment_status: 'paid',
+                status: 'active',
+                approved_at: new Date().toISOString(),
+                starts_at: new Date().toISOString(),
+              })
+              .eq('enrollment_id', matching.id)
+          ).catch(() => {})
+
+          return entitlement
+        } else if (matching.payment_status === 'pending') {
+          entitlement.hasPending = true
+          entitlement.paymentStatus = 'pending'
+        }
+      }
+
+      // Check semester bundle enrollment
+      const paidSemEnrs = enrRows.filter(e =>
+        e.item_type === 'semester_bundle' &&
+        (e.payment_status === 'paid' || e.payment_status === 'free' || e.status === 'paid' || e.status === 'active') &&
+        e.payment_status !== 'rejected' &&
+        e.status !== 'rejected' &&
+        e.status !== 'revoked' &&
+        e.status !== 'cancelled'
+      )
+
+      for (const semEnr of paidSemEnrs) {
+        const bundleId = semEnr.item_id?.split(':')[0]
+        if (bundleId) {
+          const { data: mapRows } = await supabase
+            .from('semester_bundle_subjects')
+            .select('subject_bundles(subject_id)')
+            .eq('bundle_id', bundleId)
+
+          const matches = mapRows?.some((m: any) => Number(m?.subject_bundles?.subject_id) === Number(subjectId))
+          if (matches) {
+            entitlement.hasAccess = true
+            entitlement.hasPending = false
+            entitlement.paymentStatus = 'paid'
+            entitlement.status = 'active'
+            const plan = semEnr.item_id?.includes('lifetime') ? 'lifetime' : 'six_month'
+            entitlement.planType = plan as SubjectBundlePlan
+            entitlement.viaSemesterBundle = true
+            return entitlement
+          }
+        }
+      }
+    }
+  } catch (enrErr) {
+    console.warn('[subjectBundleService] Error checking enrollments:', enrErr)
+  }
+
+  // 2. Check RPC has_subject_bundle_access
   try {
     const { data: rpcAccess } = await supabase.rpc('has_subject_bundle_access', {
       p_user_id: userId,
@@ -901,13 +979,15 @@ export async function getUserSubjectBundleEntitlement(
     }
   } catch {}
 
-  // 2. Check direct subject_bundle_purchases table
+  // 3. Check direct subject_bundle_purchases table
   try {
     const { data: directRows } = await supabase
       .from('subject_bundle_purchases')
       .select('id, plan_type, payment_status, status, starts_at, expires_at, created_at')
       .eq('user_id', userId)
       .eq('subject_id', subjectId)
+      .neq('status', 'revoked')
+      .neq('payment_status', 'rejected')
       .order('created_at', { ascending: false })
 
     if (directRows && directRows.length > 0) {
@@ -943,7 +1023,7 @@ export async function getUserSubjectBundleEntitlement(
     console.warn('[subjectBundleService] Error checking direct subject_bundle_purchases:', err)
   }
 
-  // 3. Check active semester_bundle_purchases table (unlocks all mapped subjects in that semester bundle)
+  // 4. Check active semester_bundle_purchases table
   try {
     const { data: semPurchases } = await supabase
       .from('semester_bundle_purchases')
@@ -951,6 +1031,8 @@ export async function getUserSubjectBundleEntitlement(
       .eq('user_id', userId)
       .eq('payment_status', 'paid')
       .eq('status', 'active')
+      .neq('status', 'revoked')
+      .neq('payment_status', 'rejected')
       .order('created_at', { ascending: false })
 
     if (semPurchases && semPurchases.length > 0) {
@@ -959,7 +1041,6 @@ export async function getUserSubjectBundleEntitlement(
 
         let coversSubject = false
 
-        // A. Match via semester_bundle_subjects mapping
         if (sp.bundle_id) {
           const { data: mapRows } = await supabase
             .from('semester_bundle_subjects')
@@ -971,7 +1052,6 @@ export async function getUserSubjectBundleEntitlement(
           }
         }
 
-        // B. Fallback match via subject's semester_id
         if (!coversSubject && sp.semester_id) {
           const { data: subjRecord } = await supabase
             .from('subjects')
@@ -1005,86 +1085,6 @@ export async function getUserSubjectBundleEntitlement(
     }
   } catch (semErr) {
     console.warn('[subjectBundleService] Error checking semester_bundle_purchases:', semErr)
-  }
-
-  // 4. Authoritative check on enrollments table (both subject_bundle & semester_bundle)
-  try {
-    const { data: enrRows } = await supabase
-      .from('enrollments')
-      .select('id, item_type, item_id, item_title, payment_status, status')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-
-    if (enrRows && enrRows.length > 0) {
-      // 4A. Match direct subject bundle enrollment
-      const bundle = await fetchSubjectBundle(subjectId).catch(() => null)
-      const matching = enrRows.find(e => 
-        e.item_type === 'subject_bundle' && (
-          (bundle?.id && e.item_id?.includes(bundle.id)) ||
-          e.item_id?.includes(String(subjectId)) ||
-          (bundle?.subjectName && e.item_title?.toLowerCase().includes(bundle.subjectName.toLowerCase()))
-        )
-      )
-
-      if (matching) {
-        if (matching.payment_status === 'paid' || matching.payment_status === 'free' || matching.status === 'paid' || matching.status === 'active') {
-          entitlement.hasAccess = true
-          entitlement.hasPending = false
-          entitlement.paymentStatus = 'paid'
-          entitlement.status = 'active'
-          const plan = matching.item_id?.includes('lifetime') ? 'lifetime' : 'six_month'
-          entitlement.planType = plan as SubjectBundlePlan
-
-          // Auto-heal subject_bundle_purchases in background
-          Promise.resolve(
-            supabase
-              .from('subject_bundle_purchases')
-              .update({
-                payment_status: 'paid',
-                status: 'active',
-                approved_at: new Date().toISOString(),
-                starts_at: new Date().toISOString(),
-              })
-              .eq('enrollment_id', matching.id)
-          ).catch(() => {})
-
-          return entitlement
-        } else if (matching.payment_status === 'pending' && !entitlement.hasAccess) {
-          entitlement.hasPending = true
-          entitlement.paymentStatus = 'pending'
-        }
-      }
-
-      // 4B. Match semester bundle enrollment
-      const paidSemEnrs = enrRows.filter(e =>
-        e.item_type === 'semester_bundle' &&
-        (e.payment_status === 'paid' || e.payment_status === 'free' || e.status === 'paid' || e.status === 'active')
-      )
-
-      for (const semEnr of paidSemEnrs) {
-        const bundleId = semEnr.item_id?.split(':')[0]
-        if (bundleId) {
-          const { data: mapRows } = await supabase
-            .from('semester_bundle_subjects')
-            .select('subject_bundles(subject_id)')
-            .eq('bundle_id', bundleId)
-
-          const matches = mapRows?.some((m: any) => Number(m?.subject_bundles?.subject_id) === Number(subjectId))
-          if (matches) {
-            entitlement.hasAccess = true
-            entitlement.hasPending = false
-            entitlement.paymentStatus = 'paid'
-            entitlement.status = 'active'
-            const plan = semEnr.item_id?.includes('lifetime') ? 'lifetime' : 'six_month'
-            entitlement.planType = plan as SubjectBundlePlan
-            entitlement.viaSemesterBundle = true
-            return entitlement
-          }
-        }
-      }
-    }
-  } catch (enrErr) {
-    console.warn('[subjectBundleService] Error checking enrollments fallback:', enrErr)
   }
 
   return entitlement

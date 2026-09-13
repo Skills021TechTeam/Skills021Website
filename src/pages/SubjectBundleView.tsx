@@ -1422,22 +1422,30 @@ function BundleCheckoutModal({
   }, [bundle.id, planType, bundleType])
 
   const handleApplyCoupon = async () => {
-    const code = couponInput.trim()
+    const code = couponInput.trim().toUpperCase()
     if (!code) { setCouponError('Please enter a coupon code.'); return }
     setCouponLoading(true)
     setCouponError(null)
     try {
-      await loadPricing(code)
       const res = await fetchCheckoutPrice(bundleType, `${bundle.id}:${planType}`, code, userId || null)
       const cp = toCheckoutPricing(res)
       if (cp.couponError) {
         setCouponError(cp.couponError)
         setAppliedCoupon(null)
-      } else if (cp.couponCode) {
+        await loadPricing(null)
+      } else if (cp.couponCode && cp.couponId) {
         setAppliedCoupon(cp.couponCode)
+        setCouponError(null)
         setPricing({ ...cp, isLoading: false })
         toast.success(`Coupon "${cp.couponCode}" applied! 🎉`)
+      } else {
+        setCouponError('Invalid coupon code. Only saved coupons can be applied.')
+        setAppliedCoupon(null)
+        await loadPricing(null)
       }
+    } catch {
+      setCouponError('Unable to validate coupon. Please try again.')
+      setAppliedCoupon(null)
     } finally {
       setCouponLoading(false)
     }
@@ -1477,13 +1485,13 @@ function BundleCheckoutModal({
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const trimmedUtr = utrNumber.trim()
-    if (!trimmedUtr || trimmedUtr.length < 6) {
-      toast.error('Please enter a valid 12-digit UTR or Reference Number')
+    const trimmedUtr = utrNumber.replace(/\D/g, '').trim()
+    if (!trimmedUtr || trimmedUtr.length !== 12) {
+      toast.error('UPI / UTR number must be exactly 12 digits')
       return
     }
-    if (!screenshotBase64) {
-      toast.error('Please upload your payment screenshot proof')
+    if (!screenshotBase64 || !screenshotBase64.trim()) {
+      toast.error('Payment screenshot is required. Please upload your receipt to submit verification.')
       return
     }
 
@@ -1796,16 +1804,29 @@ function BundleCheckoutModal({
                     <label className="block text-xs font-semibold text-brand-text dark:text-brand-dark-text">
                       12-Digit UTR / Transaction Reference Number *
                     </label>
-                    <span className="text-[10px] text-brand-muted font-mono">From UPI receipt</span>
+                    <span className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded ${
+                      utrNumber.length === 12
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-gray-100 dark:bg-white/10 text-brand-muted'
+                    }`}>
+                      {utrNumber.length}/12 digits {utrNumber.length === 12 ? '✓' : ''}
+                    </span>
                   </div>
                   <input
                     type="text"
                     required
-                    maxLength={20}
+                    inputMode="numeric"
+                    pattern="[0-9]{12}"
+                    maxLength={12}
                     placeholder="e.g. 425109283741"
                     value={utrNumber}
-                    onChange={e => setUtrNumber(e.target.value.replace(/\s+/g, ''))}
-                    className="w-full px-3.5 py-2.5 text-sm font-mono tracking-wider rounded-xl border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-bg focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-hidden transition-all"
+                    onChange={e => {
+                      const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 12)
+                      setUtrNumber(digitsOnly)
+                    }}
+                    className={`w-full px-3.5 py-2.5 text-sm font-mono tracking-wider rounded-xl border ${
+                      utrNumber.length === 12 ? 'border-emerald-500 ring-1 ring-emerald-500/20' : 'border-brand-border dark:border-brand-dark-border'
+                    } bg-white dark:bg-brand-dark-bg focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-hidden transition-all`}
                   />
                 </div>
 

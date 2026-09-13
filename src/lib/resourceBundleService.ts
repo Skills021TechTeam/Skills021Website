@@ -416,7 +416,7 @@ export async function getUserResourceBundleEntitlement(
     console.warn('[resourceBundleService] RPC get_user_resource_bundle_entitlement failed:', err)
   }
 
-  // Authoritative check on enrollments table
+  // Authoritative check on enrollments table first
   try {
     const { data: enrRows } = await supabase
       .from('enrollments')
@@ -434,13 +434,22 @@ export async function getUserResourceBundleEntitlement(
       )
 
       if (matching) {
-        if (matching.payment_status === 'paid') {
+        const isRejected = matching.payment_status === 'rejected' || matching.status === 'rejected' || matching.status === 'revoked'
+        if (isRejected) {
+          return {
+            hasAccess: false,
+            isPending: false,
+            hasPending: false,
+          }
+        }
+
+        if ((matching.payment_status === 'paid' || matching.status === 'paid') && !isRejected) {
           resAccess.hasAccess = true
           resAccess.isPending = false
           resAccess.hasPending = false
           resAccess.planType = (matching.item_id?.includes('lifetime') ? 'lifetime' : 'six_month') as ResourceBundlePlan
 
-          // Auto-heal resource_bundle_purchases
+          // Auto-heal resource_bundle_purchases only if strictly paid
           Promise.resolve(
             supabase
               .from('resource_bundle_purchases')

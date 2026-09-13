@@ -191,16 +191,33 @@ export default function UserDashboard() {
       setResourcesList(allResources)
       setEnrollments(userEnrollments)
 
-      // Identify active semester bundles
+      // Identify active vs revoked semester bundles
       const semBundleIds = new Set<string>()
       const semBundleKeywords: string[] = []
+      const revokedBundleIds = new Set<string>()
+      const revokedSemesterIds = new Set<number>()
 
       userEnrollments.forEach((enr) => {
-        if (
+        const isRevoked = enr.status === 'rejected'
+        const isSemester = enr.itemType === 'semester_bundle' || enr.itemTitle?.toLowerCase().includes('semester bundle')
+        const rawId = String(enr.courseId).split(':')[0]
+        const numId = Number(rawId)
+
+        if (isRevoked && isSemester) {
+          if (rawId && rawId !== 'undefined' && rawId !== 'null') {
+            revokedBundleIds.add(rawId)
+          }
+          if (!isNaN(numId) && rawId !== '') {
+            revokedSemesterIds.add(numId)
+          }
+          const semNumMatch = enr.itemTitle?.match(/semester\s*(\d+)/i)
+          if (semNumMatch) {
+            revokedSemesterIds.add(Number(semNumMatch[1]))
+          }
+        } else if (
           (enr.status === 'paid' || enr.status === 'free') &&
-          (enr.itemType === 'semester_bundle' || enr.itemTitle?.toLowerCase().includes('semester bundle'))
+          isSemester
         ) {
-          const rawId = String(enr.courseId).split(':')[0]
           if (rawId && rawId !== 'undefined' && rawId !== 'null') {
             semBundleIds.add(rawId)
           }
@@ -209,18 +226,37 @@ export default function UserDashboard() {
           }
         }
       })
+
       if (userEntitlements?.semesterBundleIds) {
-        userEntitlements.semesterBundleIds.forEach((id) => semBundleIds.add(String(id)))
+        userEntitlements.semesterBundleIds.forEach((id) => {
+          if (!revokedBundleIds.has(String(id))) {
+            semBundleIds.add(String(id))
+          }
+        })
       }
       if (userEntitlements?.semesterBundleSemesterIds) {
-        userEntitlements.semesterBundleSemesterIds.forEach((id) => semBundleIds.add(String(id)))
+        userEntitlements.semesterBundleSemesterIds.forEach((id) => {
+          if (!revokedSemesterIds.has(Number(id))) {
+            semBundleIds.add(String(id))
+          }
+        })
       }
+
+      // Purge any revoked bundle IDs
+      revokedBundleIds.forEach((rId) => semBundleIds.delete(rId))
 
       const loadedBundles: SemesterBundle[] = []
       for (const bId of semBundleIds) {
+        if (revokedBundleIds.has(bId)) continue
         try {
           const b = await fetchSemesterBundle(bId)
-          if (b && !loadedBundles.some((existing) => existing.id === b.id)) {
+          if (
+            b &&
+            !revokedBundleIds.has(b.id) &&
+            !(b.semesterId && revokedSemesterIds.has(b.semesterId)) &&
+            !(b.semesterNumber && revokedSemesterIds.has(b.semesterNumber)) &&
+            !loadedBundles.some((existing) => existing.id === b.id)
+          ) {
             loadedBundles.push(b)
           }
         } catch (e) {
@@ -233,6 +269,9 @@ export default function UserDashboard() {
         try {
           const published = await fetchPublishedSemesterBundles()
           for (const pb of published) {
+            if (revokedBundleIds.has(pb.id) || (pb.semesterId && revokedSemesterIds.has(pb.semesterId)) || (pb.semesterNumber && revokedSemesterIds.has(pb.semesterNumber))) {
+              continue
+            }
             const matches = semBundleKeywords.some((kw) => {
               const semMatch = kw.match(/semester\s*(\d+)/i)
               if (semMatch && Number(semMatch[1]) === pb.semesterNumber) return true

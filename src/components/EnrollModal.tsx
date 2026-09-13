@@ -196,7 +196,7 @@ export default function EnrollModal({
 
   // ─── Coupon Handlers ──────────────────────────────────────────────────────
   const handleApplyCoupon = async () => {
-    const code = couponInput.trim()
+    const code = couponInput.trim().toUpperCase()
     if (!code) {
       setCouponError('Please enter a coupon code.')
       return
@@ -206,29 +206,26 @@ export default function EnrollModal({
     setCouponError(null)
 
     try {
-      await loadPricing(code)
-      // After loadPricing completes, check if pricing has the coupon applied
-      // We check the ref via a fresh fetch to get the state
       const breakdown = await fetchCheckoutPrice(itemType, itemId, code, userId || null)
       const result = toCheckoutPricing(breakdown)
 
       if (result.couponError) {
         setCouponError(result.couponError)
         setAppliedCoupon(null)
-      } else if (result.couponCode) {
+        await loadPricing(null)
+      } else if (result.couponCode && result.couponId) {
         setAppliedCoupon(result.couponCode)
         setCouponError(null)
         setPricing({ ...result, isLoading: false })
         toast.success(`Coupon "${result.couponCode}" applied! 🎉`)
       } else {
-        // Coupon may have been rejected in favor of product discount
-        if (pricing.productDiscountAmount > 0) {
-          toast.success('Product discount is already better than this coupon.')
-        }
+        setCouponError('Invalid coupon code. Only saved coupons can be applied.')
         setAppliedCoupon(null)
+        await loadPricing(null)
       }
     } catch {
       setCouponError('Unable to validate coupon. Please try again.')
+      setAppliedCoupon(null)
     } finally {
       setCouponLoading(false)
     }
@@ -294,13 +291,13 @@ export default function EnrollModal({
 
   const handlePaymentProofSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const trimmedUtr = utrNumber.trim()
-    if (!trimmedUtr || trimmedUtr.length < 6) {
-      toast.error('Please enter a valid 12-digit UTR / Transaction Reference Number')
+    const trimmedUtr = utrNumber.replace(/\D/g, '').trim()
+    if (!trimmedUtr || trimmedUtr.length !== 12) {
+      toast.error('UPI / UTR number must be exactly 12 digits')
       return
     }
-    if (!screenshotBase64) {
-      toast.error('Please upload your payment screenshot / receipt')
+    if (!screenshotBase64 || !screenshotBase64.trim()) {
+      toast.error('Payment screenshot is required. Please upload your receipt to submit verification.')
       return
     }
 
@@ -658,15 +655,32 @@ export default function EnrollModal({
 
                 {/* UTR Input */}
                 <div>
-                  <label className="block text-xs font-bold text-brand-text dark:text-brand-dark-text mb-1">
-                    12-digit UTR / Transaction ID *
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-brand-text dark:text-brand-dark-text">
+                      12-digit UTR / Transaction ID *
+                    </label>
+                    <span className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded ${
+                      utrNumber.length === 12
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-gray-100 dark:bg-white/10 text-brand-muted'
+                    }`}>
+                      {utrNumber.length}/12 digits {utrNumber.length === 12 ? '✓' : ''}
+                    </span>
+                  </div>
                   <input
                     type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]{12}"
+                    maxLength={12}
                     value={utrNumber}
-                    onChange={(e) => setUtrNumber(e.target.value)}
+                    onChange={(e) => {
+                      const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 12)
+                      setUtrNumber(digitsOnly)
+                    }}
                     placeholder="e.g. 423456789012"
-                    className="input text-xs font-mono tracking-wider"
+                    className={`input text-xs font-mono tracking-wider ${
+                      utrNumber.length === 12 ? 'border-emerald-500 ring-1 ring-emerald-500/20' : ''
+                    }`}
                     required
                   />
                 </div>

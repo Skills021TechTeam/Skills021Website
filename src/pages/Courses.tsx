@@ -264,11 +264,10 @@ function SemesterBundleCard({ bundle, isUnlocked, discount }: SemesterBundleCard
       <div className="p-4 pt-0">
         <Link
           to={`/courses/semester-bundles/${bundle.id}`}
-          className={`w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all ${
-            isUnlocked
+          className={`w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all ${isUnlocked
               ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm'
               : 'bg-[#0A0A0A] hover:bg-gray-800 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 shadow-sm'
-          }`}
+            }`}
         >
           {isUnlocked ? (
             <>
@@ -444,11 +443,10 @@ function SubjectBundleCard({ bundle, isUnlocked }: SubjectBundleCardProps) {
       <div className="p-4 pt-0">
         <Link
           to={`/courses/bundles/${bundle.subjectId}`}
-          className={`w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all ${
-            isUnlocked
+          className={`w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all ${isUnlocked
               ? 'bg-green-500 hover:bg-green-600 text-white shadow-sm'
               : 'bg-[#0A0A0A] hover:bg-primary-600 text-white dark:bg-white dark:text-black dark:hover:bg-primary-500 dark:hover:text-white shadow-sm'
-          }`}
+            }`}
         >
           {isUnlocked ? (
             <>
@@ -740,50 +738,50 @@ export default function Courses() {
     getPaymentSettings().then((s) => {
       if (s?.allAccessPrice) setAllAccessPrice(s.allAccessPrice)
     })
-    ;(async () => {
-      try {
-        const [coursesData, bundlesData, semBundlesData] = await Promise.all([
-          fetchPublishedSiteCourses(),
-          fetchPublishedSubjectBundles(),
-          fetchPublishedSemesterBundles(),
-        ])
-        setCourses(coursesData)
-        setSubjectBundles(bundlesData)
-        setSemesterBundles(semBundlesData)
-
-        // Load all active discounts in parallel queries
+      ; (async () => {
         try {
-          const [discounts, semDiscounts] = await Promise.all([
-            fetchAllDiscounts('course').catch(() => []),
-            fetchAllDiscounts('semester_bundle').catch(() => []),
+          const [coursesData, bundlesData, semBundlesData] = await Promise.all([
+            fetchPublishedSiteCourses(),
+            fetchPublishedSubjectBundles(),
+            fetchPublishedSemesterBundles(),
           ])
-          const now = new Date()
-          const map = new Map<string, ProductDiscount>()
-          for (const d of discounts) {
-            if (!d.isActive) continue
-            if (d.startsAt && new Date(d.startsAt) > now) continue
-            if (d.expiresAt && new Date(d.expiresAt) <= now) continue
-            if (!map.has(d.productId)) map.set(d.productId, d)
-          }
-          setCourseDiscountsMap(map)
+          setCourses(coursesData)
+          setSubjectBundles(bundlesData)
+          setSemesterBundles(semBundlesData)
 
-          const semMap = new Map<string, ProductDiscount>()
-          for (const d of semDiscounts) {
-            if (!d.isActive) continue
-            if (d.startsAt && new Date(d.startsAt) > now) continue
-            if (d.expiresAt && new Date(d.expiresAt) <= now) continue
-            if (!semMap.has(d.productId)) semMap.set(d.productId, d)
+          // Load all active discounts in parallel queries
+          try {
+            const [discounts, semDiscounts] = await Promise.all([
+              fetchAllDiscounts('course').catch(() => []),
+              fetchAllDiscounts('semester_bundle').catch(() => []),
+            ])
+            const now = new Date()
+            const map = new Map<string, ProductDiscount>()
+            for (const d of discounts) {
+              if (!d.isActive) continue
+              if (d.startsAt && new Date(d.startsAt) > now) continue
+              if (d.expiresAt && new Date(d.expiresAt) <= now) continue
+              if (!map.has(d.productId)) map.set(d.productId, d)
+            }
+            setCourseDiscountsMap(map)
+
+            const semMap = new Map<string, ProductDiscount>()
+            for (const d of semDiscounts) {
+              if (!d.isActive) continue
+              if (d.startsAt && new Date(d.startsAt) > now) continue
+              if (d.expiresAt && new Date(d.expiresAt) <= now) continue
+              if (!semMap.has(d.productId)) semMap.set(d.productId, d)
+            }
+            setSemesterDiscountsMap(semMap)
+          } catch {
+            // Discount fetch failure is non-critical — don't block page
           }
-          setSemesterDiscountsMap(semMap)
-        } catch {
-          // Discount fetch failure is non-critical — don't block page
+        } catch (err) {
+          console.error('Failed to load courses:', err)
+        } finally {
+          setLoading(false)
         }
-      } catch (err) {
-        console.error('Failed to load courses:', err)
-      } finally {
-        setLoading(false)
-      }
-    })()
+      })()
   }, [])
 
   const loadUserEnrollments = useCallback(async () => {
@@ -1047,13 +1045,12 @@ export default function Courses() {
         <button
           disabled={disabled}
           onClick={() => setHActiveDropdown(isOpen ? null : levelName)}
-          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm transition-all text-left ${
-            disabled
+          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm transition-all text-left ${disabled
               ? 'opacity-40 bg-gray-50 dark:bg-white/5 border-gray-100 dark:border-brand-dark-border cursor-not-allowed text-brand-muted dark:text-brand-dark-muted'
               : isOpen
-              ? 'bg-[#0A0A0A] text-white border-[#0A0A0A] dark:bg-white dark:text-black dark:border-white font-semibold shadow-sm'
-              : 'bg-white dark:bg-brand-dark-card border-gray-100 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:border-gray-300 dark:hover:border-white/20'
-          }`}
+                ? 'bg-[#0A0A0A] text-white border-[#0A0A0A] dark:bg-white dark:text-black dark:border-white font-semibold shadow-sm'
+                : 'bg-white dark:bg-brand-dark-card border-gray-100 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:border-gray-300 dark:hover:border-white/20'
+            }`}
         >
           <span className="truncate pr-2 font-medium">{displayName}</span>
           {isLoading ? (
@@ -1061,9 +1058,8 @@ export default function Courses() {
           ) : (
             <ChevronDown
               size={13}
-              className={`transition-transform duration-200 flex-shrink-0 ${
-                isOpen ? 'rotate-180' : ''
-              } ${disabled ? 'text-brand-muted' : ''}`}
+              className={`transition-transform duration-200 flex-shrink-0 ${isOpen ? 'rotate-180' : ''
+                } ${disabled ? 'text-brand-muted' : ''}`}
             />
           )}
         </button>
@@ -1087,11 +1083,10 @@ export default function Courses() {
                     <button
                       key={opt.id}
                       onClick={() => onSelect(opt.id)}
-                      className={`w-full text-left px-3 py-2 text-xs transition-colors hover:bg-gray-100 dark:hover:bg-white/10 ${
-                        selectedValue === opt.id
+                      className={`w-full text-left px-3 py-2 text-xs transition-colors hover:bg-gray-100 dark:hover:bg-white/10 ${selectedValue === opt.id
                           ? 'font-bold text-primary-500 bg-primary-50 dark:bg-primary-950/20'
                           : 'text-brand-text dark:text-brand-dark-text'
-                      }`}
+                        }`}
                     >
                       {opt.name}
                     </button>
@@ -1304,11 +1299,10 @@ export default function Courses() {
         <div className="inline-flex rounded-2xl border border-gray-100 dark:border-brand-dark-border bg-white dark:bg-brand-dark-card p-1 shadow-sm flex-wrap gap-1">
           <button
             onClick={() => setCourseSection('semester-bundles')}
-            className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
-              courseSection === 'semester-bundles'
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${courseSection === 'semester-bundles'
                 ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black shadow-md'
                 : 'text-brand-muted dark:text-brand-dark-muted hover:text-brand-text dark:hover:text-brand-dark-text'
-            }`}
+              }`}
           >
             <Sparkles size={15} /> Semester Bundles
             {semesterBundles.length > 0 && (
@@ -1334,11 +1328,10 @@ export default function Courses() {
           </button> */}
           <button
             onClick={() => setCourseSection('courses')}
-            className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
-              courseSection === 'courses'
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${courseSection === 'courses'
                 ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black shadow-md'
                 : 'text-brand-muted dark:text-brand-dark-muted hover:text-brand-text dark:hover:text-brand-dark-text'
-            }`}
+              }`}
           >
             <BookOpen size={15} /> All Courses
             {published.length > 0 && (
@@ -1349,11 +1342,10 @@ export default function Courses() {
           </button>
           <button
             onClick={() => setCourseSection('webinars')}
-            className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
-              courseSection === 'webinars'
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${courseSection === 'webinars'
                 ? 'bg-gradient-to-r from-violet-600 to-cyan-500 text-white shadow-md'
                 : 'text-brand-muted dark:text-brand-dark-muted hover:text-brand-text dark:hover:text-brand-dark-text'
-            }`}
+              }`}
           >
             <Radio size={15} /> Webinars
           </button>
@@ -1365,7 +1357,7 @@ export default function Courses() {
           <div className="rounded-[28px] overflow-hidden border border-violet-100 dark:border-white/10 bg-gradient-to-br from-violet-50 via-white to-cyan-50 dark:from-violet-950/20 dark:via-brand-dark-card dark:to-cyan-950/20 p-6 sm:p-8 mb-8">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
               <div>
-                <div className="inline-flex items-center gap-2 rounded-full bg-white/80 dark:bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-violet-600 dark:text-violet-300 mb-3"><Radio size={12}/> Live & Replay Hub</div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-white/80 dark:bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-violet-600 dark:text-violet-300 mb-3"><Radio size={12} /> Live & Replay Hub</div>
                 <h2 className="text-3xl sm:text-4xl font-black text-brand-text dark:text-white">Webinars that keep you ahead.</h2>
                 <p className="mt-2 max-w-2xl text-sm leading-relaxed text-brand-muted dark:text-brand-dark-muted">Join live sessions on Google Meet or Zoom. When a session ends, its recording can be saved here for you to watch later.</p>
               </div>
@@ -1377,7 +1369,7 @@ export default function Courses() {
             </div>
           </div>
 
-          {webinarsLoading ? <div className="py-16 text-center text-sm text-brand-muted"><Loader2 className="animate-spin mx-auto mb-3"/>Loading webinars...</div> : (
+          {webinarsLoading ? <div className="py-16 text-center text-sm text-brand-muted"><Loader2 className="animate-spin mx-auto mb-3" />Loading webinars...</div> : (
             <>
               {/* Featured Speaker & Registration */}
               <div className="rounded-[28px] border border-violet-100 dark:border-white/10 bg-white dark:bg-brand-dark-card overflow-hidden shadow-sm mb-10">
@@ -1422,7 +1414,7 @@ export default function Courses() {
 
 
                   </div>
-                  
+
                   <div className="bg-gray-50 dark:bg-black/20 p-6 sm:p-8 md:w-72 lg:w-80 flex flex-col justify-center border-t md:border-t-0 md:border-l border-gray-100 dark:border-white/10">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-brand-muted dark:text-brand-dark-muted mb-5">
                       Speaker Highlights
@@ -1456,7 +1448,7 @@ export default function Courses() {
                         </div>
                       </li>
                     </ul>
-                    <a href="https://forms.gle/zwvivsCrV2ez28jv7" target="_blank" rel="noopener noreferrer" className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-500/20 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-500/25"><CalendarDays size={16}/> Register for Webinar <ExternalLink size={14} /></a>
+                    <a href="https://forms.gle/zwvivsCrV2ez28jv7" target="_blank" rel="noopener noreferrer" className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-500/20 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-500/25"><CalendarDays size={16} /> Register for Webinar <ExternalLink size={14} /></a>
                   </div>
                 </div>
               </div>
@@ -1465,12 +1457,12 @@ export default function Courses() {
                 <div className="rounded-3xl border border-red-200 dark:border-red-900/40 bg-white dark:bg-brand-dark-card p-5 sm:p-7 shadow-lg mb-10">
                   <div className="flex flex-col lg:flex-row lg:items-center gap-6">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-3"><span className="relative flex h-3 w-3"><span className="absolute inset-0 rounded-full bg-red-500 animate-ping"/><span className="relative h-3 w-3 rounded-full bg-red-500"/></span><span className="text-xs font-black uppercase tracking-widest text-red-500">Live now · {activeWebinar.provider}</span></div>
+                      <div className="flex items-center gap-2 mb-3"><span className="relative flex h-3 w-3"><span className="absolute inset-0 rounded-full bg-red-500 animate-ping" /><span className="relative h-3 w-3 rounded-full bg-red-500" /></span><span className="text-xs font-black uppercase tracking-widest text-red-500">Live now · {activeWebinar.provider}</span></div>
                       <h3 className="text-2xl font-black text-brand-text dark:text-white">{activeWebinar.title}</h3>
                       <p className="mt-2 text-sm text-brand-muted dark:text-brand-dark-muted max-w-2xl">{activeWebinar.description}</p>
-                      <p className="mt-2 text-xs font-bold text-red-600 dark:text-red-400 flex items-center gap-1.5"><Clock size={13}/> Started at {new Date(activeWebinar.startsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}{activeWebinar.endsAt && ` · Ends at ${new Date(activeWebinar.endsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`}</p>
+                      <p className="mt-2 text-xs font-bold text-red-600 dark:text-red-400 flex items-center gap-1.5"><Clock size={13} /> Started at {new Date(activeWebinar.startsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}{activeWebinar.endsAt && ` · Ends at ${new Date(activeWebinar.endsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`}</p>
                     </div>
-                    <a href={activeWebinar.joinUrl} target="_blank" rel="noreferrer" className="shrink-0 inline-flex items-center justify-center gap-2 rounded-xl bg-red-500 px-5 py-3 text-sm font-bold text-white hover:bg-red-600"><Video size={16}/> Join Live <ExternalLink size={14}/></a>
+                    <a href={activeWebinar.joinUrl} target="_blank" rel="noreferrer" className="shrink-0 inline-flex items-center justify-center gap-2 rounded-xl bg-red-500 px-5 py-3 text-sm font-bold text-white hover:bg-red-600"><Video size={16} /> Join Live <ExternalLink size={14} /></a>
                   </div>
                 </div>
               ) : upcomingWebinar ? (
@@ -1505,12 +1497,12 @@ export default function Courses() {
                   </div>
                 </div>
               ) : (
-                <div className="rounded-3xl border border-dashed border-gray-200 dark:border-white/10 p-10 text-center mb-10"><MonitorPlay className="mx-auto text-violet-400 mb-3" size={30}/><h3 className="font-black text-brand-text dark:text-white">No live webinar right now</h3><p className="text-sm text-brand-muted mt-1">Check the replays below or come back when the next session is scheduled.</p></div>
+                <div className="rounded-3xl border border-dashed border-gray-200 dark:border-white/10 p-10 text-center mb-10"><MonitorPlay className="mx-auto text-violet-400 mb-3" size={30} /><h3 className="font-black text-brand-text dark:text-white">No live webinar right now</h3><p className="text-sm text-brand-muted mt-1">Check the replays below or come back when the next session is scheduled.</p></div>
               )}
 
               <div>
                 <div className="flex items-end justify-between mb-5"><div><p className="text-xs font-bold uppercase tracking-widest text-violet-500">Webinar Library</p><h3 className="text-2xl font-black text-brand-text dark:text-white">Past sessions</h3></div><span className="text-xs text-brand-muted">{webinarRecordings.length} replay{webinarRecordings.length !== 1 ? 's' : ''}</span></div>
-                {webinarRecordings.length === 0 ? <div className="rounded-3xl border border-gray-100 dark:border-white/10 p-10 text-center text-sm text-brand-muted">No webinar recordings have been published yet.</div> : <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">{webinarRecordings.map(w => <article key={w.id} className="group overflow-hidden rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-brand-dark-card shadow-sm hover:shadow-xl transition-shadow"><div className="h-40 bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-500 relative flex items-center justify-center">{w.thumbnailUrl ? <img src={w.thumbnailUrl} alt="" className="absolute inset-0 w-full h-full object-cover"/> : <Play size={38} className="text-white/90"/>}<span className="absolute left-3 top-3 rounded-full bg-black/35 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur">REPLAY</span></div><div className="p-5"><p className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">{new Date(w.sessionDate).toLocaleDateString()}</p><span className="mt-1 inline-flex text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300">{webinarAccessLabel(w)}</span><h4 className="mt-1 font-black text-brand-text dark:text-white line-clamp-2">{w.title}</h4><p className="mt-2 text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-2">{w.description}</p>{w.videoUrl && <button onClick={() => handleOpenReplay(w)} disabled={openingReplayId === w.id} className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-violet-600 dark:text-violet-300 disabled:opacity-60">{canAccessWebinar(w) ? (openingReplayId === w.id ? <><Loader2 size={13} className="animate-spin"/> Opening...</> : <>Watch replay <ExternalLink size={13}/></>) : <><Lock size={13}/> {webinarAccessLabel(w)}</>}</button>}</div></article>)}</div>}
+                {webinarRecordings.length === 0 ? <div className="rounded-3xl border border-gray-100 dark:border-white/10 p-10 text-center text-sm text-brand-muted">No webinar recordings have been published yet.</div> : <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">{webinarRecordings.map(w => <article key={w.id} className="group overflow-hidden rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-brand-dark-card shadow-sm hover:shadow-xl transition-shadow"><div className="h-40 bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-500 relative flex items-center justify-center">{w.thumbnailUrl ? <img src={w.thumbnailUrl} alt="" className="absolute inset-0 w-full h-full object-cover" /> : <Play size={38} className="text-white/90" />}<span className="absolute left-3 top-3 rounded-full bg-black/35 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur">REPLAY</span></div><div className="p-5"><p className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">{new Date(w.sessionDate).toLocaleDateString()}</p><span className="mt-1 inline-flex text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300">{webinarAccessLabel(w)}</span><h4 className="mt-1 font-black text-brand-text dark:text-white line-clamp-2">{w.title}</h4><p className="mt-2 text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-2">{w.description}</p>{w.videoUrl && <button onClick={() => handleOpenReplay(w)} disabled={openingReplayId === w.id} className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-violet-600 dark:text-violet-300 disabled:opacity-60">{canAccessWebinar(w) ? (openingReplayId === w.id ? <><Loader2 size={13} className="animate-spin" /> Opening...</> : <>Watch replay <ExternalLink size={13} /></>) : <><Lock size={13} /> {webinarAccessLabel(w)}</>}</button>}</div></article>)}</div>}
               </div>
             </>
           )}
@@ -1835,302 +1827,97 @@ export default function Courses() {
           </main>
         </div>
       ) : (
-      <>
-      <div className="sticky top-16 z-30 bg-white dark:bg-brand-dark-bg border-b border-gray-100 dark:border-brand-dark-border shadow-sm">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex gap-1 overflow-x-auto no-scrollbar py-2">
-            {groupStats.map(g => (
-              <button
-                key={g.label}
-                onClick={() => { handleHResetHierarchy(); setActiveGroup(g.label); setActiveSub(null) }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all ${
-                  activeGroup === g.label
-                    ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black'
-                    : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-100 dark:hover:bg-white/5'
-                }`}
-              >
-                {g.label}
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeGroup === g.label ? 'bg-white/20 dark:bg-black/20' : 'bg-gray-100 dark:bg-white/10'}`}>
-                  {g.count}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 py-8 flex gap-6">
-        {/* Sidebar — desktop */}
-        <aside className="hidden md:block w-64 flex-shrink-0">
-          <div className="sticky top-32">
-            {/* Academic Hierarchy — same College → Course → Branch → Semester
-                → Subject filter as the Resources panel */}
-            <div className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border p-4 mb-4">
-              <div className="flex items-center justify-between mb-4 border-b border-gray-100 dark:border-brand-dark-border pb-2">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-brand-text dark:text-brand-dark-text">Academic Filter</h3>
-                {(hSelectedCollegeId || hSelectedCourseId || hSelectedBranchId || hSelectedSemesterId || hSelectedSubjectId) && (
+        <>
+          <div className="sticky top-16 z-30 bg-white dark:bg-brand-dark-bg border-b border-gray-100 dark:border-brand-dark-border shadow-sm">
+            <div className="max-w-7xl mx-auto px-4">
+              <div className="flex gap-1 overflow-x-auto no-scrollbar py-2">
+                {groupStats.map(g => (
                   <button
-                    onClick={handleHResetHierarchy}
-                    className="text-[10px] font-bold text-red-500 hover:text-red-600 transition-colors uppercase tracking-wider"
+                    key={g.label}
+                    onClick={() => { handleHResetHierarchy(); setActiveGroup(g.label); setActiveSub(null) }}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all ${activeGroup === g.label
+                        ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black'
+                        : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-100 dark:hover:bg-white/5'
+                      }`}
                   >
-                    Reset
+                    {g.label}
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeGroup === g.label ? 'bg-white/20 dark:bg-black/20' : 'bg-gray-100 dark:bg-white/10'}`}>
+                      {g.count}
+                    </span>
                   </button>
-                )}
-              </div>
-
-              {renderHHierarchyDropdown(
-                'College',
-                'Select College...',
-                hColleges,
-                hSelectedCollegeId,
-                handleHCollegeSelect,
-                'college',
-                false
-              )}
-
-              {renderHHierarchyDropdown(
-                'Course',
-                hSelectedCollegeId ? 'Select Course...' : 'Select College first',
-                hCourses,
-                hSelectedCourseId,
-                handleHCourseSelect,
-                'course',
-                !hSelectedCollegeId
-              )}
-
-              {renderHHierarchyDropdown(
-                'Branch',
-                hSelectedCourseId ? 'Select Branch...' : 'Select Course first',
-                hBranches,
-                hSelectedBranchId,
-                handleHBranchSelect,
-                'branch',
-                !hSelectedCourseId
-              )}
-
-              {renderHHierarchyDropdown(
-                'Semester',
-                hSelectedBranchId ? 'Select Semester...' : 'Select Branch first',
-                hSemesters.map(s => ({ id: s.id, name: `Semester ${s.semester_number}` })),
-                hSelectedSemesterId,
-                handleHSemesterSelect,
-                'semester',
-                !hSelectedBranchId
-              )}
-
-              {renderHHierarchyDropdown(
-                'Subject',
-                hSelectedSemesterId ? 'Select Subject...' : 'Select Semester first',
-                hSubjects,
-                hSelectedSubjectId,
-                handleHSubjectSelect,
-                'subject',
-                !hSelectedSemesterId
-              )}
-
-              <button
-                onClick={handleHApplyFilter}
-                disabled={!(hSelectedCollegeId || hSelectedCourseId || hSelectedBranchId || hSelectedSemesterId || hSelectedSubjectId)}
-                className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-primary-500 hover:bg-primary-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                <Search size={14} /> Search
-              </button>
-            </div>
-
-            <div className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border p-4">
-              <div className="space-y-0.5 mb-3 pb-3 border-b border-gray-100 dark:border-brand-dark-border">
-                <button
-                  onClick={() => setActiveSub(null)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${!activeSub ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}
-                >
-                  All Categories ({published.filter(c => c.group === activeGroup).length})
-                </button>
-                {ALL_SUBCATEGORIES.map(({ label: sub, group }) => {
-                  const cnt = published.filter(c => c.subcategory === sub).length
-                  return (
-                    <button
-                      key={sub}
-                      onClick={() => { handleHResetHierarchy(); setActiveSub(sub); setActiveGroup(group) }}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between transition-colors ${activeSub === sub ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}
-                    >
-                      <span className="truncate">{sub}</span>
-                      {cnt > 0 && <span className={`text-[10px] font-bold ml-1 px-1.5 py-0.5 rounded-full ${activeSub === sub ? 'bg-white/20 dark:bg-black/20' : 'bg-gray-100 dark:bg-white/10'}`}>{cnt}</span>}
-                    </button>
-                  )
-                })}
-              </div>
-
-              <AccordionSection title="Level" badge={activeLevel !== 'All Levels' ? 1 : 0}>
-                {LEVELS.map(l => (
-                  <button key={l} onClick={() => setActiveLevel(l)} className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-0.5 transition-colors ${activeLevel === l ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}>{l}</button>
                 ))}
-              </AccordionSection>
-
-              {activeFilterCount > 0 && (
-                <button
-                  onClick={() => { setActiveSub(null); setActiveLevel('All Levels'); setActivePrice('All'); handleHResetHierarchy() }}
-                  className="w-full mt-4 pt-4 border-t border-gray-100 dark:border-brand-dark-border text-xs font-semibold text-primary-500 hover:text-primary-600 transition-colors text-center"
-                >
-                  Clear all filters
-                </button>
-              )}
+              </div>
             </div>
           </div>
-        </aside>
 
-        {/* Main */}
-        <main id="courses-list" className="flex-1 min-w-0 scroll-mt-24">
-          {appliedSubjectId && (activeSubjectBundle || activeResourceBundle) && (
-            <div className="mb-6 p-6 rounded-2xl bg-gradient-to-r from-primary-600 via-indigo-600 to-primary-700 text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {activeSubjectBundle && activeSubjectBundle.isActive && (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/20 backdrop-blur-sm border border-white/20 text-white">
-                      <Package size={13} /> Complete Subject Bundle
-                    </span>
+          <div className="max-w-7xl mx-auto px-4 py-8 flex gap-6">
+            {/* Sidebar — desktop */}
+            <aside className="hidden md:block w-64 flex-shrink-0">
+              <div className="sticky top-32">
+                {/* Academic Hierarchy — same College → Course → Branch → Semester
+                → Subject filter as the Resources panel */}
+                <div className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border p-4 mb-4">
+                  <div className="flex items-center justify-between mb-4 border-b border-gray-100 dark:border-brand-dark-border pb-2">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-brand-text dark:text-brand-dark-text">Academic Filter</h3>
+                    {(hSelectedCollegeId || hSelectedCourseId || hSelectedBranchId || hSelectedSemesterId || hSelectedSubjectId) && (
+                      <button
+                        onClick={handleHResetHierarchy}
+                        className="text-[10px] font-bold text-red-500 hover:text-red-600 transition-colors uppercase tracking-wider"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+
+                  {renderHHierarchyDropdown(
+                    'College',
+                    'Select College...',
+                    hColleges,
+                    hSelectedCollegeId,
+                    handleHCollegeSelect,
+                    'college',
+                    false
                   )}
-                  {activeResourceBundle && activeResourceBundle.isActive && (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/10 backdrop-blur-sm border border-white/10 text-white/90">
-                      <FileText size={13} /> Resource Bundle (Notes Only)
-                    </span>
+
+                  {renderHHierarchyDropdown(
+                    'Course',
+                    hSelectedCollegeId ? 'Select Course...' : 'Select College first',
+                    hCourses,
+                    hSelectedCourseId,
+                    handleHCourseSelect,
+                    'course',
+                    !hSelectedCollegeId
                   )}
-                </div>
-                <h3 className="text-xl font-black">
-                  {appliedHierarchyLabel || 'Unlock this Subject'}
-                </h3>
-                <p className="text-sm text-white/80 max-w-xl">
-                  Choose between the <strong>Complete Subject Bundle</strong> (All lectures + notes) or the <strong>Resource Bundle</strong> (Notes & PDFs only).
-                </p>
-              </div>
 
-              <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
-                {unlockedSubjectIds.has(appliedSubjectId) ? (
-                  <Link
-                    to={`/courses/bundles/${appliedSubjectId}`}
-                    className="px-5 py-2.5 rounded-xl font-bold text-sm bg-green-500 text-white hover:bg-green-600 shadow-md flex items-center gap-2 transition-all"
-                  >
-                    <CheckCircle2 size={16} /> Subject Unlocked
-                  </Link>
-                ) : (
-                  <Link
-                    to={`/courses/bundles/${appliedSubjectId}`}
-                    className="px-5 py-2.5 rounded-xl font-bold text-sm bg-white text-primary-600 hover:bg-gray-100 shadow-md flex items-center gap-2 transition-all"
-                  >
-                    <Package size={16} /> View Subject & Bundles
-                  </Link>
-                )}
-              </div>
-            </div>
-          )}
+                  {renderHHierarchyDropdown(
+                    'Branch',
+                    hSelectedCourseId ? 'Select Branch...' : 'Select Course first',
+                    hBranches,
+                    hSelectedBranchId,
+                    handleHBranchSelect,
+                    'branch',
+                    !hSelectedCourseId
+                  )}
 
-          <div className="flex items-center justify-between mb-6 gap-3">
-            <div className="min-w-0">
-              <h2 className="text-xl font-bold text-brand-text dark:text-brand-dark-text truncate">{appliedHierarchyLabel || activeSub || activeGroup}</h2>
-              <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">{filtered.length} course{filtered.length !== 1 ? 's' : ''} found</p>
-            </div>
-            {/* Mobile filter trigger */}
-            <button
-              onClick={() => setMobileFiltersOpen(true)}
-              className="md:hidden flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-            >
-              <SlidersHorizontal size={15} />
-              Filters
-              {activeFilterCount > 0 && (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary-500 text-white">{activeFilterCount}</span>
-              )}
-            </button>
-          </div>
+                  {renderHHierarchyDropdown(
+                    'Semester',
+                    hSelectedBranchId ? 'Select Semester...' : 'Select Branch first',
+                    hSemesters.map(s => ({ id: s.id, name: `Semester ${s.semester_number}` })),
+                    hSelectedSemesterId,
+                    handleHSemesterSelect,
+                    'semester',
+                    !hSelectedBranchId
+                  )}
 
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-20">
-              <Loader2 size={32} className="animate-spin text-brand-muted dark:text-brand-dark-muted mb-3" />
-              <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Loading courses...</p>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-20">
-              <BookOpen size={48} className="mx-auto text-gray-200 dark:text-brand-dark-muted mb-4" />
-              <h3 className="text-lg font-semibold text-brand-text dark:text-brand-dark-text mb-2">No courses found</h3>
-              <p className="text-brand-muted dark:text-brand-dark-muted text-sm">
-                {hierarchyActive
-                  ? 'No courses have been linked to this College/Course/Branch/Semester/Subject yet. Try a broader level (e.g. just the Course) or reset the Academic Filter.'
-                  : 'Try adjusting your filters or search terms.'}
-              </p>
-              {hierarchyActive && (
-                <button
-                  onClick={handleHResetHierarchy}
-                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-                >
-                  Reset Academic Filter
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
-              {filtered.map(course => (
-                <CourseCard
-                  key={course.id}
-                  course={course}
-                  userId={userId}
-                  isAdmin={isAdmin}
-                  isPremium={Boolean(user?.isPremium)}
-                  isEnrolled={enrolledIds.has(course.id)}
-                  isPending={pendingIds.has(course.id)}
-                  isSubjectBundleUnlocked={Boolean(course.isBundleOnly && course.subjectId && unlockedSubjectIds.has(course.subjectId))}
-                  isResourceBundleUnlocked={course.subjectId ? unlockedResourceSubjectIds.has(course.subjectId) : false}
-                  onPlay={handlePlay}
-                  onEnroll={handleEnroll}
-                  onRated={handleCourseRated}
-                />
-              ))}
-            </div>
-          )}
-        </main>
-      </div>
-
-
-      {/* Mobile Filter Drawer */}
-      <AnimatePresence>
-        {mobileFiltersOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setMobileFiltersOpen(false)}
-              className="fixed inset-0 bg-black/50 z-40 md:hidden"
-            />
-            <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'tween', duration: 0.25, ease: 'easeInOut' }}
-              className="fixed top-0 right-0 h-full w-[85%] max-w-sm bg-white dark:bg-brand-dark-card z-50 md:hidden flex flex-col shadow-2xl"
-            >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-brand-dark-border flex-shrink-0">
-                <div className="flex items-center gap-2">
-                  <SlidersHorizontal size={16} className="text-brand-muted dark:text-brand-dark-muted" />
-                  <h3 className="text-base font-bold text-brand-text dark:text-brand-dark-text">Refine results</h3>
-                </div>
-                <button
-                  onClick={() => setMobileFiltersOpen(false)}
-                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
-                  aria-label="Close filters"
-                >
-                  <X size={18} className="text-brand-text dark:text-brand-dark-text" />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto px-5 py-2">
-                <AccordionSection
-                  title="Academic Filter"
-                  defaultOpen
-                  badge={(hSelectedCollegeId || hSelectedCourseId || hSelectedBranchId || hSelectedSemesterId || hSelectedSubjectId) ? 1 : 0}
-                >
-                  {renderHHierarchyDropdown('College', 'Select College...', hColleges, hSelectedCollegeId, handleHCollegeSelect, 'college', false)}
-                  {renderHHierarchyDropdown('Course', hSelectedCollegeId ? 'Select Course...' : 'Select College first', hCourses, hSelectedCourseId, handleHCourseSelect, 'course', !hSelectedCollegeId)}
-                  {renderHHierarchyDropdown('Branch', hSelectedCourseId ? 'Select Branch...' : 'Select Course first', hBranches, hSelectedBranchId, handleHBranchSelect, 'branch', !hSelectedCourseId)}
-                  {renderHHierarchyDropdown('Semester', hSelectedBranchId ? 'Select Semester...' : 'Select Branch first', hSemesters.map(s => ({ id: s.id, name: `Semester ${s.semester_number}` })), hSelectedSemesterId, handleHSemesterSelect, 'semester', !hSelectedBranchId)}
-                  {renderHHierarchyDropdown('Subject', hSelectedSemesterId ? 'Select Subject...' : 'Select Semester first', hSubjects, hSelectedSubjectId, handleHSubjectSelect, 'subject', !hSelectedSemesterId)}
+                  {renderHHierarchyDropdown(
+                    'Subject',
+                    hSelectedSemesterId ? 'Select Subject...' : 'Select Semester first',
+                    hSubjects,
+                    hSelectedSubjectId,
+                    handleHSubjectSelect,
+                    'subject',
+                    !hSelectedSemesterId
+                  )}
 
                   <button
                     onClick={handleHApplyFilter}
@@ -2139,65 +1926,269 @@ export default function Courses() {
                   >
                     <Search size={14} /> Search
                   </button>
-                </AccordionSection>
-
-                <div className="space-y-0.5 mb-3 pb-3 border-b border-gray-100 dark:border-brand-dark-border">
-                  <button
-                    onClick={() => setActiveSub(null)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${!activeSub ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}
-                  >
-                    All Categories ({published.filter(c => c.group === activeGroup).length})
-                  </button>
-                  {ALL_SUBCATEGORIES.map(({ label: sub, group }) => {
-                    const cnt = published.filter(c => c.subcategory === sub).length
-                    return (
-                      <button
-                        key={sub}
-                        onClick={() => { handleHResetHierarchy(); setActiveSub(sub); setActiveGroup(group) }}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between transition-colors ${activeSub === sub ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}
-                      >
-                        <span className="truncate">{sub}</span>
-                        {cnt > 0 && <span className={`text-[10px] font-bold ml-1 px-1.5 py-0.5 rounded-full ${activeSub === sub ? 'bg-white/20 dark:bg-black/20' : 'bg-gray-100 dark:bg-white/10'}`}>{cnt}</span>}
-                      </button>
-                    )
-                  })}
                 </div>
 
-                <AccordionSection title="Level" badge={activeLevel !== 'All Levels' ? 1 : 0}>
-                  {LEVELS.map(l => (
-                    <button key={l} onClick={() => setActiveLevel(l)} className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-0.5 transition-colors ${activeLevel === l ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}>{l}</button>
-                  ))}
-                </AccordionSection>
+                <div className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border p-4">
+                  <div className="space-y-0.5 mb-3 pb-3 border-b border-gray-100 dark:border-brand-dark-border">
+                    <button
+                      onClick={() => setActiveSub(null)}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${!activeSub ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                    >
+                      All Categories ({published.filter(c => c.group === activeGroup).length})
+                    </button>
+                    {ALL_SUBCATEGORIES.map(({ label: sub, group }) => {
+                      const cnt = published.filter(c => c.subcategory === sub).length
+                      return (
+                        <button
+                          key={sub}
+                          onClick={() => { handleHResetHierarchy(); setActiveSub(sub); setActiveGroup(group) }}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between transition-colors ${activeSub === sub ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                        >
+                          <span className="truncate">{sub}</span>
+                          {cnt > 0 && <span className={`text-[10px] font-bold ml-1 px-1.5 py-0.5 rounded-full ${activeSub === sub ? 'bg-white/20 dark:bg-black/20' : 'bg-gray-100 dark:bg-white/10'}`}>{cnt}</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
 
-                <AccordionSection title="Price" badge={activePrice !== 'All' ? 1 : 0}>
-                  {PRICES.map(p => (
-                    <button key={p} onClick={() => setActivePrice(p)} className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-0.5 transition-colors ${activePrice === p ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}>{p}</button>
-                  ))}
-                </AccordionSection>
+                  <AccordionSection title="Level" badge={activeLevel !== 'All Levels' ? 1 : 0}>
+                    {LEVELS.map(l => (
+                      <button key={l} onClick={() => setActiveLevel(l)} className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-0.5 transition-colors ${activeLevel === l ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}>{l}</button>
+                    ))}
+                  </AccordionSection>
+
+                  {activeFilterCount > 0 && (
+                    <button
+                      onClick={() => { setActiveSub(null); setActiveLevel('All Levels'); setActivePrice('All'); handleHResetHierarchy() }}
+                      className="w-full mt-4 pt-4 border-t border-gray-100 dark:border-brand-dark-border text-xs font-semibold text-primary-500 hover:text-primary-600 transition-colors text-center"
+                    >
+                      Clear all filters
+                    </button>
+                  )}
+                </div>
               </div>
+            </aside>
 
-              <div className="flex-shrink-0 p-4 border-t border-gray-100 dark:border-brand-dark-border flex gap-3">
-                {activeFilterCount > 0 && (
-                  <button
-                    onClick={() => { setActiveSub(null); setActiveLevel('All Levels'); setActivePrice('All'); handleHResetHierarchy() }}
-                    className="flex-1 px-4 py-3 rounded-xl text-sm font-semibold border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-                  >
-                    Clear all
-                  </button>
-                )}
+            {/* Main */}
+            <main id="courses-list" className="flex-1 min-w-0 scroll-mt-24">
+              {appliedSubjectId && (activeSubjectBundle || activeResourceBundle) && (
+                <div className="mb-6 p-6 rounded-2xl bg-gradient-to-r from-primary-600 via-indigo-600 to-primary-700 text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {activeSubjectBundle && activeSubjectBundle.isActive && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/20 backdrop-blur-sm border border-white/20 text-white">
+                          <Package size={13} /> Complete Subject Bundle
+                        </span>
+                      )}
+                      {activeResourceBundle && activeResourceBundle.isActive && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/10 backdrop-blur-sm border border-white/10 text-white/90">
+                          <FileText size={13} /> Resource Bundle (Notes Only)
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="text-xl font-black">
+                      {appliedHierarchyLabel || 'Unlock this Subject'}
+                    </h3>
+                    <p className="text-sm text-white/80 max-w-xl">
+                      Choose between the <strong>Complete Subject Bundle</strong> (All lectures + notes) or the <strong>Resource Bundle</strong> (Notes & PDFs only).
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
+                    {unlockedSubjectIds.has(appliedSubjectId) ? (
+                      <Link
+                        to={`/courses/bundles/${appliedSubjectId}`}
+                        className="px-5 py-2.5 rounded-xl font-bold text-sm bg-green-500 text-white hover:bg-green-600 shadow-md flex items-center gap-2 transition-all"
+                      >
+                        <CheckCircle2 size={16} /> Subject Unlocked
+                      </Link>
+                    ) : (
+                      <Link
+                        to={`/courses/bundles/${appliedSubjectId}`}
+                        className="px-5 py-2.5 rounded-xl font-bold text-sm bg-white text-primary-600 hover:bg-gray-100 shadow-md flex items-center gap-2 transition-all"
+                      >
+                        <Package size={16} /> View Subject & Bundles
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between mb-6 gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-xl font-bold text-brand-text dark:text-brand-dark-text truncate">{appliedHierarchyLabel || activeSub || activeGroup}</h2>
+                  <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">{filtered.length} course{filtered.length !== 1 ? 's' : ''} found</p>
+                </div>
+                {/* Mobile filter trigger */}
                 <button
-                  onClick={() => setMobileFiltersOpen(false)}
-                  className="flex-1 px-4 py-3 rounded-xl text-sm font-semibold text-white bg-primary-500 hover:bg-primary-600 transition-colors"
+                  onClick={() => setMobileFiltersOpen(true)}
+                  className="md:hidden flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
                 >
-                  Show {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+                  <SlidersHorizontal size={15} />
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary-500 text-white">{activeFilterCount}</span>
+                  )}
                 </button>
               </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
 
-      </>
+              {loading ? (
+                <div className="flex flex-col items-center justify-center py-20">
+                  <Loader2 size={32} className="animate-spin text-brand-muted dark:text-brand-dark-muted mb-3" />
+                  <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Loading courses...</p>
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="text-center py-20">
+                  <BookOpen size={48} className="mx-auto text-gray-200 dark:text-brand-dark-muted mb-4" />
+                  <h3 className="text-lg font-semibold text-brand-text dark:text-brand-dark-text mb-2">No courses found</h3>
+                  <p className="text-brand-muted dark:text-brand-dark-muted text-sm">
+                    {hierarchyActive
+                      ? 'No courses have been linked to this College/Course/Branch/Semester/Subject yet. Try a broader level (e.g. just the Course) or reset the Academic Filter.'
+                      : 'Try adjusting your filters or search terms.'}
+                  </p>
+                  {hierarchyActive && (
+                    <button
+                      onClick={handleHResetHierarchy}
+                      className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                    >
+                      Reset Academic Filter
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+                  {filtered.map(course => (
+                    <CourseCard
+                      key={course.id}
+                      course={course}
+                      userId={userId}
+                      isAdmin={isAdmin}
+                      isPremium={Boolean(user?.isPremium)}
+                      isEnrolled={enrolledIds.has(course.id)}
+                      isPending={pendingIds.has(course.id)}
+                      isSubjectBundleUnlocked={Boolean(course.isBundleOnly && course.subjectId && unlockedSubjectIds.has(course.subjectId))}
+                      isResourceBundleUnlocked={course.subjectId ? unlockedResourceSubjectIds.has(course.subjectId) : false}
+                      onPlay={handlePlay}
+                      onEnroll={handleEnroll}
+                      onRated={handleCourseRated}
+                    />
+                  ))}
+                </div>
+              )}
+            </main>
+          </div>
+
+
+          {/* Mobile Filter Drawer */}
+          <AnimatePresence>
+            {mobileFiltersOpen && (
+              <>
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setMobileFiltersOpen(false)}
+                  className="fixed inset-0 bg-black/50 z-40 md:hidden"
+                />
+                <motion.div
+                  initial={{ x: '100%' }}
+                  animate={{ x: 0 }}
+                  exit={{ x: '100%' }}
+                  transition={{ type: 'tween', duration: 0.25, ease: 'easeInOut' }}
+                  className="fixed top-0 right-0 h-full w-[85%] max-w-sm bg-white dark:bg-brand-dark-card z-50 md:hidden flex flex-col shadow-2xl"
+                >
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-brand-dark-border flex-shrink-0">
+                    <div className="flex items-center gap-2">
+                      <SlidersHorizontal size={16} className="text-brand-muted dark:text-brand-dark-muted" />
+                      <h3 className="text-base font-bold text-brand-text dark:text-brand-dark-text">Refine results</h3>
+                    </div>
+                    <button
+                      onClick={() => setMobileFiltersOpen(false)}
+                      className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                      aria-label="Close filters"
+                    >
+                      <X size={18} className="text-brand-text dark:text-brand-dark-text" />
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto px-5 py-2">
+                    <AccordionSection
+                      title="Academic Filter"
+                      defaultOpen
+                      badge={(hSelectedCollegeId || hSelectedCourseId || hSelectedBranchId || hSelectedSemesterId || hSelectedSubjectId) ? 1 : 0}
+                    >
+                      {renderHHierarchyDropdown('College', 'Select College...', hColleges, hSelectedCollegeId, handleHCollegeSelect, 'college', false)}
+                      {renderHHierarchyDropdown('Course', hSelectedCollegeId ? 'Select Course...' : 'Select College first', hCourses, hSelectedCourseId, handleHCourseSelect, 'course', !hSelectedCollegeId)}
+                      {renderHHierarchyDropdown('Branch', hSelectedCourseId ? 'Select Branch...' : 'Select Course first', hBranches, hSelectedBranchId, handleHBranchSelect, 'branch', !hSelectedCourseId)}
+                      {renderHHierarchyDropdown('Semester', hSelectedBranchId ? 'Select Semester...' : 'Select Branch first', hSemesters.map(s => ({ id: s.id, name: `Semester ${s.semester_number}` })), hSelectedSemesterId, handleHSemesterSelect, 'semester', !hSelectedBranchId)}
+                      {renderHHierarchyDropdown('Subject', hSelectedSemesterId ? 'Select Subject...' : 'Select Semester first', hSubjects, hSelectedSubjectId, handleHSubjectSelect, 'subject', !hSelectedSemesterId)}
+
+                      <button
+                        onClick={handleHApplyFilter}
+                        disabled={!(hSelectedCollegeId || hSelectedCourseId || hSelectedBranchId || hSelectedSemesterId || hSelectedSubjectId)}
+                        className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-primary-500 hover:bg-primary-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Search size={14} /> Search
+                      </button>
+                    </AccordionSection>
+
+                    <div className="space-y-0.5 mb-3 pb-3 border-b border-gray-100 dark:border-brand-dark-border">
+                      <button
+                        onClick={() => setActiveSub(null)}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${!activeSub ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                      >
+                        All Categories ({published.filter(c => c.group === activeGroup).length})
+                      </button>
+                      {ALL_SUBCATEGORIES.map(({ label: sub, group }) => {
+                        const cnt = published.filter(c => c.subcategory === sub).length
+                        return (
+                          <button
+                            key={sub}
+                            onClick={() => { handleHResetHierarchy(); setActiveSub(sub); setActiveGroup(group) }}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between transition-colors ${activeSub === sub ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}
+                          >
+                            <span className="truncate">{sub}</span>
+                            {cnt > 0 && <span className={`text-[10px] font-bold ml-1 px-1.5 py-0.5 rounded-full ${activeSub === sub ? 'bg-white/20 dark:bg-black/20' : 'bg-gray-100 dark:bg-white/10'}`}>{cnt}</span>}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    <AccordionSection title="Level" badge={activeLevel !== 'All Levels' ? 1 : 0}>
+                      {LEVELS.map(l => (
+                        <button key={l} onClick={() => setActiveLevel(l)} className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-0.5 transition-colors ${activeLevel === l ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}>{l}</button>
+                      ))}
+                    </AccordionSection>
+
+                    <AccordionSection title="Price" badge={activePrice !== 'All' ? 1 : 0}>
+                      {PRICES.map(p => (
+                        <button key={p} onClick={() => setActivePrice(p)} className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-0.5 transition-colors ${activePrice === p ? 'bg-[#0A0A0A] text-white dark:bg-white dark:text-black font-semibold' : 'text-brand-muted dark:text-brand-dark-muted hover:bg-gray-50 dark:hover:bg-white/5'}`}>{p}</button>
+                      ))}
+                    </AccordionSection>
+                  </div>
+
+                  <div className="flex-shrink-0 p-4 border-t border-gray-100 dark:border-brand-dark-border flex gap-3">
+                    {activeFilterCount > 0 && (
+                      <button
+                        onClick={() => { setActiveSub(null); setActiveLevel('All Levels'); setActivePrice('All'); handleHResetHierarchy() }}
+                        className="flex-1 px-4 py-3 rounded-xl text-sm font-semibold border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                      >
+                        Clear all
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setMobileFiltersOpen(false)}
+                      className="flex-1 px-4 py-3 rounded-xl text-sm font-semibold text-white bg-primary-500 hover:bg-primary-600 transition-colors"
+                    >
+                      Show {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+                    </button>
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+
+        </>
       )}
 
       {enrollCourse && (

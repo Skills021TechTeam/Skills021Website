@@ -1014,12 +1014,12 @@ export default function SubjectBundleView() {
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-primary-500/10 text-primary-500 flex items-center justify-center font-black text-xs">
-                          U{unit.unitNumber}
+                          {unit.unitNumber}
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
                             <h3 className="text-sm sm:text-base font-bold text-brand-text dark:text-brand-dark-text">
-                              Unit {unit.unitNumber} — {unit.title}
+                              {unit.title}
                             </h3>
                             {!hasSubjectAccess && (
                               <Lock size={12} className="text-brand-muted" />

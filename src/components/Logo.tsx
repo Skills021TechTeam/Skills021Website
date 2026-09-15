@@ -74,14 +74,14 @@ export default function Logo({
         />
       </div>
 
-      {/* Typography: SKILLS in bold, 021 in gradient ribbon colors */}
+      {/* Typography: SKILLS and 021 in bold black text */}
       {showText && (
         <div className="flex flex-col leading-none">
           <div className={`font-black tracking-tight flex items-baseline ${cfg.text} ${textClassName}`}>
             <span className="text-[#0A0A0A] dark:text-white transition-colors">
               SKILLS
             </span>
-            <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 bg-clip-text text-transparent ml-0.5">
+            <span className="text-[#0A0A0A] dark:text-white transition-colors ml-0.5">
               021
             </span>
           </div>

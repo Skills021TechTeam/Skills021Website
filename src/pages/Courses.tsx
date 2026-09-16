@@ -472,9 +472,12 @@ interface CourseCardProps {
   isPending: boolean
   isSubjectBundleUnlocked?: boolean
   isResourceBundleUnlocked?: boolean
+  isCourseBundleUnlocked?: boolean
+  allCourses?: Course[]
   onPlay: (course: Course) => void
   onEnroll: (course: Course) => void
   onRated: (courseId: string, average: number, count: number) => void
+  onViewBundleDetails?: (bundle: Course) => void
 }
 
 function CourseCard({
@@ -486,13 +489,43 @@ function CourseCard({
   isPending,
   isSubjectBundleUnlocked,
   isResourceBundleUnlocked,
+  isCourseBundleUnlocked,
+  allCourses = [],
   onPlay,
   onEnroll,
-  onRated
+  onRated,
+  onViewBundleDetails,
 }: CourseCardProps) {
+  const isCourseBundle = Boolean(course.isCourseBundle)
   const isBundleOnly = Boolean(course.isBundleOnly)
   const isFreeCourse = !isBundleOnly && (course.price === 'FREE' || course.price === 0)
-  const canWatch = isAdmin || isPremium || isEnrolled || isFreeCourse || Boolean(isSubjectBundleUnlocked)
+  const canWatch = isAdmin || isPremium || isEnrolled || isFreeCourse || Boolean(isSubjectBundleUnlocked) || Boolean(isCourseBundleUnlocked)
+
+  // Compute bundled child courses and total standalone value for Course Bundles (strictly individual videos)
+  const bundledCourses = useMemo(() => {
+    if (!isCourseBundle || !course.bundledCourseIds?.length) return []
+    const idSet = new Set(course.bundledCourseIds.map(id => String(id).replace(/^course_/, '')))
+    return allCourses.filter(c => {
+      const isBundle = c.isCourseBundle || (c.tags || []).includes('__is_course_bundle')
+      const isUnderBundle = c.isBundleOnly || (c.tags || []).includes('__bundle_only')
+      if (isBundle || isUnderBundle) return false
+      return idSet.has(String(c.id).replace(/^course_/, ''))
+    })
+  }, [isCourseBundle, course.bundledCourseIds, allCourses])
+
+  const standaloneTotal = useMemo(() => {
+    return bundledCourses.reduce((sum, c) => sum + (typeof c.price === 'number' ? c.price : 0), 0)
+  }, [bundledCourses])
+
+  const bundleSavings = useMemo(() => {
+    if (typeof course.price === 'number' && standaloneTotal > course.price) {
+      const saved = standaloneTotal - course.price
+      const rawPct = Math.round((saved / standaloneTotal) * 100)
+      const pct = course.price > 0 ? Math.min(99, rawPct) : rawPct
+      return { saved, pct }
+    }
+    return null
+  }, [course.price, standaloneTotal])
 
   return (
     <motion.div
@@ -502,12 +535,16 @@ function CourseCard({
       exit={{ opacity: 0, y: -16 }}
       whileHover={{ y: -3 }}
       transition={{ duration: 0.25 }}
-      className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border group hover:shadow-card-hover transition-all duration-200"
+      className="bg-white dark:bg-brand-dark-card rounded-2xl border border-gray-100 dark:border-brand-dark-border group hover:shadow-card-hover transition-all duration-200 flex flex-col justify-between overflow-hidden"
     >
       {/* Thumbnail */}
       <div
         onClick={() => {
-          if (canWatch) onPlay(course)
+          if (isCourseBundle) {
+            onViewBundleDetails?.(course)
+          } else if (canWatch) {
+            onPlay(course)
+          }
         }}
         className="fx-course-thumb relative h-44 bg-gray-900 dark:bg-black overflow-hidden rounded-t-2xl flex items-center justify-center cursor-pointer"
       >
@@ -519,24 +556,43 @@ function CourseCard({
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
 
         {/* Badges */}
-        <div className="absolute top-3 left-3 flex gap-2">
-          <span className="px-2.5 py-1 text-xs font-semibold bg-white/15 backdrop-blur-sm text-white rounded-lg border border-white/20">
-            {course.level}
-          </span>
-          {course.subject && (
-            <span className="px-2.5 py-1 text-xs font-semibold bg-primary-500/80 backdrop-blur-sm text-white rounded-lg border border-primary-400/30 truncate max-w-[140px]">
-              {course.subject}
+        <div className="absolute top-3 left-3 flex gap-2 flex-wrap">
+          {isCourseBundle ? (
+            <span className="px-2.5 py-1 text-xs font-black bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-lg shadow-sm flex items-center gap-1">
+              <Sparkles size={11} /> Combo Bundle ({course.bundledCourseIds?.length || bundledCourses.length || 0})
             </span>
+          ) : (
+            <>
+              <span className="px-2.5 py-1 text-xs font-semibold bg-white/15 backdrop-blur-sm text-white rounded-lg border border-white/20">
+                {course.level}
+              </span>
+              {course.subject && (
+                <span className="px-2.5 py-1 text-xs font-semibold bg-primary-500/80 backdrop-blur-sm text-white rounded-lg border border-primary-400/30 truncate max-w-[140px]">
+                  {course.subject}
+                </span>
+              )}
+            </>
           )}
         </div>
 
         {canWatch ? (
-          <div className="absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold bg-green-500 text-white rounded-lg">
-            <CheckCircle2 size={11} /> {isAdmin ? 'ADMIN' : isPremium ? 'PREMIUM PASS' : isSubjectBundleUnlocked ? 'SUBJECT UNLOCKED' : isFreeCourse ? 'FREE ACCESS' : 'ENROLLED'}
+          <div className="absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold bg-green-500 text-white rounded-lg shadow-sm">
+            <CheckCircle2 size={11} /> {isAdmin ? 'ADMIN' : isPremium ? 'PREMIUM PASS' : isCourseBundleUnlocked ? 'UNLOCKED VIA BUNDLE' : isSubjectBundleUnlocked ? 'SUBJECT UNLOCKED' : isFreeCourse ? 'FREE ACCESS' : isCourseBundle ? 'COMBO UNLOCKED' : 'ENROLLED'}
           </div>
         ) : isPending ? (
           <div className="absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold bg-amber-500 text-white rounded-lg animate-pulse">
             <Clock size={11} /> PENDING APPROVAL
+          </div>
+        ) : isCourseBundle ? (
+          <div className="absolute top-3 right-3 flex items-center gap-1">
+            {bundleSavings && (
+              <span className="px-2 py-1 text-[10px] font-black bg-gradient-to-r from-rose-500 to-amber-500 text-white rounded-lg shadow-sm">
+                {bundleSavings.pct}% OFF
+              </span>
+            )}
+            <span className="px-2.5 py-1 text-[10px] font-bold bg-[#0A0A0A] text-white rounded-lg border border-white/20 shadow-xs">
+              {typeof course.price === 'number' ? `₹${course.price}` : 'FREE'}
+            </span>
           </div>
         ) : isBundleOnly ? (
           <div className="absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold bg-primary-500 text-white rounded-lg">
@@ -552,65 +608,151 @@ function CourseCard({
           </div>
         ) : null}
 
-        {/* Play / Lock icon on hover */}
+        {/* Play / Lock / Bundle icon on hover */}
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center border border-white/40">
-            {canWatch ? <Play size={18} className="text-white ml-0.5" /> : <Lock size={16} className="text-white" />}
+            {isCourseBundle ? (
+              <Package size={18} className="text-white" />
+            ) : canWatch ? (
+              <Play size={18} className="text-white ml-0.5" />
+            ) : (
+              <Lock size={16} className="text-white" />
+            )}
           </div>
         </div>
       </div>
 
       {/* Content */}
-      <div className="p-5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] font-semibold text-brand-muted dark:text-brand-dark-muted bg-gray-100 dark:bg-white/10 px-2 py-0.5 rounded-md">
-            {course.academicCourse || course.subcategory}
-          </span>
-          {course.subjectId && (
-            <Link
-              to={`/courses/bundles/${course.subjectId}`}
-              className="text-[11px] font-bold text-primary-500 hover:underline flex items-center gap-1"
-              title="View Complete Subject Bundle"
-            >
-              <Package size={11} /> Subject Bundles
-            </Link>
+      <div className="p-5 flex-1 flex flex-col justify-between">
+        <div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold text-brand-muted dark:text-brand-dark-muted bg-gray-100 dark:bg-white/10 px-2 py-0.5 rounded-md">
+              {isCourseBundle ? 'Curated Combo Bundle' : (course.academicCourse || course.subcategory)}
+            </span>
+            {course.subjectId && (
+              <Link
+                to={`/courses/bundles/${course.subjectId}`}
+                className="text-[11px] font-bold text-primary-500 hover:underline flex items-center gap-1"
+                title="View Complete Subject Bundle"
+              >
+                <Package size={11} /> Subject Bundles
+              </Link>
+            )}
+          </div>
+
+          <h3 className="text-[15px] font-bold text-brand-text dark:text-brand-dark-text mt-2 mb-1 leading-snug line-clamp-2 group-hover:text-primary-500 transition-colors">
+            {course.title}
+          </h3>
+          <p className="text-xs text-brand-muted dark:text-brand-dark-muted mb-3 line-clamp-2 leading-relaxed">
+            {course.description}
+          </p>
+          <p className="text-xs text-brand-muted dark:text-brand-dark-muted mb-3">By {course.instructor}</p>
+
+          {/* Included Courses Preview for Course Bundles */}
+          {isCourseBundle && bundledCourses.length > 0 && (
+            <div className="mb-3 p-2.5 rounded-xl bg-violet-50/70 dark:bg-violet-950/30 border border-violet-100 dark:border-violet-900/30">
+              <div className="flex items-center justify-between text-[10px] font-bold text-violet-700 dark:text-violet-300 uppercase tracking-wider mb-1.5">
+                <span className="flex items-center gap-1">
+                  <Package size={11} /> Included Courses ({bundledCourses.length})
+                </span>
+                {standaloneTotal > 0 && <span className="text-brand-muted line-through font-normal">Valued ₹{standaloneTotal}</span>}
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {bundledCourses.slice(0, 3).map((bc, idx) => (
+                  <span key={idx} className="inline-block text-[10px] px-2 py-0.5 rounded-md bg-white dark:bg-white/10 text-brand-text dark:text-brand-dark-text font-medium truncate max-w-[150px]">
+                    {bc.title}
+                  </span>
+                ))}
+                {bundledCourses.length > 3 && (
+                  <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-md font-bold bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                    +{bundledCourses.length - 3} more
+                  </span>
+                )}
+              </div>
+            </div>
           )}
-        </div>
 
-        <h3 className="text-[15px] font-bold text-brand-text dark:text-brand-dark-text mt-2 mb-1 leading-snug line-clamp-2 group-hover:text-primary-500 transition-colors">
-          {course.title}
-        </h3>
-        <p className="text-xs text-brand-muted dark:text-brand-dark-muted mb-3 line-clamp-2 leading-relaxed">
-          {course.description}
-        </p>
-        <p className="text-xs text-brand-muted dark:text-brand-dark-muted mb-3">By {course.instructor}</p>
-
-        {/* Stats */}
-        <div className="flex items-center gap-3 text-xs text-brand-muted dark:text-brand-dark-muted mb-4">
-          <span className="flex items-center gap-1"><Star size={11} className="text-amber-400 fill-amber-400" />{course.rating}</span>
-          <span className="flex items-center gap-1"><Clock size={11} />{course.duration}</span>
-          <span className="flex items-center gap-1"><Users size={11} />{course.enrolled.toLocaleString()}</span>
+          {/* Stats */}
+          <div className="flex items-center gap-3 text-xs text-brand-muted dark:text-brand-dark-muted mb-4">
+            <span className="flex items-center gap-1"><Star size={11} className="text-amber-400 fill-amber-400" />{course.rating}</span>
+            <span className="flex items-center gap-1"><Clock size={11} />{course.duration}</span>
+            <span className="flex items-center gap-1"><Users size={11} />{course.enrolled.toLocaleString()}</span>
+          </div>
         </div>
 
         {/* Action & CTA */}
-        <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-brand-dark-border">
-          <div className="text-xs text-brand-muted dark:text-brand-dark-muted font-medium">
-            {isBundleOnly
-              ? 'Bundle Pricing'
-              : isFreeCourse
-                ? 'Free Access'
-                : `₹${course.price}`}
+        <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-brand-dark-border mt-auto">
+          <div>
+            {isCourseBundle ? (
+              <div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-sm font-black text-brand-text dark:text-brand-dark-text">
+                    {typeof course.price === 'number' ? `₹${course.price}` : 'FREE BUNDLE'}
+                  </span>
+                  {standaloneTotal > 0 && typeof course.price === 'number' && (
+                    <span className="text-xs line-through text-brand-muted">₹{standaloneTotal}</span>
+                  )}
+                </div>
+                {bundleSavings && (
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 block">
+                    Save ₹{bundleSavings.saved} ({bundleSavings.pct}% off)
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="text-xs text-brand-muted dark:text-brand-dark-muted font-medium">
+                {isBundleOnly
+                  ? 'Bundle Pricing'
+                  : isFreeCourse
+                    ? 'Free Access'
+                    : `₹${course.price}`}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
-            <CourseRatingMenu
-              courseId={course.id}
-              userId={userId}
-              isEnrolled={canWatch}
-              onRated={(average, count) => onRated(course.id, average, count)}
-            />
+            {!isCourseBundle && (
+              <CourseRatingMenu
+                courseId={course.id}
+                userId={userId}
+                isEnrolled={canWatch}
+                onRated={(average, count) => onRated(course.id, average, count)}
+              />
+            )}
 
-            {canWatch ? (
+            {isCourseBundle ? (
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => onViewBundleDetails?.(course)}
+                  className="flex items-center gap-1 px-3 py-2 text-xs font-semibold text-brand-text dark:text-brand-dark-text bg-gray-100 dark:bg-white/10 rounded-xl hover:bg-gray-200 dark:hover:bg-white/20 transition-colors"
+                  title="View all included courses"
+                >
+                  <Package size={12} /> Courses
+                </button>
+                {canWatch ? (
+                  <button
+                    onClick={() => onViewBundleDetails?.(course)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors shadow-xs"
+                  >
+                    <CheckCircle2 size={12} /> Access
+                  </button>
+                ) : isPending ? (
+                  <button
+                    onClick={() => toast('Your payment proof with UPI UTR is currently being verified by the Admin. Access will unlock once approved.', { icon: '⏳' })}
+                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-300 rounded-xl hover:bg-amber-200 transition-colors"
+                  >
+                    <Clock size={11} /> Pending
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => onEnroll(course)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 rounded-xl transition-all shadow-xs"
+                  >
+                    <Sparkles size={12} /> {typeof course.price === 'number' ? `Enroll · ₹${course.price}` : 'Free'}
+                  </button>
+                )}
+              </div>
+            ) : canWatch ? (
               <button
                 onClick={() => onPlay(course)}
                 className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-primary-500 rounded-xl hover:bg-primary-600 transition-colors shadow-xs"
@@ -693,6 +835,206 @@ function AccordionSection({ title, defaultOpen = false, badge, children }: Accor
   )
 }
 
+interface BundleDetailModalProps {
+  bundle: Course
+  allCourses: Course[]
+  isUnlocked: boolean
+  isPending: boolean
+  onClose: () => void
+  onEnroll: (course: Course) => void
+  onPlayCourse: (course: Course) => void
+}
+
+function BundleDetailModal({
+  bundle,
+  allCourses,
+  isUnlocked,
+  isPending,
+  onClose,
+  onEnroll,
+  onPlayCourse,
+}: BundleDetailModalProps) {
+  const childCourses = useMemo(() => {
+    const idSet = new Set((bundle.bundledCourseIds || []).map(id => String(id).replace(/^course_/, '')))
+    return allCourses.filter(c => {
+      const isBundle = c.isCourseBundle || (c.tags || []).includes('__is_course_bundle')
+      const isUnderBundle = c.isBundleOnly || (c.tags || []).includes('__bundle_only')
+      if (isBundle || isUnderBundle) return false
+      return idSet.has(String(c.id).replace(/^course_/, ''))
+    })
+  }, [bundle.bundledCourseIds, allCourses])
+
+  const standaloneTotal = useMemo(() => {
+    return childCourses.reduce((sum, c) => sum + (typeof c.price === 'number' ? c.price : 0), 0)
+  }, [childCourses])
+
+  const savings = useMemo(() => {
+    if (typeof bundle.price === 'number' && standaloneTotal > bundle.price) {
+      const amount = standaloneTotal - bundle.price
+      const rawPct = Math.round((amount / standaloneTotal) * 100)
+      const percent = bundle.price > 0 ? Math.min(99, rawPct) : rawPct
+      return { amount, percent }
+    }
+    return null
+  }, [bundle.price, standaloneTotal])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 16 }}
+        className="relative w-full max-w-2xl max-h-[90vh] bg-white dark:bg-brand-dark-card rounded-3xl border border-gray-100 dark:border-brand-dark-border shadow-2xl flex flex-col overflow-hidden"
+      >
+        {/* Header */}
+        <div className="p-6 border-b border-gray-100 dark:border-brand-dark-border flex items-start justify-between gap-4 bg-gradient-to-r from-violet-500/10 via-indigo-500/5 to-transparent">
+          <div>
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                <Sparkles size={11} /> Combo Course Bundle
+              </span>
+              {isUnlocked && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                  <CheckCircle2 size={11} /> You Own This Bundle
+                </span>
+              )}
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black text-brand-text dark:text-brand-dark-text">
+              {bundle.title}
+            </h2>
+            <p className="text-xs sm:text-sm text-brand-muted dark:text-brand-dark-muted mt-1 leading-relaxed">
+              {bundle.description || 'Get all-in-one access to this curated combination of individual videos.'}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl text-brand-muted hover:text-brand-text dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-colors flex-shrink-0"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Pricing Banner */}
+        <div className="px-6 py-4 bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-brand-dark-border flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-baseline gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-brand-muted">Bundle Price:</span>
+            <span className="text-2xl font-black text-violet-600 dark:text-violet-400">
+              {typeof bundle.price === 'number' ? `₹${bundle.price}` : 'FREE'}
+            </span>
+            {standaloneTotal > 0 && typeof bundle.price === 'number' && (
+              <span className="text-sm line-through text-brand-muted font-medium">
+                ₹{standaloneTotal}
+              </span>
+            )}
+          </div>
+          {savings && (
+            <span className="px-3 py-1 rounded-xl text-xs font-black bg-gradient-to-r from-rose-500 to-amber-500 text-white shadow-xs">
+              Save ₹{savings.amount} ({savings.percent}% OFF)
+            </span>
+          )}
+        </div>
+
+        {/* Included Courses List */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-3">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-brand-muted flex items-center gap-1.5">
+              <Video size={14} className="text-violet-500" />
+              Included Individual Videos ({childCourses.length})
+            </h3>
+            <span className="text-[11px] text-brand-muted">
+              {isUnlocked ? 'Click any video to watch now' : 'All videos will unlock upon enrollment'}
+            </span>
+          </div>
+
+          {childCourses.length === 0 ? (
+            <div className="text-center py-10 text-brand-muted text-sm">
+              No individual videos linked to this bundle yet.
+            </div>
+          ) : (
+            childCourses.map((cc) => (
+              <div
+                key={cc.id}
+                className="p-3.5 rounded-2xl border border-gray-100 dark:border-brand-dark-border bg-white dark:bg-brand-dark-card flex items-center justify-between gap-3 hover:border-violet-500/40 transition-all group"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-14 h-12 rounded-xl bg-slate-900 overflow-hidden flex-shrink-0 flex items-center justify-center text-white relative">
+                    {cc.thumbnail ? (
+                      <img src={cc.thumbnail} alt={cc.title} className="w-full h-full object-cover" />
+                    ) : (
+                      <BookOpen size={18} className="text-white/40" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="font-bold text-sm text-brand-text dark:text-brand-dark-text truncate group-hover:text-violet-500 transition-colors">
+                      {cc.title}
+                    </h4>
+                    <p className="text-[11px] text-brand-muted truncate">
+                      {cc.instructor ? `By ${cc.instructor} • ` : ''}{cc.duration || 'Self-paced'} • {cc.level || 'All Levels'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {typeof cc.price === 'number' && (
+                    <span className="text-xs font-semibold text-brand-muted hidden sm:inline">
+                      ₹{cc.price}
+                    </span>
+                  )}
+                  {isUnlocked ? (
+                    <button
+                      onClick={() => {
+                        onClose()
+                        onPlayCourse(cc)
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
+                    >
+                      <Play size={12} /> Watch
+                    </button>
+                  ) : (
+                    <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800">
+                      Included
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Modal Footer */}
+        <div className="p-5 border-t border-gray-100 dark:border-brand-dark-border bg-gray-50 dark:bg-white/5 flex items-center justify-between gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 rounded-xl text-xs font-semibold text-brand-muted hover:text-brand-text dark:hover:text-white"
+          >
+            Close
+          </button>
+          {isUnlocked ? (
+            <div className="flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 size={16} /> All {childCourses.length} courses unlocked for your account
+            </div>
+          ) : isPending ? (
+            <div className="flex items-center gap-2 text-xs font-bold text-amber-600 dark:text-amber-400">
+              <Clock size={16} /> Enrollment Pending Verification
+            </div>
+          ) : (
+            <button
+              onClick={() => {
+                onClose()
+                onEnroll(bundle)
+              }}
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white text-xs font-bold flex items-center gap-2 shadow-md"
+            >
+              <Sparkles size={14} />
+              {typeof bundle.price === 'number' ? `Enroll in Combo Pack · ₹${bundle.price}` : 'Enroll in Free Combo Pack'}
+            </button>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
 export default function Courses() {
   const [courseSection, setCourseSection] = useState<'semester-bundles' | 'bundles' | 'courses' | 'webinars'>('semester-bundles')
   const [liveWebinars, setLiveWebinars] = useState<LiveWebinar[]>([])
@@ -720,6 +1062,8 @@ export default function Courses() {
   const [enrollCourse, setEnrollCourse] = useState<Course | null>(null)
   const [showPremiumModal, setShowPremiumModal] = useState(false)
   const [playCourse, setPlayCourse] = useState<Course | null>(null)
+  const [bundleDetailModalCourse, setBundleDetailModalCourse] = useState<Course | null>(null)
+  const [courseTypeFilter, setCourseTypeFilter] = useState<'all' | 'single' | 'bundle'>('all')
   const [allAccessPrice, setAllAccessPrice] = useState(999)
   // Map of courseId -> active ProductDiscount (null means no active discount)
   const [courseDiscountsMap, setCourseDiscountsMap] = useState<Map<string, ProductDiscount>>(new Map())
@@ -798,8 +1142,6 @@ export default function Courses() {
       const enrollments = await getEnrollmentsForUser(userId)
       const approved = enrollments.filter(e => e.status === 'paid' || e.status === 'free').map(e => e.courseId)
       const pending = enrollments.filter(e => e.status === 'pending').map(e => e.courseId)
-      setEnrolledIds(new Set(approved))
-      setPendingIds(new Set(pending))
 
       // Authoritative batch query for subject, resource, and semester bundle entitlements
       const entitlements = await fetchUserEntitlements(userId)
@@ -807,6 +1149,13 @@ export default function Courses() {
       setUnlockedResourceSubjectIds(entitlements.resourceBundleSubjectIds)
       setUnlockedSemesterIds(entitlements.semesterBundleSemesterIds || new Set())
       setUnlockedSemesterBundleIds(entitlements.semesterBundleIds || new Set())
+
+      const allEnrolledSet = new Set(approved)
+      if (entitlements.enrolledCourseIds) {
+        entitlements.enrolledCourseIds.forEach(id => allEnrolledSet.add(id))
+      }
+      setEnrolledIds(allEnrolledSet)
+      setPendingIds(new Set(pending))
     } catch (err) {
       console.error('Failed to load enrollments:', err)
     }
@@ -816,12 +1165,34 @@ export default function Courses() {
     loadUserEnrollments()
   }, [loadUserEnrollments])
 
+  // Track which individual child courses are unlocked because the user owns a parent Course Bundle
+  const ownedBundleChildCourseIds = useMemo(() => {
+    const ids = new Set<string>()
+    if (isAdmin || user?.isPremium) return ids
+    for (const c of courses) {
+      if (c.isCourseBundle && enrolledIds.has(c.id) && c.bundledCourseIds) {
+        for (const childId of c.bundledCourseIds) {
+          ids.add(childId)
+          ids.add(childId.replace(/^course_/, ''))
+        }
+      }
+    }
+    return ids
+  }, [courses, enrolledIds, isAdmin, user?.isPremium])
+
   const handlePlay = (course: Course) => {
     if (!isAuthenticated) return requireLogin()
     const isBundleOnly = Boolean(course.isBundleOnly)
     const isSubjectUnlocked = isBundleOnly && course.subjectId ? unlockedSubjectIds.has(course.subjectId) : false
+    const isCourseBundleUnlocked = ownedBundleChildCourseIds.has(course.id) || ownedBundleChildCourseIds.has(course.id.replace(/^course_/, ''))
     const isFreeCourse = !isBundleOnly && (course.price === 'FREE' || course.price === 0)
-    if (isAdmin || user?.isPremium || enrolledIds.has(course.id) || isFreeCourse || isSubjectUnlocked) {
+
+    if (course.isCourseBundle) {
+      setBundleDetailModalCourse(course)
+      return
+    }
+
+    if (isAdmin || user?.isPremium || enrolledIds.has(course.id) || isFreeCourse || isSubjectUnlocked || isCourseBundleUnlocked) {
       setPlayCourse(course)
     } else if (isBundleOnly && course.subjectId) {
       navigate(`/courses/bundles/${course.subjectId}`)
@@ -1153,9 +1524,41 @@ export default function Courses() {
     }
   }
 
-  // Only individual courses are displayed in 'All Courses' — courses uploaded
-  // under a Subject Bundle belong to the bundle curriculum and show there.
-  const published = courses.filter(c => c.status === 'Published' && !c.isBundleOnly)
+  // Set of course IDs that are bundled inside ANY published Course Bundle.
+  // When an individual course is added to a Course Bundle, it must not show as a
+  // standalone individual course in the catalog — it will only show inside that bundle!
+  const bundledCourseIdSet = useMemo(() => {
+    const ids = new Set<string>()
+    for (const c of courses) {
+      const isBundle = c.isCourseBundle || (c.tags || []).includes('__is_course_bundle')
+      if (isBundle && c.status === 'Published' && c.bundledCourseIds?.length) {
+        for (const id of c.bundledCourseIds) {
+          const cleanId = String(id).replace(/^course_/, '')
+          ids.add(cleanId)
+          ids.add(String(id))
+        }
+      }
+    }
+    return ids
+  }, [courses])
+
+  // Only standalone courses and Course Bundles are displayed in 'All Courses' —
+  // courses uploaded under a Subject Bundle belong to the subject curriculum,
+  // and individual courses added into a Course Bundle belong to that bundle and only show inside it.
+  const published = useMemo(() => {
+    return courses.filter(c => {
+      if (c.status !== 'Published') return false
+      if (c.isBundleOnly) return false
+      const isBundle = c.isCourseBundle || (c.tags || []).includes('__is_course_bundle')
+      if (!isBundle) {
+        const cleanId = String(c.id).replace(/^course_/, '')
+        if (bundledCourseIdSet.has(cleanId) || bundledCourseIdSet.has(String(c.id))) {
+          return false
+        }
+      }
+      return true
+    })
+  }, [courses, bundledCourseIdSet])
 
   // Academic Filter (College → Course → Branch → Semester → Subject) and
   // the Category list are kept separate, not combined: if an academic
@@ -1184,8 +1587,13 @@ export default function Courses() {
     return parts.length ? parts.join(' › ') : 'Academic Filter results'
   }, [hierarchyActive, appliedCollegeId, appliedCourseId, appliedBranchId, appliedSemesterId, appliedSubjectId, hColleges, hCourses, hBranches, hSemesters, hSubjects])
 
+  const bundleCount = useMemo(() => published.filter(c => c.isCourseBundle).length, [published])
+  const singleCount = useMemo(() => published.filter(c => !c.isCourseBundle).length, [published])
+
   const filtered = useMemo(() => {
     return published.filter(c => {
+      if (courseTypeFilter === 'single' && c.isCourseBundle) return false
+      if (courseTypeFilter === 'bundle' && !c.isCourseBundle) return false
       if (!hierarchyActive) {
         if (activeSub) {
           if (c.subcategory?.trim().toLowerCase() !== activeSub.trim().toLowerCase()) return false
@@ -1201,10 +1609,20 @@ export default function Courses() {
       if (appliedBranchId && c.branchId !== appliedBranchId) return false
       if (appliedCourseId && c.academicCourseId !== appliedCourseId) return false
       if (appliedCollegeId && c.collegeId !== appliedCollegeId) return false
-      if (search && !c.title.toLowerCase().includes(search.toLowerCase()) && !c.description.toLowerCase().includes(search.toLowerCase())) return false
+      if (search) {
+        const q = search.toLowerCase()
+        const titleMatch = c.title.toLowerCase().includes(q)
+        const descMatch = (c.description || '').toLowerCase().includes(q)
+        let childMatch = false
+        if (c.isCourseBundle && c.bundledCourseIds?.length) {
+          const idSet = new Set(c.bundledCourseIds.map(id => String(id).replace(/^course_/, '')))
+          childMatch = courses.some(child => idSet.has(String(child.id).replace(/^course_/, '')) && child.title.toLowerCase().includes(q))
+        }
+        if (!titleMatch && !descMatch && !childMatch) return false
+      }
       return true
     })
-  }, [published, activeGroup, activeSub, activeLevel, activePrice, search, appliedCollegeId, appliedCourseId, appliedBranchId, appliedSemesterId, appliedSubjectId])
+  }, [published, courses, courseTypeFilter, activeGroup, activeSub, activeLevel, activePrice, search, appliedCollegeId, appliedCourseId, appliedBranchId, appliedSemesterId, appliedSubjectId])
 
   const filteredBundles = useMemo(() => {
     return subjectBundles.filter(b => {
@@ -1994,25 +2412,68 @@ export default function Courses() {
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
-                    {unlockedSubjectIds.has(appliedSubjectId) ? (
-                      <Link
-                        to={`/courses/bundles/${appliedSubjectId}`}
-                        className="px-5 py-2.5 rounded-xl font-bold text-sm bg-green-500 text-white hover:bg-green-600 shadow-md flex items-center gap-2 transition-all"
-                      >
-                        <CheckCircle2 size={16} /> Subject Unlocked
-                      </Link>
-                    ) : (
-                      <Link
-                        to={`/courses/bundles/${appliedSubjectId}`}
-                        className="px-5 py-2.5 rounded-xl font-bold text-sm bg-white text-primary-600 hover:bg-gray-100 shadow-md flex items-center gap-2 transition-all"
-                      >
-                        <Package size={16} /> View Subject & Bundles
-                      </Link>
-                    )}
-                  </div>
-                </div>
-              )}
+              <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
+                {unlockedSubjectIds.has(appliedSubjectId) ? (
+                  <Link
+                    to={`/courses/bundles/${appliedSubjectId}`}
+                    className="px-5 py-2.5 rounded-xl font-bold text-sm bg-green-500 text-white hover:bg-green-600 shadow-md flex items-center gap-2 transition-all"
+                  >
+                    <CheckCircle2 size={16} /> Subject Unlocked
+                  </Link>
+                ) : (
+                  <Link
+                    to={`/courses/bundles/${appliedSubjectId}`}
+                    className="px-5 py-2.5 rounded-xl font-bold text-sm bg-white text-primary-600 hover:bg-gray-100 shadow-md flex items-center gap-2 transition-all"
+                  >
+                    <Package size={16} /> View Subject & Bundles
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
+            <div className="min-w-0">
+              <h2 className="text-xl font-bold text-brand-text dark:text-brand-dark-text truncate">{appliedHierarchyLabel || activeSub || activeGroup}</h2>
+              <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">{filtered.length} course{filtered.length !== 1 ? 's' : ''} found</p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Filter pills for All / Single / Combo Bundles */}
+              <div className="inline-flex rounded-xl bg-gray-100 dark:bg-white/5 p-1 border border-gray-200/60 dark:border-white/10 text-xs font-semibold">
+                <button
+                  onClick={() => setCourseTypeFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${courseTypeFilter === 'all' ? 'bg-white dark:bg-brand-dark-card text-brand-text dark:text-brand-dark-text font-bold shadow-xs' : 'text-brand-muted hover:text-brand-text'}`}
+                >
+                  All ({published.length})
+                </button>
+                <button
+                  onClick={() => setCourseTypeFilter('single')}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${courseTypeFilter === 'single' ? 'bg-white dark:bg-brand-dark-card text-brand-text dark:text-brand-dark-text font-bold shadow-xs' : 'text-brand-muted hover:text-brand-text'}`}
+                >
+                  Single ({singleCount})
+                </button>
+                <button
+                  onClick={() => setCourseTypeFilter('bundle')}
+                  className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 ${courseTypeFilter === 'bundle' ? 'bg-violet-600 text-white font-bold shadow-xs' : 'text-violet-600 dark:text-violet-400 hover:text-violet-700'}`}
+                >
+                  <Sparkles size={11} /> Combo Bundles ({bundleCount})
+                </button>
+              </div>
+
+              {/* Mobile filter trigger */}
+              <button
+                onClick={() => setMobileFiltersOpen(true)}
+                className="md:hidden flex-shrink-0 flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+              >
+                <SlidersHorizontal size={13} />
+                Filters
+                {activeFilterCount > 0 && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary-500 text-white">{activeFilterCount}</span>
+                )}
+              </button>
+            </div>
+          </div>
 
               <div className="flex items-center justify-between mb-6 gap-3">
                 <div className="min-w-0">
@@ -2075,8 +2536,32 @@ export default function Courses() {
                   ))}
                 </div>
               )}
-            </main>
-          </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+              {filtered.map(course => (
+                <CourseCard
+                  key={course.id}
+                  course={course}
+                  userId={userId}
+                  isAdmin={isAdmin}
+                  isPremium={Boolean(user?.isPremium)}
+                  isEnrolled={enrolledIds.has(course.id)}
+                  isPending={pendingIds.has(course.id)}
+                  isSubjectBundleUnlocked={Boolean(course.isBundleOnly && course.subjectId && unlockedSubjectIds.has(course.subjectId))}
+                  isResourceBundleUnlocked={course.subjectId ? unlockedResourceSubjectIds.has(course.subjectId) : false}
+                  isCourseBundleUnlocked={ownedBundleChildCourseIds.has(course.id) || ownedBundleChildCourseIds.has(course.id.replace(/^course_/, ''))}
+                  allCourses={courses}
+                  onPlay={handlePlay}
+                  onEnroll={handleEnroll}
+                  onRated={handleCourseRated}
+                  onViewBundleDetails={(bundle) => setBundleDetailModalCourse(bundle)}
+                />
+              ))}
+            </div>
+          )}
+        </main>
+      </div>
 
 
           {/* Mobile Filter Drawer */}
@@ -2221,6 +2706,29 @@ export default function Courses() {
         />
       )}
 
+      {bundleDetailModalCourse && (
+        <BundleDetailModal
+          bundle={bundleDetailModalCourse}
+          allCourses={courses}
+          isUnlocked={
+            isAdmin ||
+            Boolean(user?.isPremium) ||
+            enrolledIds.has(bundleDetailModalCourse.id) ||
+            (!bundleDetailModalCourse.isBundleOnly && (bundleDetailModalCourse.price === 'FREE' || bundleDetailModalCourse.price === 0))
+          }
+          isPending={pendingIds.has(bundleDetailModalCourse.id)}
+          onClose={() => setBundleDetailModalCourse(null)}
+          onEnroll={(bundle) => {
+            setBundleDetailModalCourse(null)
+            handleEnroll(bundle)
+          }}
+          onPlayCourse={(childCourse) => {
+            setBundleDetailModalCourse(null)
+            handlePlay(childCourse)
+          }}
+        />
+      )}
+
       {playCourse && (
         <VideoPlayerModal
           course={playCourse}
@@ -2231,6 +2739,8 @@ export default function Courses() {
             isAdmin ||
             Boolean(user?.isPremium) ||
             enrolledIds.has(playCourse.id) ||
+            ownedBundleChildCourseIds.has(playCourse.id) ||
+            ownedBundleChildCourseIds.has(playCourse.id.replace(/^course_/, '')) ||
             (!playCourse.isBundleOnly && (playCourse.price === 'FREE' || playCourse.price === 0)) ||
             Boolean(playCourse.isBundleOnly && playCourse.subjectId && unlockedSubjectIds.has(playCourse.subjectId))
           }

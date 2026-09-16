@@ -159,6 +159,47 @@ export async function createEnrollment(input: EnrollInput): Promise<Enrollment> 
     .single()
 
   if (error) throw new Error(`Failed to submit enrollment: ${error.message}`)
+
+  // If this enrolled course is a Course Bundle, also enroll the user into all child courses
+  try {
+    const cleanId = String(input.courseId).replace(/^course_/, '')
+    const { data: courseRow } = await supabase
+      .from('site_courses')
+      .select('tags')
+      .eq('id', cleanId)
+      .maybeSingle()
+
+    if (courseRow?.tags?.includes('__is_course_bundle')) {
+      const bTag = courseRow.tags.find((t: string) => t.startsWith('__bundled_courses:'))
+      if (bTag) {
+        const childIds = bTag.slice('__bundled_courses:'.length).split(',').map((s: string) => s.trim()).filter(Boolean)
+        for (const cid of childIds) {
+          try {
+            await supabase.from('enrollments').upsert({
+              item_type: 'course',
+              item_id: cid,
+              item_title: `Course #${cid} (via ${input.itemTitle || 'Bundle'})`,
+              user_id: input.userId,
+              first_name: input.firstName,
+              last_name: input.lastName,
+              email: input.email,
+              phone: input.phone,
+              payment_status: input.status,
+              amount: 0,
+              utr_number: input.utrNumber || '',
+              screenshot_url: input.screenshotUrl || '',
+              status: 'active',
+            }, { onConflict: 'user_id,item_type,item_id' })
+          } catch {
+            // non-fatal fallback
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[createEnrollment] Error auto-enrolling child courses for bundle:', err)
+  }
+
   return mapEnrollment(data)
 }
 
@@ -263,23 +304,51 @@ async function syncApproveItemPurchases(data: any): Promise<void> {
     }
   }
 
-  // 2. If it was a course purchase, increment enrolled count on site_courses
+  // 2. If it was a course purchase, increment enrolled count on site_courses and sync bundled courses
   if (data.item_type === 'course' && data.item_id) {
     try {
       const cleanCourseId = String(data.item_id).replace(/^course_/, '')
       const { data: course } = await supabase
         .from('site_courses')
-        .select('enrolled')
+        .select('enrolled, is_course_bundle, bundled_course_ids')
         .eq('id', cleanCourseId)
         .maybeSingle()
       if (course) {
+        // Increment enrolled count on the bundle/course itself
         await supabase
           .from('site_courses')
           .update({ enrolled: (course.enrolled ?? 0) + 1 })
           .eq('id', cleanCourseId)
+
+        // If this is a Course Bundle, also create paid enrollments for every child course
+        if (course.is_course_bundle && Array.isArray(course.bundled_course_ids) && course.bundled_course_ids.length > 0 && data.user_id) {
+          for (const rawCid of course.bundled_course_ids) {
+            const cid = String(rawCid).replace(/^course_/, '')
+            if (!cid) continue
+            try {
+              await supabase.from('enrollments').upsert({
+                item_type:      'course',
+                item_id:        cid,
+                item_title:     `Individual Course #${cid} (via ${data.item_title || 'Bundle'})`,
+                user_id:        data.user_id,
+                first_name:     data.first_name || '',
+                last_name:      data.last_name  || '',
+                email:          data.email      || '',
+                phone:          data.phone      || '',
+                payment_status: 'paid',
+                amount:         0,
+                utr_number:     data.utr_number      || '',
+                screenshot_url: data.screenshot_url  || '',
+                status:         'active',
+              }, { onConflict: 'user_id,item_type,item_id' })
+            } catch {
+              // non-fatal — individual child enrollment failure doesn't block the bundle
+            }
+          }
+        }
       }
     } catch (e) {
-      console.warn('[syncApproveItemPurchases] Could not increment course enrolled count:', e)
+      console.warn('[syncApproveItemPurchases] Could not handle course/bundle approval:', e)
     }
   }
 
@@ -479,23 +548,44 @@ async function syncRevokeItemPurchases(data: any, _reason: string): Promise<void
     }
   }
 
-  // 2. Course purchase revocation (decrement enrolled count)
+  // 2. Course / Course Bundle purchase revocation
   if (data.item_type === 'course' && data.item_id) {
     try {
       const cleanCourseId = String(data.item_id).replace(/^course_/, '')
       const { data: course } = await supabase
         .from('site_courses')
-        .select('enrolled')
+        .select('enrolled, is_course_bundle, bundled_course_ids')
         .eq('id', cleanCourseId)
         .maybeSingle()
+
+      // Decrement enrolled count
       if (course && (course.enrolled ?? 0) > 0) {
         await supabase
           .from('site_courses')
           .update({ enrolled: Math.max(0, (course.enrolled ?? 1) - 1) })
           .eq('id', cleanCourseId)
       }
+
+      // If Course Bundle — also revoke all child course enrollments
+      if (course?.is_course_bundle && Array.isArray(course.bundled_course_ids) && data.user_id) {
+        for (const rawCid of course.bundled_course_ids) {
+          const cid = String(rawCid).replace(/^course_/, '')
+          if (!cid) continue
+          try {
+            await supabase
+              .from('enrollments')
+              .update({ payment_status: 'rejected', status: 'revoked', updated_at: nowIso })
+              .eq('user_id', data.user_id)
+              .eq('item_type', 'course')
+              .in('item_id', [cid, `course_${cid}`])
+              .in('payment_status', ['paid', 'free', 'pending'])
+          } catch {
+            // non-fatal
+          }
+        }
+      }
     } catch (e) {
-      console.warn('[syncRevokeItemPurchases] Could not decrement course enrolled count:', e)
+      console.warn('[syncRevokeItemPurchases] Could not revoke course/bundle:', e)
     }
   }
 
@@ -642,8 +732,10 @@ export async function markEnrollmentPaid(enrollmentId: string): Promise<Enrollme
 
 function mapEnrollment(row: any): Enrollment {
   const isRejected = row.payment_status === 'rejected' || row.status === 'rejected' || row.status === 'revoked' || row.status === 'cancelled'
-  const isPaid = (row.payment_status === 'paid' || row.status === 'paid' || row.status === 'active') && !isRejected
-  const isFree = (row.payment_status === 'free' || row.status === 'free') && !isRejected
+  // NOTE: Do NOT treat status='active' alone as paid — that bypasses admin approval.
+  // Only explicit payment_status values grant access.
+  const isPaid = row.payment_status === 'paid' && !isRejected
+  const isFree = row.payment_status === 'free' && !isRejected
   const status = isRejected ? 'rejected' : isPaid ? 'paid' : isFree ? 'free' : 'pending'
 
   return {

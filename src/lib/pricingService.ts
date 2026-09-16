@@ -24,11 +24,47 @@ import type { PricingBreakdown, ProductType, CheckoutPricing } from './pricingTy
 //
 // NEVER trust the returned 'finalAmount' from the UI — always re-fetch this
 // when creating the enrollment.
+// ─── Direct Database Price Fallback ──────────────────────────────────────────
+// Used when the server RPC encounters an error or unhandled product type in Supabase.
+async function resolveDirectProductPrice(productType: ProductType, productId: string): Promise<{ price: number; isFree: boolean } | null> {
+  try {
+    if (productType === 'course') {
+      const cleanId = String(productId).replace(/^course_/, '')
+      const { data, error } = await supabase
+        .from('site_courses')
+        .select('price, is_free')
+        .eq('id', cleanId)
+        .maybeSingle()
+      if (!error && data) {
+        const isFree = Boolean(data.is_free || data.price === 'FREE' || Number(data.price) === 0)
+        const price = isFree ? 0 : (Number(data.price) || 0)
+        return { price, isFree }
+      }
+    } else if (productType === 'resource') {
+      const cleanId = String(productId).replace(/^res_/, '')
+      const { data, error } = await supabase
+        .from('resources')
+        .select('price, is_premium')
+        .eq('id', cleanId)
+        .maybeSingle()
+      if (!error && data) {
+        const isFree = !data.is_premium || !data.price || Number(data.price) === 0
+        const price = isFree ? 0 : (Number(data.price) || 0)
+        return { price, isFree }
+      }
+    }
+  } catch (err) {
+    console.warn('[pricingService] Direct price fallback error:', err)
+  }
+  return null
+}
+
 export async function fetchCheckoutPrice(
   productType: ProductType,
   productId: string,
   couponCode?: string | null,
-  userId?: string | null
+  userId?: string | null,
+  knownPrice?: number
 ): Promise<PricingBreakdown> {
   const { data, error } = await supabase.rpc('calculate_checkout_price', {
     p_product_type: productType,
@@ -37,8 +73,43 @@ export async function fetchCheckoutPrice(
     p_user_id:      userId ?? null,
   })
 
-  if (error) {
-    console.error('[pricingService] RPC error:', error.message)
+  const rawResult = data as Record<string, unknown> | null
+
+  if (error || !rawResult || rawResult.error) {
+    const errorMsg = (error?.message || (rawResult?.error as string) || 'RPC error')
+    console.warn('[pricingService] calculate_checkout_price RPC issue, using direct resolution:', errorMsg)
+
+    const direct = await resolveDirectProductPrice(productType, productId)
+    if (direct) {
+      return {
+        originalPrice:         direct.price,
+        productDiscountAmount: 0,
+        discountedPrice:       direct.price,
+        couponDiscountAmount:  0,
+        couponCode:            null,
+        finalAmount:           direct.price,
+        isFree:                direct.isFree,
+        discountId:            null,
+        couponId:              null,
+        couponError:           couponCode ? 'Coupon validation is temporarily unavailable.' : undefined,
+      }
+    }
+
+    if (knownPrice != null && knownPrice > 0) {
+      return {
+        originalPrice:         knownPrice,
+        productDiscountAmount: 0,
+        discountedPrice:       knownPrice,
+        couponDiscountAmount:  0,
+        couponCode:            null,
+        finalAmount:           knownPrice,
+        isFree:                false,
+        discountId:            null,
+        couponId:              null,
+        couponError:           couponCode ? 'Coupon validation is temporarily unavailable.' : undefined,
+      }
+    }
+
     return {
       originalPrice:         0,
       productDiscountAmount: 0,
@@ -49,26 +120,11 @@ export async function fetchCheckoutPrice(
       isFree:                false,
       discountId:            null,
       couponId:              null,
-      couponError:           'Failed to load pricing. Please refresh.',
+      couponError:           rawResult?.error ? (rawResult.error as string) : 'Failed to load pricing. Please refresh.',
     }
   }
 
-  const result = data as Record<string, unknown>
-
-  if (result.error) {
-    return {
-      originalPrice:         0,
-      productDiscountAmount: 0,
-      discountedPrice:       0,
-      couponDiscountAmount:  0,
-      couponCode:            null,
-      finalAmount:           0,
-      isFree:                false,
-      discountId:            null,
-      couponId:              null,
-      couponError:           result.error as string,
-    }
-  }
+  const result = rawResult
 
   // Extract coupon error (if coupon was provided but invalid or unsaved)
   let couponError: string | undefined

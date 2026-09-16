@@ -71,9 +71,31 @@ export default function NewCoursePopup() {
           publishedCourses = useContentStore.getState().courses.filter((c) => c.status === 'Published')
         }
 
-        if (cancelled || !publishedCourses || publishedCourses.length === 0) return
+        const bundledIds = new Set<string>()
+        publishedCourses.forEach(c => {
+          const isBundle = c.isCourseBundle || (c.tags || []).includes('__is_course_bundle')
+          if (isBundle && c.bundledCourseIds?.length) {
+            c.bundledCourseIds.forEach(id => {
+              bundledIds.add(String(id).replace(/^course_/, ''))
+              bundledIds.add(String(id))
+            })
+          }
+        })
 
-        const recent = publishedCourses.slice(0, MAX_COURSES)
+        const standaloneOrBundles = publishedCourses.filter(c => {
+          const isUnderBundle = c.isBundleOnly || (c.tags || []).includes('__bundle_only')
+          if (isUnderBundle) return false
+          const isBundle = c.isCourseBundle || (c.tags || []).includes('__is_course_bundle')
+          if (!isBundle) {
+            const cleanId = String(c.id).replace(/^course_/, '')
+            if (bundledIds.has(cleanId) || bundledIds.has(String(c.id))) return false
+          }
+          return true
+        })
+
+        if (cancelled || !standaloneOrBundles || standaloneOrBundles.length === 0) return
+
+        const recent = standaloneOrBundles.slice(0, MAX_COURSES)
         setCoursesList(recent)
         setIsOpen(true)
       } catch (err) {

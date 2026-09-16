@@ -2430,7 +2430,10 @@ export default function AdminDashboard() {
         level: 'Beginner',
         isFree: false,
         price: '',
-        uploadMode: 'bundle',
+        uploadMode: 'individual',
+        isCourseBundle: false,
+        bundledCourseIds: [],
+        bundleCourseSearch: '',
       })
     } else {
       setEditItem({ _type: type })
@@ -2439,7 +2442,9 @@ export default function AdminDashboard() {
   }
   const openEdit = async (item: any) => {
     if (item._type === 'course') {
-      item.uploadMode = item.isBundleOnly ? 'bundle' : 'individual'
+      item.uploadMode = item.isCourseBundle ? 'combo_bundle' : (item.isBundleOnly ? 'bundle' : 'individual')
+      item.bundledCourseIds = item.bundledCourseIds || []
+      item.bundleCourseSearch = ''
       setCourseVideoFile(null); setCourseVideoUploadStatus('idle'); setCourseVideoUploadProgress(0); setCourseExistingVideoUrl(item.videoUrl || '')
       setCourseThumbFile(null); setCourseThumbUploadStatus('idle'); setCourseExistingThumbUrl(item.thumbnail || '')
       setNewTimestampTime(''); setNewTimestampLabel('')
@@ -2722,21 +2727,53 @@ export default function AdminDashboard() {
                   ))}</tr>
                 </thead>
                 <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
-                  {filtered.map(c => (
-                    <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
-                      <td className="px-4 py-3 font-medium text-brand-text dark:text-brand-dark-text max-w-[180px] truncate">{c.title}</td>
-                      <td className="px-4 py-3 text-xs text-brand-muted dark:text-brand-dark-muted whitespace-nowrap">{c.group}</td>
-                      <td className="px-4 py-3 font-medium">
-                        {c.isBundleOnly ? (
-                          <span className="badge bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-xs inline-flex items-center gap-1 font-bold">
-                            <Package size={12} /> Under Bundle
-                          </span>
-                        ) : c.price === 'FREE' ? (
-                          <span className="text-green-500 font-bold">FREE</span>
-                        ) : (
-                          `₹${c.price}`
-                        )}
-                      </td>
+                  {filtered.map(c => {
+                    const parentCourseBundle = !c.isCourseBundle && !c.isBundleOnly ? dbCourses.find(b => {
+                      const isB = b.isCourseBundle || (b.tags || []).includes('__is_course_bundle')
+                      if (!isB) return false
+                      const ids = (b.bundledCourseIds || []).map(id => String(id).replace(/^course_/, ''))
+                      return ids.includes(String(c.id).replace(/^course_/, ''))
+                    }) : null
+
+                    return (
+                      <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                        <td className="px-4 py-3 font-medium text-brand-text dark:text-brand-dark-text max-w-[220px]">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="truncate">{c.title}</span>
+                            {c.isCourseBundle && (
+                              <span className="badge bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 text-[10px] w-fit inline-flex items-center gap-1 font-bold">
+                                <Video size={10} /> Video Bundle ({c.bundledCourseIds?.length || 0} Videos)
+                              </span>
+                            )}
+                            {parentCourseBundle && (
+                              <span className="badge bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-[10px] w-fit inline-flex items-center gap-1 font-semibold">
+                                <Video size={10} /> In Bundle: {parentCourseBundle.title}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-brand-muted dark:text-brand-dark-muted whitespace-nowrap">{c.group}</td>
+                        <td className="px-4 py-3 font-medium">
+                          {c.isCourseBundle ? (
+                            c.price === 'FREE' || c.price === 0 ? (
+                              <span className="text-emerald-500 font-bold text-xs bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">FREE BUNDLE</span>
+                            ) : (
+                              <span className="text-purple-600 dark:text-purple-400 font-bold text-xs">₹{c.price} <span className="text-[10px] font-normal text-brand-muted">Bundle</span></span>
+                            )
+                          ) : c.isBundleOnly ? (
+                            <span className="badge bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-xs inline-flex items-center gap-1 font-bold">
+                              <Package size={12} /> Under Bundle
+                            </span>
+                          ) : parentCourseBundle ? (
+                            <span className="badge bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-xs inline-flex items-center gap-1 font-bold">
+                              <Video size={12} /> In Bundle
+                            </span>
+                          ) : c.price === 'FREE' ? (
+                            <span className="text-green-500 font-bold">FREE</span>
+                          ) : (
+                            `₹${c.price}`
+                          )}
+                        </td>
                       <td className="px-4 py-3">
                         {c.videoUrl ? (
                           <span className="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-600 font-semibold px-2 py-0.5 rounded-md">Uploaded</span>
@@ -2764,7 +2801,7 @@ export default function AdminDashboard() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  )})}
                   {filtered.length === 0 && !coursesLoading && (
                     <tr><td colSpan={8} className="px-4 py-8 text-center text-brand-muted text-sm">No courses found.</td></tr>
                   )}
@@ -6959,14 +6996,23 @@ export default function AdminDashboard() {
             }
           }
 
-          const isUnderBundle = (editItem.uploadMode ?? (editItem.id ? (editItem.isBundleOnly ? 'bundle' : 'individual') : 'bundle')) === 'bundle'
+          const uploadMode = editItem.uploadMode ?? (editItem.id ? (editItem.isCourseBundle ? 'combo_bundle' : (editItem.isBundleOnly ? 'bundle' : 'individual')) : 'individual')
+          const isComboBundle = uploadMode === 'combo_bundle'
+          const isUnderBundle = !isComboBundle && uploadMode === 'bundle'
+
           if (isUnderBundle && !cSelectedSubjectId) {
             toast.error('Please select a Subject in the Academic Hierarchy to place this course under its Subject Bundle.')
             setCourseSaving(false)
             return
           }
 
-          const isFree = !isUnderBundle && editItem.price === 'FREE'
+          if (isComboBundle && (!editItem.bundledCourseIds || editItem.bundledCourseIds.length === 0)) {
+            toast.error('Please select at least one individual video to include inside this Course Bundle.')
+            setCourseSaving(false)
+            return
+          }
+
+          const isFree = !isUnderBundle && (editItem.price === 'FREE' || editItem.price === 0 || editItem.price === '0')
           const payload = {
             title: editItem.title,
             description: editItem.description || '',
@@ -6974,7 +7020,7 @@ export default function AdminDashboard() {
             subcategory: editItem.subcategory || 'DSA',
             instructor: editItem.instructor || 'Skills021 Team',
             duration: editItem.duration || '',
-            lectures: editItem.lectures ?? 0,
+            lectures: isComboBundle ? (editItem.bundledCourseIds?.length ?? 0) : (editItem.lectures ?? 0),
             level: editItem.level || 'Beginner',
             isFree: isUnderBundle ? false : isFree,
             price: isUnderBundle ? 0 : (isFree ? 0 : (Number(editItem.price) || 0)),
@@ -6985,7 +7031,8 @@ export default function AdminDashboard() {
             notesSubject: editItem.notesSubject || '',
             subjectId: cSelectedSubjectId ? Number(cSelectedSubjectId) : null,
             isBundleOnly: isUnderBundle,
-            unitTitle: editItem.unitTitle || undefined,
+            isCourseBundle: isComboBundle,
+            bundledCourseIds: isComboBundle ? (editItem.bundledCourseIds || []) : [],
           }
 
           let savedCourseId: string
@@ -7043,7 +7090,9 @@ export default function AdminDashboard() {
       }
 
       const uploadBusy = courseVideoUploadStatus === 'uploading' || courseSaving
-      const isUnderBundle = (editItem.uploadMode ?? (editItem.id ? (editItem.isBundleOnly ? 'bundle' : 'individual') : 'bundle')) === 'bundle'
+      const uploadMode = editItem.uploadMode ?? (editItem.id ? (editItem.isCourseBundle ? 'combo_bundle' : (editItem.isBundleOnly ? 'bundle' : 'individual')) : 'individual')
+      const isComboBundle = uploadMode === 'combo_bundle'
+      const isUnderBundle = !isComboBundle && uploadMode === 'bundle'
 
       return (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
@@ -7053,55 +7102,245 @@ export default function AdminDashboard() {
               <button onClick={closeModal}><X size={18} className="text-brand-muted" /></button>
             </div>
             <div className="space-y-4">
-              {/* Content Type Selector: Subject Bundle vs Individual */}
+              {/* Content Type Selector: Individual vs Course Bundle vs Subject Bundle */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold uppercase tracking-wider text-brand-text dark:text-brand-dark-text">
                   Content Type *
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <button
                     type="button"
-                    onClick={() => setEditItem((p: any) => ({ ...p, uploadMode: 'bundle' }))}
+                    onClick={() => setEditItem((p: any) => ({ ...p, uploadMode: 'individual' }))}
                     className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                      isUnderBundle
-                        ? 'border-primary-500 bg-primary-50/70 dark:bg-primary-950/30 ring-2 ring-primary-500/20 shadow-xs'
+                      uploadMode === 'individual'
+                        ? 'border-violet-500 bg-violet-50/70 dark:bg-violet-950/30 ring-2 ring-violet-500/20 shadow-xs'
                         : 'border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card hover:bg-gray-50 dark:hover:bg-white/5'
                     }`}
                   >
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${isUnderBundle ? 'border-primary-500 bg-primary-500' : 'border-gray-400'}`}>
-                        {isUnderBundle && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${uploadMode === 'individual' ? 'border-violet-500 bg-violet-500' : 'border-gray-400'}`}>
+                        {uploadMode === 'individual' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                       </div>
-                      <Package size={16} className="text-primary-500 shrink-0" />
-                      <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text">Subject Bundle</span>
+                      <BookOpen size={15} className="text-violet-500 shrink-0" />
+                      <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text">Individual</span>
                     </div>
-                    <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted leading-relaxed pl-5">
-                      Curriculum under Subject Bundle. Access & pricing are managed by the Subject Bundle.
+                    <p className="text-[10px] text-brand-muted dark:text-brand-dark-muted leading-relaxed">
+                      Single course with standalone pricing.
                     </p>
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => setEditItem((p: any) => ({ ...p, uploadMode: 'individual' }))}
+                    onClick={() => setEditItem((p: any) => ({ ...p, uploadMode: 'combo_bundle' }))}
                     className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                      !isUnderBundle
-                        ? 'border-violet-500 bg-violet-50/70 dark:bg-violet-950/30 ring-2 ring-violet-500/20 shadow-xs'
+                      uploadMode === 'combo_bundle'
+                        ? 'border-purple-500 bg-purple-50/70 dark:bg-purple-950/30 ring-2 ring-purple-500/20 shadow-xs'
                         : 'border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card hover:bg-gray-50 dark:hover:bg-white/5'
                     }`}
                   >
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${!isUnderBundle ? 'border-violet-500 bg-violet-500' : 'border-gray-400'}`}>
-                        {!isUnderBundle && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${uploadMode === 'combo_bundle' ? 'border-purple-500 bg-purple-500' : 'border-gray-400'}`}>
+                        {uploadMode === 'combo_bundle' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                       </div>
-                      <BookOpen size={16} className="text-violet-500 shrink-0" />
-                      <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text">Individual</span>
+                      <Package size={15} className="text-purple-500 shrink-0" />
+                      <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text">Course Bundle</span>
                     </div>
-                    <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted leading-relaxed pl-5">
-                      Standalone course under this Subject. Maintains individual Free / Paid pricing.
+                    <p className="text-[10px] text-brand-muted dark:text-brand-dark-muted leading-relaxed">
+                      Combo pack of multiple individual courses.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEditItem((p: any) => ({ ...p, uploadMode: 'bundle' }))}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                      uploadMode === 'bundle'
+                        ? 'border-primary-500 bg-primary-50/70 dark:bg-primary-950/30 ring-2 ring-primary-500/20 shadow-xs'
+                        : 'border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card hover:bg-gray-50 dark:hover:bg-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${uploadMode === 'bundle' ? 'border-primary-500 bg-primary-500' : 'border-gray-400'}`}>
+                        {uploadMode === 'bundle' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </div>
+                      <Sparkles size={15} className="text-primary-500 shrink-0" />
+                      <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text">Subject Bundle</span>
+                    </div>
+                    <p className="text-[10px] text-brand-muted dark:text-brand-dark-muted leading-relaxed">
+                      Curriculum under Subject syllabus.
                     </p>
                   </button>
                 </div>
               </div>
+
+              {/* If Course Bundle: Courses Selector & Value Calculation */}
+              {isComboBundle && (() => {
+                const selectedIds: string[] = (editItem.bundledCourseIds || []).map((id: any) => String(id))
+                // Strictly only individual video courses: exclude Course Bundles and exclude Subject Bundle curriculum items
+                const isIndividualVideoCourse = (c: Course) => {
+                  const isBundle = c.isCourseBundle || (c.tags || []).includes('__is_course_bundle')
+                  const isUnderBundle = c.isBundleOnly || (c.tags || []).includes('__bundle_only')
+                  return !isBundle && !isUnderBundle
+                }
+
+                const selectedCourses = dbCourses.filter(c => isIndividualVideoCourse(c) && selectedIds.includes(String(c.id)))
+                const totalStandalonePrice = selectedCourses.reduce((sum, c) => sum + (typeof c.price === 'number' ? c.price : 0), 0)
+                const bundleSearch = (editItem.bundleCourseSearch || '').toLowerCase().trim()
+                const availableCourses = dbCourses.filter(c => {
+                  if (!isIndividualVideoCourse(c)) return false
+                  if (String(c.id) === String(editItem.id)) return false
+                  // If this individual video is already in ANOTHER course bundle (excluding the current one), exclude it
+                  const inOtherBundle = dbCourses.find(other => {
+                    if (String(other.id) === String(editItem.id)) return false
+                    const isB = other.isCourseBundle || (other.tags || []).includes('__is_course_bundle')
+                    if (!isB) return false
+                    const ids = (other.bundledCourseIds || []).map(id => String(id).replace(/^course_/, ''))
+                    return ids.includes(String(c.id).replace(/^course_/, ''))
+                  })
+                  if (inOtherBundle) return false
+                  if (bundleSearch) {
+                    const titleMatch = c.title.toLowerCase().includes(bundleSearch)
+                    const subMatch = c.subcategory && c.subcategory.toLowerCase().includes(bundleSearch)
+                    if (!titleMatch && !subMatch) return false
+                  }
+                  return true
+                })
+                const isBundleFree = editItem.price === 'FREE' || editItem.price === 0 || editItem.price === '0'
+                const bundleNumericPrice = isBundleFree ? 0 : (Number(editItem.price) || 0)
+                const savings = totalStandalonePrice > bundleNumericPrice ? (totalStandalonePrice - bundleNumericPrice) : 0
+                const savingsPercent = totalStandalonePrice > 0 ? Math.round((savings / totalStandalonePrice) * 100) : 0
+
+                return (
+                  <div className="p-4 rounded-2xl bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/50 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="text-xs font-bold uppercase tracking-wider text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
+                          <Video size={14} className="text-purple-600 dark:text-purple-400" />
+                          Included Individual Videos ({selectedIds.length} selected) *
+                        </label>
+                        <p className="text-[11px] text-purple-800/80 dark:text-purple-300/80 mt-0.5">
+                          Only standalone individual videos appear here to add to this bundle.
+                        </p>
+                      </div>
+                      {selectedIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setEditItem((p: any) => ({ ...p, bundledCourseIds: [] }))}
+                          className="text-[10px] font-semibold text-purple-600 dark:text-purple-400 hover:underline"
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Standalone vs Bundle Price preview */}
+                    <div className="p-3 rounded-xl bg-white dark:bg-brand-dark-card border border-purple-200/70 dark:border-purple-800/40 text-xs flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">Total Standalone Value:</span>
+                        <span className="text-sm font-bold text-brand-text dark:text-brand-dark-text">₹{totalStandalonePrice}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">Bundle Offer:</span>
+                        {isBundleFree ? (
+                          <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">FREE Access</span>
+                        ) : (
+                          <span className="text-sm font-bold text-purple-600 dark:text-purple-400">
+                            ₹{bundleNumericPrice} {savings > 0 && <span className="text-[10px] text-emerald-600 font-semibold">(Save {savingsPercent}%)</span>}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Selected individual videos tags */}
+                    {selectedCourses.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1">
+                        {selectedCourses.map(sc => (
+                          <span
+                            key={sc.id}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 border border-purple-200 dark:border-purple-800"
+                          >
+                            <Video size={11} className="text-purple-500 shrink-0" />
+                            <span className="max-w-[150px] truncate">{sc.title}</span>
+                            <span className="text-[10px] opacity-75">({sc.price === 'FREE' ? 'FREE' : `₹${sc.price}`})</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditItem((p: any) => ({
+                                  ...p,
+                                  bundledCourseIds: (p.bundledCourseIds || []).filter((id: string) => String(id) !== String(sc.id))
+                                }))
+                              }}
+                              className="ml-0.5 hover:text-red-500"
+                              title="Remove from bundle"
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Search filter */}
+                    <div className="relative">
+                      <Search size={13} className="absolute left-3 top-2.5 text-brand-muted" />
+                      <input
+                        type="text"
+                        value={editItem.bundleCourseSearch || ''}
+                        onChange={e => setEditItem((p: any) => ({ ...p, bundleCourseSearch: e.target.value }))}
+                        placeholder="Search individual videos to add to bundle..."
+                        className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-purple-200 dark:border-purple-800/60 bg-white dark:bg-brand-dark-card text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+
+                    {/* Available Individual Videos list */}
+                    <div className="max-h-40 overflow-y-auto rounded-xl border border-purple-200/70 dark:border-purple-900/40 bg-white dark:bg-brand-dark-card divide-y divide-gray-100 dark:divide-white/5">
+                      {availableCourses.length === 0 ? (
+                        <div className="p-3 text-center text-xs text-brand-muted">
+                          {bundleSearch ? 'No matching individual videos found' : 'No individual videos available to add'}
+                        </div>
+                      ) : (
+                        availableCourses.map(ac => {
+                          const isChecked = selectedIds.includes(String(ac.id))
+                          return (
+                            <label
+                              key={ac.id}
+                              className={`p-2.5 flex items-center justify-between gap-3 text-xs cursor-pointer hover:bg-purple-50/50 dark:hover:bg-white/5 transition-colors ${
+                                isChecked ? 'bg-purple-50/70 dark:bg-purple-950/30' : ''
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 truncate">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    const next = isChecked
+                                      ? selectedIds.filter(id => id !== String(ac.id))
+                                      : [...selectedIds, String(ac.id)]
+                                    setEditItem((p: any) => ({ ...p, bundledCourseIds: next }))
+                                  }}
+                                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500 shrink-0"
+                                />
+                                <div className="w-7 h-7 rounded-lg bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center flex-shrink-0 text-purple-600 dark:text-purple-300">
+                                  <Video size={13} />
+                                </div>
+                                <div className="truncate text-left">
+                                  <p className="font-semibold text-brand-text dark:text-brand-dark-text truncate">{ac.title}</p>
+                                  <p className="text-[10px] text-brand-muted dark:text-brand-dark-muted">
+                                    Individual Video {ac.duration ? `• ${ac.duration}` : ''} {ac.subcategory ? `• ${ac.subcategory}` : ''}
+                                  </p>
+                                </div>
+                              </div>
+                              <span className="text-[11px] font-bold text-brand-text dark:text-brand-dark-text shrink-0">
+                                {ac.price === 'FREE' ? <span className="text-green-500">FREE</span> : `₹${ac.price}`}
+                              </span>
+                            </label>
+                          )
+                        })
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
 
               <Field label="Title *"><input value={editItem.title || ''} onChange={e => setEditItem((p: any) => ({ ...p, title: e.target.value }))} className={inputCls} placeholder="Course title" /></Field>
               <div className="grid grid-cols-2 gap-4">
@@ -7126,8 +7365,13 @@ export default function AdminDashboard() {
                     <span>Bundle Pricing (No price needed here)</span>
                   </div>
                 ) : (
-                  <Field label="Price">
-                    <input value={editItem.price === 'FREE' ? 'FREE' : (editItem.price || '')} onChange={e => { const v = e.target.value.toUpperCase(); setEditItem((p: any) => ({ ...p, price: v === 'FREE' ? 'FREE' : parseInt(v) || 0 })) }} className={inputCls} placeholder="FREE or 999" />
+                  <Field label={isComboBundle ? 'Bundle Price (FREE or ₹)' : 'Price'}>
+                    <input
+                      value={editItem.price === 'FREE' ? 'FREE' : (editItem.price || '')}
+                      onChange={e => { const v = e.target.value.toUpperCase(); setEditItem((p: any) => ({ ...p, price: v === 'FREE' ? 'FREE' : parseInt(v) || 0 })) }}
+                      className={inputCls}
+                      placeholder={isComboBundle ? 'e.g. 499 or FREE' : 'FREE or 999'}
+                    />
                   </Field>
                 )}
                 <Field label="Duration"><input value={editItem.duration || ''} onChange={e => setEditItem((p: any) => ({ ...p, duration: e.target.value }))} className={inputCls} placeholder="40 hours" /></Field>
@@ -7260,158 +7504,172 @@ export default function AdminDashboard() {
                 />
               </Field>
 
-              {/* Video Upload */}
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-brand-text dark:text-brand-dark-text">Course Video</label>
-                <div className="border-2 border-dashed border-brand-border dark:border-brand-dark-border rounded-xl p-5 text-center bg-gray-50 dark:bg-brand-dark-bg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors relative group">
-                  <input
-                    type="file"
-                    accept="video/*"
-                    onChange={e => {
-                      const file = e.target.files?.[0]
-                      if (file) {
-                        setCourseVideoFile(file)
-                        setCourseVideoUploadStatus('idle')
-                        setCourseVideoUploadProgress(0)
-                        setCourseVideoAudioCheck('checking')
-                        checkVideoHasAudio(file).then(result => {
-                          setCourseVideoAudioCheck(result === 'yes' ? 'has-audio' : result === 'no' ? 'no-audio' : null)
-                        })
-                        setCourseVideoDurationSeconds(null)
-                        getVideoDurationSeconds(file).then(setCourseVideoDurationSeconds)
-                      }
-                    }}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                  />
-                  <div className="flex flex-col items-center justify-center space-y-2">
-                    <Video className="text-brand-muted dark:text-brand-dark-muted group-hover:scale-105 transition-transform" size={24} />
-                    <p className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
-                      {courseVideoFile ? 'Change Selected Video' : courseExistingVideoUrl ? 'Replace Video' : 'Choose Video File'}
-                    </p>
-                    <p className="text-[10px] text-brand-muted">MP4, WebM, MOV — keeps original audio track</p>
+              {/* Video Upload & Chapters (Only for individual courses) */}
+              {isComboBundle ? (
+                <div className="p-4 rounded-2xl bg-purple-50/70 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/40 text-xs space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-purple-700 dark:text-purple-300">
+                    <Package size={16} /> All Bundled Course Videos Included Automatically
                   </div>
-                </div>
-                {courseVideoAudioCheck === 'checking' && (
-                  <p className="text-xs text-brand-muted dark:text-brand-dark-muted flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> Checking video for an audio track...</p>
-                )}
-                {courseVideoAudioCheck === 'no-audio' && (
-                  <p className="text-xs text-amber-600 font-semibold flex items-start gap-1.5">
-                    <span>⚠</span>
-                    <span>Couldn't detect sound in this video in a quick browser check. If you're confident the file has audio (e.g. it plays fine in VLC), it's likely fine — this check can occasionally misfire. Just verify sound plays after uploading.</span>
+                  <p className="text-purple-800/80 dark:text-purple-300/80 text-[11px] leading-relaxed">
+                    When students enroll in this Course Bundle, all video lectures, chapters, and resources of the included courses are automatically unlocked for them. No separate video file needs to be uploaded for this combo bundle.
                   </p>
-                )}
-                {courseVideoAudioCheck === 'has-audio' && (
-                  <p className="text-xs text-green-600 font-semibold flex items-center gap-1.5"><span>✔</span> Audio track detected — this video has sound.</p>
-                )}
-                {(courseVideoFile || courseExistingVideoUrl) && (
-                  <div className="p-3 bg-gray-50 dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border rounded-xl flex items-center justify-between text-xs text-brand-text dark:text-brand-dark-text">
-                    <div className="flex items-center gap-2 truncate max-w-[70%]">
-                      <span className="text-green-500 font-bold">✔</span>
-                      <div className="truncate text-left">
-                        <p className="font-semibold truncate">{courseVideoFile ? courseVideoFile.name : 'Current Stored Video'}</p>
-                        {courseVideoFile && <p className="text-[10px] text-brand-muted">{(courseVideoFile.size / 1024 / 1024).toFixed(2)} MB</p>}
+                </div>
+              ) : (
+                <>
+                  {/* Video Upload */}
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-brand-text dark:text-brand-dark-text">Course Video</label>
+                    <div className="border-2 border-dashed border-brand-border dark:border-brand-dark-border rounded-xl p-5 text-center bg-gray-50 dark:bg-brand-dark-bg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors relative group">
+                      <input
+                        type="file"
+                        accept="video/*"
+                        onChange={e => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            setCourseVideoFile(file)
+                            setCourseVideoUploadStatus('idle')
+                            setCourseVideoUploadProgress(0)
+                            setCourseVideoAudioCheck('checking')
+                            checkVideoHasAudio(file).then(result => {
+                              setCourseVideoAudioCheck(result === 'yes' ? 'has-audio' : result === 'no' ? 'no-audio' : null)
+                            })
+                            setCourseVideoDurationSeconds(null)
+                            getVideoDurationSeconds(file).then(setCourseVideoDurationSeconds)
+                          }
+                        }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                      />
+                      <div className="flex flex-col items-center justify-center space-y-2">
+                        <Video className="text-brand-muted dark:text-brand-dark-muted group-hover:scale-105 transition-transform" size={24} />
+                        <p className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
+                          {courseVideoFile ? 'Change Selected Video' : courseExistingVideoUrl ? 'Replace Video' : 'Choose Video File'}
+                        </p>
+                        <p className="text-[10px] text-brand-muted">MP4, WebM, MOV — keeps original audio track</p>
                       </div>
                     </div>
-                    {courseExistingVideoUrl && !courseVideoFile && (
-                      <span className="text-[10px] bg-primary-50 dark:bg-primary-950/20 text-primary-600 font-semibold px-2 py-0.5 rounded-md">Active</span>
+                    {courseVideoAudioCheck === 'checking' && (
+                      <p className="text-xs text-brand-muted dark:text-brand-dark-muted flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> Checking video for an audio track...</p>
                     )}
-                  </div>
-                )}
-                {courseVideoUploadStatus === 'uploading' && (
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-brand-muted uppercase">
-                      <span>Uploading Video...</span><span>{courseVideoUploadProgress}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 dark:bg-white/10 rounded-full h-1.5 overflow-hidden">
-                      <motion.div initial={{ width: 0 }} animate={{ width: `${courseVideoUploadProgress}%` }} transition={{ duration: 0.1 }} className="bg-primary-500 h-full rounded-full" />
-                    </div>
-                  </div>
-                )}
-                {courseVideoUploadStatus === 'success' && <p className="text-xs text-green-600 font-semibold flex items-center gap-1.5"><span>✔</span> Video uploaded successfully!</p>}
-                {courseVideoUploadStatus === 'error' && <p className="text-xs text-red-600 font-semibold flex items-center gap-1.5"><span>❌</span> Video upload failed. Please try again.</p>}
-              </div>
-
-              {/* Chapters / YouTube-style Timestamps */}
-              <div className="space-y-2">
-                <label className="flex items-center gap-1.5 text-sm font-semibold text-brand-text dark:text-brand-dark-text">
-                  <ListVideo size={15} /> Chapters (Video Timestamps)
-                  {courseVideoDurationSeconds != null && (
-                    <span className="ml-auto text-[10px] font-mono font-normal text-brand-muted dark:text-brand-dark-muted bg-gray-100 dark:bg-white/5 px-1.5 py-0.5 rounded">
-                      Video length: {formatSeconds(courseVideoDurationSeconds)}
-                    </span>
-                  )}
-                </label>
-                <div className="border border-brand-border dark:border-brand-dark-border rounded-xl p-3 space-y-3 bg-gray-50 dark:bg-brand-dark-bg">
-                  {timestampsLoading ? (
-                    <div className="flex items-center justify-center py-3"><Loader2 size={16} className="animate-spin text-brand-muted" /></div>
-                  ) : courseTimestamps.length === 0 ? (
-                    <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted">No chapters yet. Add the first one below.</p>
-                  ) : (
-                    <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
-                      {courseTimestamps.map(t => (
-                        <div key={t.id ?? `pending-${t.sortOrder}-${t.timeSeconds}-${t.label}`} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border text-xs">
-                          <span className="font-mono font-semibold text-primary-500 flex-shrink-0">{formatSeconds(t.timeSeconds)}</span>
-                          <span className="flex-1 truncate text-brand-text dark:text-brand-dark-text">{t.label}</span>
-                          <button
-                            type="button"
-                            disabled={deletingTimestampId === t.id}
-                            onClick={async () => {
-                              if (!t.id) {
-                                setCourseTimestamps(prev => prev.filter(x => x !== t))
-                                return
-                              }
-                              setDeletingTimestampId(t.id)
-                              try {
-                                await deleteTimestampApi(t.id)
-                                setCourseTimestamps(prev => prev.filter(x => x.id !== t.id))
-                                toast.success('Chapter removed')
-                              } catch (err) {
-                                toast.error(err instanceof Error ? err.message : 'Failed to remove chapter')
-                              } finally {
-                                setDeletingTimestampId(null)
-                              }
-                            }}
-                            className="p-1 text-red-400 hover:text-red-600 flex-shrink-0 disabled:opacity-50"
-                          >
-                            {deletingTimestampId === t.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                          </button>
+                    {courseVideoAudioCheck === 'no-audio' && (
+                      <p className="text-xs text-amber-600 font-semibold flex items-start gap-1.5">
+                        <span>⚠</span>
+                        <span>Couldn't detect sound in this video in a quick browser check. If you're confident the file has audio (e.g. it plays fine in VLC), it's likely fine — this check can occasionally misfire. Just verify sound plays after uploading.</span>
+                      </p>
+                    )}
+                    {courseVideoAudioCheck === 'has-audio' && (
+                      <p className="text-xs text-green-600 font-semibold flex items-center gap-1.5"><span>✔</span> Audio track detected — this video has sound.</p>
+                    )}
+                    {(courseVideoFile || courseExistingVideoUrl) && (
+                      <div className="p-3 bg-gray-50 dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border rounded-xl flex items-center justify-between text-xs text-brand-text dark:text-brand-dark-text">
+                        <div className="flex items-center gap-2 truncate max-w-[70%]">
+                          <span className="text-green-500 font-bold">✔</span>
+                          <div className="truncate text-left">
+                            <p className="font-semibold truncate">{courseVideoFile ? courseVideoFile.name : 'Current Stored Video'}</p>
+                            {courseVideoFile && <p className="text-[10px] text-brand-muted">{(courseVideoFile.size / 1024 / 1024).toFixed(2)} MB</p>}
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <div className="relative w-24 flex-shrink-0">
-                      <Clock size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-brand-muted" />
-                      <input
-                        value={newTimestampTime}
-                        onChange={e => setNewTimestampTime(e.target.value)}
-                        placeholder="0.05 / 0:05"
-                        className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card text-xs text-brand-text dark:text-brand-dark-text"
-                      />
-                    </div>
-                    <input
-                      value={newTimestampLabel}
-                      onChange={e => setNewTimestampLabel(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && !timestampSaving && handleAddChapter()}
-                      placeholder="Chapter label, e.g. Introduction"
-                      className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card text-xs text-brand-text dark:text-brand-dark-text"
-                    />
-                    <button
-                      type="button"
-                      disabled={timestampSaving || !newTimestampTime || !newTimestampLabel.trim()}
-                      onClick={handleAddChapter}
-                      className="flex-shrink-0 p-1.5 rounded-lg bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-50"
-                    >
-                      {timestampSaving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-                    </button>
+                        {courseExistingVideoUrl && !courseVideoFile && (
+                          <span className="text-[10px] bg-primary-50 dark:bg-primary-950/20 text-primary-600 font-semibold px-2 py-0.5 rounded-md">Active</span>
+                        )}
+                      </div>
+                    )}
+                    {courseVideoUploadStatus === 'uploading' && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-brand-muted uppercase">
+                          <span>Uploading Video...</span><span>{courseVideoUploadProgress}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 dark:bg-white/10 rounded-full h-1.5 overflow-hidden">
+                          <motion.div initial={{ width: 0 }} animate={{ width: `${courseVideoUploadProgress}%` }} transition={{ duration: 0.1 }} className="bg-primary-500 h-full rounded-full" />
+                        </div>
+                      </div>
+                    )}
+                    {courseVideoUploadStatus === 'success' && <p className="text-xs text-green-600 font-semibold flex items-center gap-1.5"><span>✔</span> Video uploaded successfully!</p>}
+                    {courseVideoUploadStatus === 'error' && <p className="text-xs text-red-600 font-semibold flex items-center gap-1.5"><span>❌</span> Video upload failed. Please try again.</p>}
                   </div>
-                  <p className="text-[10px] text-brand-muted dark:text-brand-dark-muted">
-                    {courseVideoDurationSeconds != null
-                      ? `Enter 0.05 for 5 sec, 0.06 for 6 sec, 0.07 for 7 sec, or use 0:05 / 00:05. Video length: ${formatSeconds(courseVideoDurationSeconds)}.`
-                      : 'Enter 0.05 for 5 seconds, 0:05, or 00:05 for timestamp positions.'}
-                  </p>
-                </div>
-              </div>
+
+                  {/* Chapters / YouTube-style Timestamps */}
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-1.5 text-sm font-semibold text-brand-text dark:text-brand-dark-text">
+                      <ListVideo size={15} /> Chapters (Video Timestamps)
+                      {courseVideoDurationSeconds != null && (
+                        <span className="ml-auto text-[10px] font-mono font-normal text-brand-muted dark:text-brand-dark-muted bg-gray-100 dark:bg-white/5 px-1.5 py-0.5 rounded">
+                          Video length: {formatSeconds(courseVideoDurationSeconds)}
+                        </span>
+                      )}
+                    </label>
+                    <div className="border border-brand-border dark:border-brand-dark-border rounded-xl p-3 space-y-3 bg-gray-50 dark:bg-brand-dark-bg">
+                      {timestampsLoading ? (
+                        <div className="flex items-center justify-center py-3"><Loader2 size={16} className="animate-spin text-brand-muted" /></div>
+                      ) : courseTimestamps.length === 0 ? (
+                        <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted">No chapters yet. Add the first one below.</p>
+                      ) : (
+                        <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                          {courseTimestamps.map(t => (
+                            <div key={t.id ?? `pending-${t.sortOrder}-${t.timeSeconds}-${t.label}`} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border text-xs">
+                              <span className="font-mono font-semibold text-primary-500 flex-shrink-0">{formatSeconds(t.timeSeconds)}</span>
+                              <span className="flex-1 truncate text-brand-text dark:text-brand-dark-text">{t.label}</span>
+                              <button
+                                type="button"
+                                disabled={deletingTimestampId === t.id}
+                                onClick={async () => {
+                                  if (!t.id) {
+                                    setCourseTimestamps(prev => prev.filter(x => x !== t))
+                                    return
+                                  }
+                                  setDeletingTimestampId(t.id)
+                                  try {
+                                    await deleteTimestampApi(t.id)
+                                    setCourseTimestamps(prev => prev.filter(x => x.id !== t.id))
+                                    toast.success('Chapter removed')
+                                  } catch (err) {
+                                    toast.error(err instanceof Error ? err.message : 'Failed to remove chapter')
+                                  } finally {
+                                    setDeletingTimestampId(null)
+                                  }
+                                }}
+                                className="p-1 text-red-400 hover:text-red-600 flex-shrink-0 disabled:opacity-50"
+                              >
+                                {deletingTimestampId === t.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <div className="relative w-24 flex-shrink-0">
+                          <Clock size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-brand-muted" />
+                          <input
+                            value={newTimestampTime}
+                            onChange={e => setNewTimestampTime(e.target.value)}
+                            placeholder="0.05 / 0:05"
+                            className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card text-xs text-brand-text dark:text-brand-dark-text"
+                          />
+                        </div>
+                        <input
+                          value={newTimestampLabel}
+                          onChange={e => setNewTimestampLabel(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && !timestampSaving && handleAddChapter()}
+                          placeholder="Chapter label, e.g. Introduction"
+                          className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card text-xs text-brand-text dark:text-brand-dark-text"
+                        />
+                        <button
+                          type="button"
+                          disabled={timestampSaving || !newTimestampTime || !newTimestampLabel.trim()}
+                          onClick={handleAddChapter}
+                          className="flex-shrink-0 p-1.5 rounded-lg bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-50"
+                        >
+                          {timestampSaving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-brand-muted dark:text-brand-dark-muted">
+                        {courseVideoDurationSeconds != null
+                          ? `Enter 0.05 for 5 sec, 0.06 for 6 sec, 0.07 for 7 sec, or use 0:05 / 00:05. Video length: ${formatSeconds(courseVideoDurationSeconds)}.`
+                          : 'Enter 0.05 for 5 seconds, 0:05, or 00:05 for timestamp positions.'}
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Thumbnail Upload */}
               <div className="space-y-2">

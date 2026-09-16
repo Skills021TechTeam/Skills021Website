@@ -63,6 +63,10 @@ export interface Course {
   // True if this course/lecture was uploaded as curriculum under a Subject Bundle
   // rather than as an individual standalone course in 'All Courses'.
   isBundleOnly?: boolean
+  // True if this course is a Course Bundle / Combo Course containing multiple individual courses.
+  isCourseBundle?: boolean
+  // Array of course IDs included inside this Course Bundle.
+  bundledCourseIds?: string[]
 }
 
 // ─── Resource Types ─────────────────────────────────────────────────────────

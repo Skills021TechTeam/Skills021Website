@@ -745,7 +745,7 @@ export async function getUserSemesterBundleEntitlement(
             amount: matching.amount != null ? Number(matching.amount) : undefined,
             utrNumber: matching.utr_number || undefined,
           }
-        } else if ((matching.payment_status === 'paid' || matching.status === 'paid') && matching.status !== 'rejected' && matching.status !== 'revoked' && matching.status !== 'cancelled') {
+        } else if (matching.payment_status === 'paid' && matching.status !== 'rejected' && matching.status !== 'revoked' && matching.status !== 'cancelled') {
           entitlement.hasAccess = true
           entitlement.isPending = false
           entitlement.hasPending = false

@@ -902,7 +902,7 @@ export async function getUserSubjectBundleEntitlement(
           }
         }
 
-        if ((matching.payment_status === 'paid' || matching.payment_status === 'free' || matching.status === 'paid' || matching.status === 'active')) {
+        if ((matching.payment_status === 'paid' || matching.payment_status === 'free')) {
           entitlement.hasAccess = true
           entitlement.hasPending = false
           entitlement.paymentStatus = 'paid'
@@ -933,7 +933,7 @@ export async function getUserSubjectBundleEntitlement(
       // Check semester bundle enrollment
       const paidSemEnrs = enrRows.filter(e =>
         e.item_type === 'semester_bundle' &&
-        (e.payment_status === 'paid' || e.payment_status === 'free' || e.status === 'paid' || e.status === 'active') &&
+        (e.payment_status === 'paid' || e.payment_status === 'free') &&
         e.payment_status !== 'rejected' &&
         e.status !== 'rejected' &&
         e.status !== 'revoked' &&

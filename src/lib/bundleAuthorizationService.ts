@@ -338,6 +338,44 @@ export async function fetchUserEntitlements(userId: string | null | undefined): 
         } catch {}
       }
     }
+
+    // 5. Expand Course Bundle entitlements:
+    // If user is enrolled in any Course Bundle, automatically entitle all child courses inside it
+    if (result.enrolledCourseIds.size > 0) {
+      const cleanEnrolledIds = Array.from(result.enrolledCourseIds)
+        .map(id => id.replace(/^course_/, ''))
+        .filter(id => !isNaN(Number(id)))
+
+      if (cleanEnrolledIds.length > 0) {
+        try {
+          const { data: bundleCourses } = await supabase
+            .from('site_courses')
+            .select('id, tags')
+            .in('id', cleanEnrolledIds)
+
+          if (bundleCourses) {
+            for (const bc of bundleCourses) {
+              const tags = bc.tags || []
+              if (tags.includes('__is_course_bundle')) {
+                const bundleTag = tags.find((t: string) => t.startsWith('__bundled_courses:'))
+                if (bundleTag) {
+                  const raw = bundleTag.slice('__bundled_courses:'.length)
+                  const childIds = raw.split(',').map((s: string) => s.trim()).filter(Boolean)
+                  for (const cid of childIds) {
+                    const cleanCid = cid.replace(/^course_/, '')
+                    result.enrolledCourseIds.add(cleanCid)
+                    result.enrolledCourseIds.add(cid)
+                    result.enrolledCourseIds.add(`course_${cleanCid}`)
+                  }
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[bundleAuthorizationService] Error expanding course bundle entitlements:', err)
+        }
+      }
+    }
   } catch (err) {
     console.warn('[bundleAuthorizationService] Error fetching entitlements:', err)
   }

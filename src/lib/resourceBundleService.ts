@@ -443,7 +443,7 @@ export async function getUserResourceBundleEntitlement(
           }
         }
 
-        if ((matching.payment_status === 'paid' || matching.status === 'paid') && !isRejected) {
+        if (matching.payment_status === 'paid' && !isRejected) {
           resAccess.hasAccess = true
           resAccess.isPending = false
           resAccess.hasPending = false

@@ -1395,14 +1395,15 @@ function BundleCheckoutModal({
         bundleType,
         `${bundle.id}:${planType}`,
         code,
-        userId || null
+        userId || null,
+        basePrice
       )
       if (token !== pricingFetchRef.current) return
 
       const p = toCheckoutPricing(breakdown)
       if (code && p.couponError) {
         setCouponError(p.couponError)
-        const fallback = await fetchCheckoutPrice(bundleType, `${bundle.id}:${planType}`, null, userId || null)
+        const fallback = await fetchCheckoutPrice(bundleType, `${bundle.id}:${planType}`, null, userId || null, basePrice)
         if (token !== pricingFetchRef.current) return
         setPricing({ ...toCheckoutPricing(fallback), isLoading: false })
       } else {
@@ -1427,17 +1428,21 @@ function BundleCheckoutModal({
     setCouponLoading(true)
     setCouponError(null)
     try {
-      const res = await fetchCheckoutPrice(bundleType, `${bundle.id}:${planType}`, code, userId || null)
+      // Pass basePrice so the RPC fallback has a price anchor and doesn't return ₹0
+      const res = await fetchCheckoutPrice(bundleType, `${bundle.id}:${planType}`, code, userId || null, basePrice)
       const cp = toCheckoutPricing(res)
       if (cp.couponError) {
+        // Server explicitly rejected this coupon
         setCouponError(cp.couponError)
         setAppliedCoupon(null)
         await loadPricing(null)
-      } else if (cp.couponCode && cp.couponId) {
-        setAppliedCoupon(cp.couponCode)
+      } else if (cp.couponCode || cp.couponDiscountAmount > 0) {
+        // Coupon accepted — RPC may not always return couponId but discount is real
+        const appliedCode = cp.couponCode || code
+        setAppliedCoupon(appliedCode)
         setCouponError(null)
         setPricing({ ...cp, isLoading: false })
-        toast.success(`Coupon "${cp.couponCode}" applied! 🎉`)
+        toast.success(`Coupon "${appliedCode}" applied! 🎉`)
       } else {
         setCouponError('Invalid coupon code. Only saved coupons can be applied.')
         setAppliedCoupon(null)

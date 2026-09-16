@@ -132,8 +132,25 @@ const extractNotesSubject = (tags: string[] | null | undefined) =>
 // rather than an individual standalone course sold in 'All Courses'.
 const BUNDLE_ONLY_TAG = '__bundle_only'
 const isBundleOnlyTag = (t: string) => t === BUNDLE_ONLY_TAG
+
+// Tag indicating this course is a Course Bundle / Combo Course
+const COURSE_BUNDLE_TAG = '__is_course_bundle'
+const isCourseBundleTag = (t: string) => t === COURSE_BUNDLE_TAG
+
+// Internal tag prefix for bundled courses list
+const BUNDLED_COURSES_PREFIX = '__bundled_courses:'
+const encodeBundledCoursesTag = (ids: string[]) => `${BUNDLED_COURSES_PREFIX}${ids.filter(Boolean).join(',')}`
+const isBundledCoursesTag = (t: string) => t.startsWith(BUNDLED_COURSES_PREFIX)
+const extractBundledCourseIds = (tags: string[] | null | undefined, colIds?: string[] | null): string[] => {
+  if (Array.isArray(colIds) && colIds.length > 0) return colIds.map(String)
+  const tag = (tags ?? []).find(isBundledCoursesTag)
+  if (!tag) return []
+  const raw = tag.slice(BUNDLED_COURSES_PREFIX.length)
+  return raw.split(',').map(s => s.trim()).filter(Boolean)
+}
+
 const stripInternalTags = (tags: string[] | null | undefined) =>
-  (tags ?? []).filter(t => !isNotesTag(t) && !isBundleOnlyTag(t))
+  (tags ?? []).filter(t => !isNotesTag(t) && !isBundleOnlyTag(t) && !isCourseBundleTag(t) && !isBundledCoursesTag(t))
 
 // ─── DB Row Shape (public.site_courses) ─────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -162,6 +179,8 @@ interface SiteCourseRow {
   updated_at: string | null
   subject_id: number | null
   is_bundle_only?: boolean | null
+  is_course_bundle?: boolean | null
+  bundled_course_ids?: string[] | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   subjects?: any
 }
@@ -286,6 +305,8 @@ function mapRowToCourse(row: SiteCourseRow): Course {
     createdAt: row.created_at ?? '',
     notesSubject: extractNotesSubject(row.tags),
     isBundleOnly: Boolean(row.is_bundle_only || (row.tags ?? []).includes(BUNDLE_ONLY_TAG)),
+    isCourseBundle: Boolean(row.is_course_bundle || (row.tags ?? []).includes(COURSE_BUNDLE_TAG)),
+    bundledCourseIds: extractBundledCourseIds(row.tags, row.bundled_course_ids),
     college:          clg?.name ?? undefined,
     academicCourse:   crs?.name ?? undefined,
     branch:           br?.name ?? undefined,
@@ -354,10 +375,24 @@ export interface CreateSiteCourseInput {
   subjectId?: number | null
   // True if uploaded under a Subject Bundle (no individual course price, hidden from 'All Courses')
   isBundleOnly?: boolean
+  // True if this course is a Course Bundle containing multiple individual courses
+  isCourseBundle?: boolean
+  // Array of course IDs bundled inside
+  bundledCourseIds?: string[]
 }
 
 export async function createSiteCourse(input: CreateSiteCourseInput): Promise<Course> {
   const isBundle = Boolean(input.isBundleOnly)
+  const isCourseBundle = Boolean(input.isCourseBundle)
+  const bundledCourseIds = (input.bundledCourseIds || []).map(String)
+
+  const tagsPayload = [
+    ...stripInternalTags(input.tags),
+    ...(input.notesSubject?.trim() ? [encodeNotesTag(input.notesSubject.trim())] : []),
+    ...(isBundle ? [BUNDLE_ONLY_TAG] : []),
+    ...(isCourseBundle ? [COURSE_BUNDLE_TAG, encodeBundledCoursesTag(bundledCourseIds)] : []),
+  ]
+
   const basePayload = {
     title: input.title,
     description: input.description,
@@ -369,11 +404,7 @@ export async function createSiteCourse(input: CreateSiteCourseInput): Promise<Co
     level: input.level,
     is_free: isBundle ? false : input.isFree,
     price: isBundle ? 0 : (input.isFree ? 0 : (input.price ?? 0)),
-    tags: [
-      ...stripInternalTags(input.tags),
-      ...(input.notesSubject?.trim() ? [encodeNotesTag(input.notesSubject.trim())] : []),
-      ...(isBundle ? [BUNDLE_ONLY_TAG] : []),
-    ],
+    tags: tagsPayload,
     thumbnail_url: input.thumbnailUrl || null,
     video_url: input.videoUrl || null,
     status: input.status,
@@ -398,8 +429,8 @@ export async function createSiteCourse(input: CreateSiteCourseInput): Promise<Co
 
   let subjectLinkFailed = false
 
-  // 1. If is_bundle_only column is missing from DB, retry with subject_id and COURSE_SELECT_NO_BUNDLE_COL
-  if (error && /is_bundle_only/i.test(error.message)) {
+  // 1. If is_bundle_only or course_bundle column is missing from DB, retry with safe payload
+  if (error && /is_bundle_only|is_course_bundle|bundled_course_ids/i.test(error.message)) {
     const { is_bundle_only: _drop, ...payloadWithoutBundle } = fullPayload
     ;({ data, error } = await supabase
       .from('site_courses')
@@ -471,6 +502,8 @@ export interface UpdateSiteCourseInput {
   notesSubject?: string
   subjectId?: number | null
   isBundleOnly?: boolean
+  isCourseBundle?: boolean
+  bundledCourseIds?: string[]
 }
 
 export async function updateSiteCourse(id: string, input: UpdateSiteCourseInput): Promise<Course> {
@@ -499,10 +532,23 @@ export async function updateSiteCourse(id: string, input: UpdateSiteCourseInput)
     if (input.price !== undefined) payload.price = input.price
   }
 
-  if (input.tags !== undefined || input.notesSubject !== undefined || input.isBundleOnly !== undefined) {
+  if (input.isCourseBundle !== undefined) {
+    payload.is_course_bundle = input.isCourseBundle
+    if (input.bundledCourseIds !== undefined) {
+      payload.bundled_course_ids = input.bundledCourseIds.map(String)
+    }
+  }
+
+  if (input.tags !== undefined || input.notesSubject !== undefined || input.isBundleOnly !== undefined || input.isCourseBundle !== undefined || input.bundledCourseIds !== undefined) {
     const rawTags = stripInternalTags(input.tags ?? [])
     if (input.notesSubject?.trim()) rawTags.push(encodeNotesTag(input.notesSubject.trim()))
     if (input.isBundleOnly) rawTags.push(BUNDLE_ONLY_TAG)
+    if (input.isCourseBundle) {
+      rawTags.push(COURSE_BUNDLE_TAG)
+      if (input.bundledCourseIds && input.bundledCourseIds.length > 0) {
+        rawTags.push(encodeBundledCoursesTag(input.bundledCourseIds))
+      }
+    }
     payload.tags = rawTags
   }
   if (input.thumbnailUrl !== undefined) payload.thumbnail_url = input.thumbnailUrl
@@ -520,9 +566,9 @@ export async function updateSiteCourse(id: string, input: UpdateSiteCourseInput)
 
   let subjectLinkFailed = false
 
-  // 1. If is_bundle_only column missing from DB, retry keeping subject_id
-  if (error && /is_bundle_only/i.test(error.message)) {
-    const { is_bundle_only: _drop, ...payloadWithoutBundle } = payload
+  // 1. If is_bundle_only or course bundle columns missing from DB, retry keeping subject_id
+  if (error && /is_bundle_only|is_course_bundle|bundled_course_ids/i.test(error.message)) {
+    const { is_bundle_only: _drop, is_course_bundle: _drop2, bundled_course_ids: _drop3, ...payloadWithoutBundle } = payload
     ;({ data, error } = await supabase
       .from('site_courses')
       .update(payloadWithoutBundle)

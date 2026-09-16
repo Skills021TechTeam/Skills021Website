@@ -84,12 +84,12 @@ function AnimatedRoutes() {
             <Route path="/admin/login" element={<AdminLogin />} />
 
             {/* Protected Learning & Platform Features */}
-            <Route path="/courses" element={<ProtectedRoute><Courses /></ProtectedRoute>} />
-            <Route path="/courses/bundles/:subjectId" element={<ProtectedRoute><SubjectBundleView /></ProtectedRoute>} />
-            <Route path="/subject-bundles/:subjectId" element={<ProtectedRoute><SubjectBundleView /></ProtectedRoute>} />
-            <Route path="/resources/bundles/:subjectId" element={<ProtectedRoute><SubjectBundleView /></ProtectedRoute>} />
-            <Route path="/courses/semester-bundles/:bundleId" element={<ProtectedRoute><SemesterBundleView /></ProtectedRoute>} />
-            <Route path="/semester-bundles/:bundleId" element={<ProtectedRoute><SemesterBundleView /></ProtectedRoute>} />
+            <Route path="/courses" element={<Courses />} />
+            <Route path="/courses/bundles/:subjectId" element={<SubjectBundleView />} />
+            <Route path="/subject-bundles/:subjectId" element={<SubjectBundleView />} />
+            <Route path="/resources/bundles/:subjectId" element={<SubjectBundleView />} />
+            <Route path="/courses/semester-bundles/:bundleId" element={<SemesterBundleView />} />
+            <Route path="/semester-bundles/:bundleId" element={<SemesterBundleView />} />
             <Route path="/resources" element={<ProtectedRoute><Resources /></ProtectedRoute>} />
             <Route path="/resources/videos" element={<ProtectedRoute><VideosBrowse /></ProtectedRoute>} />
             <Route path="/pathfinder" element={<ProtectedRoute><PathFinder /></ProtectedRoute>} />

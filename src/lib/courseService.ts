@@ -13,7 +13,8 @@ export async function linkCourseToSubjectBundleAndUnits(
   thumbnailUrl?: string | null,
   instructor?: string | null,
   level?: string | null,
-  courseId?: number | null
+  courseId?: number | null,
+  unitTitle?: string
 ) {
   try {
     // 1. Ensure Subject Bundle exists
@@ -34,27 +35,44 @@ export async function linkCourseToSubjectBundleAndUnits(
 
     // 3. If video URL exists, ensure it is organized under a unit in subject_videos
     if (videoUrl) {
-      // Find or create Unit 1
+      // Find or create Unit
       let unitId: string | null = null
-      const { data: existingUnit } = await supabase
+      let unitQuery = supabase
         .from('subject_units')
         .select('id')
         .eq('subject_id', subjectId)
-        .order('unit_number', { ascending: true })
-        .limit(1)
-        .maybeSingle()
+
+      if (unitTitle) {
+        unitQuery = unitQuery.eq('title', unitTitle)
+      } else {
+        unitQuery = unitQuery.order('unit_number', { ascending: true })
+      }
+
+      const { data: existingUnit } = await unitQuery.limit(1).maybeSingle()
 
       if (existingUnit?.id) {
         unitId = String(existingUnit.id)
       } else {
+        // If creating a new unit, find the max unit_number to append
+        const { data: maxUnit } = await supabase
+          .from('subject_units')
+          .select('unit_number')
+          .eq('subject_id', subjectId)
+          .order('unit_number', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+          
+        const nextUnitNumber = (maxUnit?.unit_number || 0) + 1
+        const defaultTitle = `Unit ${nextUnitNumber}: Core Lectures & Concepts`
+
         const { data: newUnit, error: unitErr } = await supabase
           .from('subject_units')
           .insert({
             subject_id: subjectId,
-            unit_number: 1,
-            title: 'Unit 1: Core Lectures & Concepts',
+            unit_number: nextUnitNumber,
+            title: unitTitle || defaultTitle,
             description: 'Video lectures and core syllabus coverage for this subject.',
-            sort_order: 1,
+            sort_order: nextUnitNumber,
           })
           .select('id')
           .single()
@@ -476,7 +494,8 @@ export async function createSiteCourse(input: CreateSiteCourseInput): Promise<Co
       input.thumbnailUrl,
       input.instructor,
       input.level,
-      Number(course.id)
+      Number(course.id),
+      input.unitTitle
     ).catch(err => console.warn('[createSiteCourse] Auto-mapping to subject bundle failed:', err))
   }
 
@@ -616,7 +635,8 @@ export async function updateSiteCourse(id: string, input: UpdateSiteCourseInput)
       course.thumbnail,
       course.instructor,
       course.level,
-      Number(course.id)
+      Number(course.id),
+      input.unitTitle
     ).catch(err => console.warn('[courseService] linkCourseToSubjectBundleAndUnits background error:', err))
   } else if (input.isBundleOnly === false) {
     // If explicitly switched to individual, remove from subject_videos to prevent bundle duplication

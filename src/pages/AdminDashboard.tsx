@@ -7478,6 +7478,20 @@ export default function AdminDashboard() {
                 </p>
               </div>
 
+              {isUnderBundle && (
+                <Field label="Subject Bundle Unit Title (optional)">
+                  <input
+                    value={editItem.unitTitle || ''}
+                    onChange={e => setEditItem((p: any) => ({ ...p, unitTitle: e.target.value }))}
+                    className={inputCls}
+                    placeholder="e.g. Unit 1: Core Lectures & Concepts"
+                  />
+                  <p className="text-[10px] text-brand-muted mt-1">
+                    If left blank, it will automatically find or create a Unit for you. If a title is provided, it will use the existing unit with this title or create a new one.
+                  </p>
+                </Field>
+              )}
+
               <Field label="Linked Notes Subject (optional)">
                 <NotesSubjectPicker
                   value={editItem.notesSubject || ''}

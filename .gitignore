@@ -60,3 +60,5 @@ supabase/migrations/20260916_fix_admin_approve_blocked.sql
 supabase/migrations/20260916_fix_coupon_bundle_product_match.sql
 .gitignore
 supabase/migrations/20260916_fix_enrollment_payment_bypass.sql
+supabase/migrations/20260918_allow_webinar_in_enrollments.sql
+supabase/migrations/20260918_fix_admin_enrollment_access.sql

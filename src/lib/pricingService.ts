@@ -52,6 +52,18 @@ async function resolveDirectProductPrice(productType: ProductType, productId: st
         const price = isFree ? 0 : (Number(data.price) || 0)
         return { price, isFree }
       }
+    } else if (productType === 'webinar') {
+      const cleanId = String(productId).replace(/^webinar_/, '')
+      const { data, error } = await supabase
+        .from('live_webinars')
+        .select('price, access_type')
+        .eq('id', cleanId)
+        .maybeSingle()
+      if (!error && data) {
+        const isFree = data.access_type === 'free' || !data.price || Number(data.price) === 0
+        const price = isFree ? 0 : (Number(data.price) || 0)
+        return { price, isFree }
+      }
     }
   } catch (err) {
     console.warn('[pricingService] Direct price fallback error:', err)

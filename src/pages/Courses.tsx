@@ -30,10 +30,16 @@ import { fetchUserEntitlements } from '../lib/bundleAuthorizationService'
 import EnrollModal from '../components/EnrollModal'
 import VideoPlayerModal from '../components/VideoPlayerModal'
 import CourseRatingMenu from '../components/CourseRatingMenu'
-import { getLiveWebinars, getWebinarRecordings, resolveWebinarRecordingVideo, type LiveWebinar, type WebinarRecording } from '../lib/webinarService'
+import {
+  getLiveWebinars,
+  getWebinarRecordings,
+  resolveWebinarRecordingVideo,
+  getWebinarTimingState,
+  type LiveWebinar,
+  type WebinarRecording,
+} from '../lib/webinarService'
 import PanelSpotlightCard from '../components/PanelSpotlightCard'
 import { showAuthRequiredToast } from '../components/AuthRequiredToast'
-import drAjayPhoto from '../dr-ajay-kumar.jpeg'
 
 const GROUPS: { label: CourseGroup }[] = [
   { label: 'Competitive Exams' },
@@ -1060,6 +1066,7 @@ export default function Courses() {
   const [activeSubjectBundle, setActiveSubjectBundle] = useState<SubjectBundle | null>(null)
   const [activeResourceBundle, setActiveResourceBundle] = useState<ResourceBundle | null>(null)
   const [enrollCourse, setEnrollCourse] = useState<Course | null>(null)
+  const [enrollWebinar, setEnrollWebinar] = useState<LiveWebinar | null>(null)
   const [showPremiumModal, setShowPremiumModal] = useState(false)
   const [playCourse, setPlayCourse] = useState<Course | null>(null)
   const [bundleDetailModalCourse, setBundleDetailModalCourse] = useState<Course | null>(null)
@@ -1069,6 +1076,12 @@ export default function Courses() {
   const [courseDiscountsMap, setCourseDiscountsMap] = useState<Map<string, ProductDiscount>>(new Map())
   // Map of semesterBundleId -> active ProductDiscount
   const [semesterDiscountsMap, setSemesterDiscountsMap] = useState<Map<string, ProductDiscount>>(new Map())
+  const [currentTime, setCurrentTime] = useState(() => Date.now())
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [])
 
   const requireLogin = () => {
     showAuthRequiredToast({
@@ -1787,143 +1800,486 @@ export default function Courses() {
             </div>
           </div>
 
-          {webinarsLoading ? <div className="py-16 text-center text-sm text-brand-muted"><Loader2 className="animate-spin mx-auto mb-3" />Loading webinars...</div> : (
-            <>
-              {/* Featured Speaker & Registration */}
-              <div className="rounded-[28px] border border-violet-100 dark:border-white/10 bg-white dark:bg-brand-dark-card overflow-hidden shadow-sm mb-10">
-                <div className="flex flex-col md:flex-row">
-                  <div className="relative min-h-72 md:min-h-0 md:w-72 lg:w-80 shrink-0 overflow-hidden bg-gray-100 dark:bg-black/20">
-                    <img
-                      src={drAjayPhoto}
-                      alt="Dr. Ajay Kumar"
-                      className="absolute inset-0 h-full w-full object-cover object-top"
-                      onError={(event) => { event.currentTarget.style.display = 'none' }}
-                    />
-                    <div className="absolute inset-0 flex items-center justify-center text-center text-xs font-bold uppercase tracking-widest text-brand-muted dark:text-brand-dark-muted" aria-hidden="true">
-                      .
-                    </div>
-                  </div>
-                  <div className="p-6 sm:p-8 flex-1">
-                    <div className="inline-flex items-center gap-2 rounded-full bg-violet-50 dark:bg-violet-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-violet-600 dark:text-violet-300 mb-4">
-                      <Sparkles size={12} /> Featured Speaker
-                    </div>
-                    <h3 className="text-2xl sm:text-3xl font-black text-brand-text dark:text-white mb-2">
-                      Dr. Ajay Kumar
-                    </h3>
-                    <div className="text-sm leading-relaxed text-brand-muted dark:text-brand-dark-muted mb-6 space-y-3">
-                      <p>
-                        Dr. Ajay Kumar is an experienced Computer Science & Engineering academic, researcher, and technology professional with <strong>17+ years of experience</strong> in teaching, research, and industry. He holds <strong>B.E., M.E., and Ph.D. qualifications</strong>, along with <strong>Post-Doctorate experience</strong>, and has contributed to <strong>32+ research papers</strong>.
-                      </p>
-                      <p>
-                        His areas of expertise include Artificial Intelligence, Machine Learning, Data Science, Generative AI, Software Development, and emerging technologies. Through his academic and professional experience, Dr. Ajay Kumar focuses on connecting theoretical knowledge with practical, real-world applications.
-                      </p>
-                      <p>
-                        He is passionate about helping students and professionals understand emerging technologies, develop relevant skills, and prepare themselves for the rapidly evolving AI-driven future.
-                      </p>
-                    </div>
+          {webinarsLoading ? (
+            <div className="py-16 text-center text-sm text-brand-muted">
+              <Loader2 className="animate-spin mx-auto mb-3" />
+              Loading webinars...
+            </div>
+          ) : (() => {
+            const hasAnySavedWebinars = liveWebinars.length > 0 || webinarRecordings.length > 0
 
-                    <div className="flex flex-wrap gap-2 mb-8">
-                      {['AI', 'Machine Learning', 'Data Science', 'Generative AI', 'Software Development', 'Research & Innovation'].map(tag => (
-                        <span key={tag} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 text-brand-text dark:text-brand-dark-text">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-
-
-                  </div>
-
-                  <div className="bg-gray-50 dark:bg-black/20 p-6 sm:p-8 md:w-72 lg:w-80 flex flex-col justify-center border-t md:border-t-0 md:border-l border-gray-100 dark:border-white/10">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-brand-muted dark:text-brand-dark-muted mb-5">
-                      Speaker Highlights
-                    </h4>
-                    <ul className="space-y-5">
-                      <li className="flex items-start gap-3">
-                        <div className="mt-0.5 rounded-full bg-violet-100 dark:bg-violet-900/40 p-2 text-violet-600 dark:text-violet-400">
-                          <Trophy size={16} />
-                        </div>
-                        <div>
-                          <div className="text-sm font-bold text-brand-text dark:text-white">17+ Years Experience</div>
-                          <div className="text-xs text-brand-muted dark:text-brand-dark-muted mt-0.5">Teaching, Research & Industry</div>
-                        </div>
-                      </li>
-                      <li className="flex items-start gap-3">
-                        <div className="mt-0.5 rounded-full bg-cyan-100 dark:bg-cyan-900/40 p-2 text-cyan-600 dark:text-cyan-400">
-                          <GraduationCap size={16} />
-                        </div>
-                        <div>
-                          <div className="text-sm font-bold text-brand-text dark:text-white">Ph.D. & Post-Doctorate</div>
-                          <div className="text-xs text-brand-muted dark:text-brand-dark-muted mt-0.5">Advanced Academic Qualifications</div>
-                        </div>
-                      </li>
-                      <li className="flex items-start gap-3">
-                        <div className="mt-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 p-2 text-amber-600 dark:text-amber-400">
-                          <BookOpen size={16} />
-                        </div>
-                        <div>
-                          <div className="text-sm font-bold text-brand-text dark:text-white">32+ Research Papers</div>
-                          <div className="text-xs text-brand-muted dark:text-brand-dark-muted mt-0.5">Significant Academic Contributions</div>
-                        </div>
-                      </li>
-                    </ul>
-                    <a href="https://forms.gle/zwvivsCrV2ez28jv7" target="_blank" rel="noopener noreferrer" className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-500/20 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-500/25"><CalendarDays size={16} /> Register for Webinar <ExternalLink size={14} /></a>
-                  </div>
+            if (!hasAnySavedWebinars) {
+              return (
+                <div className="rounded-3xl border border-dashed border-violet-200 dark:border-white/10 p-12 text-center my-6 bg-violet-50/20 dark:bg-brand-dark-card">
+                  <MonitorPlay className="mx-auto text-violet-400 mb-3" size={36} />
+                  <h3 className="font-black text-xl text-brand-text dark:text-white">No Live Webinars Scheduled Yet</h3>
+                  <p className="text-sm text-brand-muted mt-2 max-w-md mx-auto">
+                    No webinar sessions or replays have been scheduled yet. Once a webinar is scheduled in the Admin Panel, it will appear here.
+                  </p>
                 </div>
-              </div>
+              )
+            }
 
-              {activeWebinar ? (
-                <div className="rounded-3xl border border-red-200 dark:border-red-900/40 bg-white dark:bg-brand-dark-card p-5 sm:p-7 shadow-lg mb-10">
-                  <div className="flex flex-col lg:flex-row lg:items-center gap-6">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-3"><span className="relative flex h-3 w-3"><span className="absolute inset-0 rounded-full bg-red-500 animate-ping" /><span className="relative h-3 w-3 rounded-full bg-red-500" /></span><span className="text-xs font-black uppercase tracking-widest text-red-500">Live now · {activeWebinar.provider}</span></div>
-                      <h3 className="text-2xl font-black text-brand-text dark:text-white">{activeWebinar.title}</h3>
-                      <p className="mt-2 text-sm text-brand-muted dark:text-brand-dark-muted max-w-2xl">{activeWebinar.description}</p>
-                      <p className="mt-2 text-xs font-bold text-red-600 dark:text-red-400 flex items-center gap-1.5"><Clock size={13} /> Started at {new Date(activeWebinar.startsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}{activeWebinar.endsAt && ` · Ends at ${new Date(activeWebinar.endsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`}</p>
-                    </div>
-                    <a href={activeWebinar.joinUrl} target="_blank" rel="noreferrer" className="shrink-0 inline-flex items-center justify-center gap-2 rounded-xl bg-red-500 px-5 py-3 text-sm font-bold text-white hover:bg-red-600"><Video size={16} /> Join Live <ExternalLink size={14} /></a>
-                  </div>
-                </div>
-              ) : upcomingWebinar ? (
-                <div className="rounded-3xl border border-violet-100 dark:border-white/10 bg-white dark:bg-brand-dark-card p-5 sm:p-7 shadow-sm mb-10">
-                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
-                    <div>
-                      <div className="text-xs font-black uppercase tracking-widest text-violet-500 mb-2">Next webinar · {upcomingWebinar.provider}</div>
-                      <h3 className="text-xl font-black text-brand-text dark:text-white">{upcomingWebinar.title}</h3>
-                      <p className="text-sm text-brand-muted mt-1">{upcomingWebinar.description}</p>
-                      <div className="mt-5 mb-2">
-                        <p className="text-sm font-bold text-brand-text dark:text-white mb-2 pb-1 border-b border-gray-100 dark:border-white/10 w-max">What will you get?</p>
-                        <ul className="space-y-2 mt-3">
-                          {[
-                            'GATE & engineering career guidance',
-                            'Mentorship for choosing the right course',
-                            'AI & future career opportunities',
-                            'Practical roadmap for your career'
-                          ].map((item, i) => (
-                            <li key={i} className="flex items-start gap-2.5 text-sm text-brand-muted dark:text-brand-dark-muted">
-                              <CheckCircle2 size={16} className="text-emerald-500 shrink-0 mt-0.5" />
-                              <span>{item}</span>
+            const featuredWebinar = liveWebinars.find(w => w.isFeatured) || liveWebinars.find(w => w.speakerName) || liveWebinars[0]
+            const featuredTiming = featuredWebinar ? getWebinarTimingState(featuredWebinar, currentTime) : null
+            const otherWebinars = liveWebinars.filter(w => !featuredWebinar || w.id !== featuredWebinar.id)
+
+            const featuredIsApproved = Boolean(featuredWebinar && (isAdmin || (userId ? enrolledIds.has(featuredWebinar.id) : false)))
+            const featuredIsPending = Boolean(featuredWebinar && !isAdmin && (userId ? pendingIds.has(featuredWebinar.id) : false))
+            const featuredIsFree = Boolean(featuredWebinar && (featuredWebinar.access === 'free' || !featuredWebinar.price || featuredWebinar.price === 0))
+            const featuredIsEnrolledPass = Boolean(featuredWebinar && featuredWebinar.access === 'enrolled_free' && (enrolledIds.size > 0 || user?.isPremium))
+            const featuredIsEffectivelyFree = featuredIsFree || featuredIsEnrolledPass
+
+            return (
+              <>
+                {/* Featured Webinar Banner (from live_webinars database row) */}
+                {featuredWebinar && featuredTiming && (
+                  <div className="rounded-[28px] border border-violet-100 dark:border-white/10 bg-white dark:bg-brand-dark-card overflow-hidden shadow-sm mb-10">
+                    <div className="flex flex-col md:flex-row">
+                      <div className="relative min-h-72 md:min-h-0 md:w-72 lg:w-80 shrink-0 overflow-hidden bg-gray-100 dark:bg-black/20">
+                        {featuredWebinar.speakerPhotoUrl ? (
+                          <img
+                            src={featuredWebinar.speakerPhotoUrl}
+                            alt={featuredWebinar.speakerName || featuredWebinar.title}
+                            className="absolute inset-0 h-full w-full object-cover object-top"
+                            onError={(event) => { event.currentTarget.style.display = 'none' }}
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-600 text-white text-center">
+                            <Sparkles size={42} className="text-white/80 mb-3" />
+                            <p className="font-black text-lg leading-snug">{featuredWebinar.speakerName || featuredWebinar.title}</p>
+                            <span className="text-xs text-white/80 mt-1 px-3 py-1 rounded-full bg-white/15 backdrop-blur-sm">
+                              {featuredWebinar.speakerBadge || 'Live Webinar'}
+                            </span>
+                          </div>
+                        )}
+                        <div className="absolute inset-0 flex items-center justify-center text-center text-xs font-bold uppercase tracking-widest text-brand-muted dark:text-brand-dark-muted -z-10" aria-hidden="true">
+                          .
+                        </div>
+                      </div>
+                      <div className="p-6 sm:p-8 flex-1">
+                        {/* Status Badges Header */}
+                        <div className="flex flex-wrap items-center gap-2 mb-4">
+                          <div className={`inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[11px] font-black uppercase tracking-wider border transition-all ${
+                            featuredTiming.isWebinarLive
+                              ? 'bg-red-600 text-white border-red-500 shadow-md shadow-red-500/30'
+                              : featuredTiming.isWebinarUpcoming
+                              ? 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800'
+                              : 'bg-gray-100 dark:bg-white/10 text-gray-500 border-gray-200 dark:border-white/10'
+                          }`}>
+                            {featuredTiming.isWebinarLive ? (
+                              <>
+                                <span className="relative flex h-2.5 w-2.5">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-80"></span>
+                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+                                </span>
+                                LIVE NOW · {featuredWebinar.provider}
+                              </>
+                            ) : featuredTiming.isWebinarUpcoming ? (
+                              <>
+                                <Clock size={13} className="text-violet-500 animate-pulse" />
+                                Starts in: {featuredTiming.remainingTimeWebinarStr} · {featuredWebinar.provider}
+                              </>
+                            ) : (
+                              <>Session Ended · {featuredWebinar.provider}</>
+                            )}
+                          </div>
+
+                          {featuredIsApproved && (
+                            <span className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                              <CheckCircle2 size={13} /> Registered & Approved
+                            </span>
+                          )}
+
+                          {featuredIsPending && (
+                            <span className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800 animate-pulse">
+                              <Clock size={13} /> Payment Under Review
+                            </span>
+                          )}
+
+                          <span className="ml-auto text-xs font-bold text-brand-muted">
+                            {featuredIsFree ? 'Free Access' : featuredIsEnrolledPass ? `Free (Enrolled Pass) · ₹${featuredWebinar.price}` : `₹${featuredWebinar.price}`}
+                          </span>
+                        </div>
+
+                        <h3 className="text-2xl sm:text-3xl font-black text-brand-text dark:text-white mb-2">
+                          {featuredWebinar.title}
+                        </h3>
+                        {featuredWebinar.speakerName && (
+                          <p className="text-sm font-bold text-violet-600 dark:text-violet-400 mb-4">
+                            Session Speaker: {featuredWebinar.speakerName}
+                          </p>
+                        )}
+
+                        <div className="text-sm leading-relaxed text-brand-muted dark:text-brand-dark-muted mb-6 space-y-3">
+                          {featuredWebinar.speakerBio && featuredWebinar.speakerBio.length > 0 ? (
+                            featuredWebinar.speakerBio.map((p, idx) => (
+                              <p key={idx}>{p}</p>
+                            ))
+                          ) : (
+                            <p>{featuredWebinar.description || 'Join our upcoming live webinar session to learn key industry topics and career roadmaps.'}</p>
+                          )}
+                        </div>
+
+                        {featuredWebinar.tags && featuredWebinar.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mb-8">
+                            {featuredWebinar.tags.map(tag => (
+                              <span key={tag} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 text-brand-text dark:text-brand-dark-text">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="bg-gray-50 dark:bg-black/20 p-6 sm:p-8 md:w-72 lg:w-80 flex flex-col justify-center border-t md:border-t-0 md:border-l border-gray-100 dark:border-white/10">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-brand-muted dark:text-brand-dark-muted mb-5">
+                          Session Highlights
+                        </h4>
+                        <ul className="space-y-5">
+                          {(featuredWebinar.highlights && featuredWebinar.highlights.length > 0 ? featuredWebinar.highlights : [
+                            { title: 'Interactive Live Q&A', subtitle: 'Direct mentor interaction' },
+                            { title: 'Industry Strategies', subtitle: 'Practical placement roadmaps' },
+                            { title: 'Certificate of Attendance', subtitle: 'Issued for active attendees' },
+                          ]).map((h, idx) => (
+                            <li key={idx} className="flex items-start gap-3">
+                              <div className="mt-0.5 rounded-full bg-violet-100 dark:bg-violet-900/40 p-2 text-violet-600 dark:text-violet-400">
+                                {idx === 0 ? <Trophy size={16} /> : idx === 1 ? <GraduationCap size={16} /> : <BookOpen size={16} />}
+                              </div>
+                              <div>
+                                <div className="text-sm font-bold text-brand-text dark:text-white">{h.title}</div>
+                                <div className="text-xs text-brand-muted dark:text-brand-dark-muted mt-0.5">{h.subtitle}</div>
+                              </div>
                             </li>
                           ))}
                         </ul>
-                        <p className="mt-4 text-sm font-black text-violet-600 dark:text-violet-400">Register NOW — FREE!</p>
-                      </div>
-                      <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-violet-50 dark:bg-violet-950/40 border border-violet-100 dark:border-violet-900/30 text-xs font-bold text-violet-700 dark:text-violet-300">
-                        <CalendarDays size={14} className="text-violet-500" />
-                        {new Date(upcomingWebinar.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
+
+                        {/* Registration & Join Action Gate */}
+                        <div className="mt-6">
+                          {featuredTiming.isRegUpcoming ? (
+                            <button
+                              type="button"
+                              disabled
+                              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-100 dark:bg-white/10 px-5 py-3 text-sm font-bold text-gray-400 dark:text-gray-500 cursor-not-allowed border border-gray-200 dark:border-white/10 shadow-none select-none"
+                              title="Registration will open soon"
+                            >
+                              <Clock size={16} /> Registration Opens Soon
+                            </button>
+                          ) : featuredIsApproved ? (
+                            /* Student is Approved (or Admin) -> Access Granted! */
+                            featuredTiming.isWebinarEnded ? (
+                              <button
+                                type="button"
+                                disabled
+                                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-100 dark:bg-white/10 px-5 py-3 text-sm font-bold text-gray-400 dark:text-gray-500 cursor-not-allowed border border-gray-200 dark:border-white/10 select-none"
+                              >
+                                <Clock size={16} /> Webinar Ended
+                              </button>
+                            ) : (
+                              <a
+                                href={featuredWebinar.joinUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`w-full inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-white shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl ${
+                                  featuredTiming.isWebinarLive
+                                    ? 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-emerald-500/20'
+                                    : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 shadow-violet-500/20'
+                                }`}
+                              >
+                                {featuredTiming.isWebinarLive ? (
+                                  <>
+                                    <Video size={16} /> Join Live Webinar <ExternalLink size={14} />
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 size={16} /> Registered ✓ · Open Join Link <ExternalLink size={14} />
+                                  </>
+                                )}
+                              </a>
+                            )
+                          ) : featuredIsPending ? (
+                            /* Student submitted payment proof -> Under review */
+                            <button
+                              type="button"
+                              disabled
+                              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500/10 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-5 py-3 text-sm font-bold cursor-wait select-none"
+                              title="Your payment is pending admin approval"
+                            >
+                              <Clock size={16} className="animate-spin text-amber-500" /> Payment Under Admin Review
+                            </button>
+                          ) : featuredTiming.isRegClosed ? (
+                            /* Registration closed and user not registered */
+                            <button
+                              type="button"
+                              disabled
+                              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-100 dark:bg-white/10 px-5 py-3 text-sm font-bold text-gray-400 dark:text-gray-500 cursor-not-allowed border border-gray-200 dark:border-white/10 shadow-none select-none"
+                              title="Registration has closed"
+                            >
+                              <Clock size={16} /> {featuredTiming.isWebinarEnded ? 'Webinar Ended' : 'Registration Closed'}
+                            </button>
+                          ) : (
+                            /* Registration is open -> Compulsory Registration */
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!isAuthenticated) {
+                                  showAuthRequiredToast({
+                                    title: 'Sign In Required',
+                                    message: 'Please sign in with your Skills021 account to register for this webinar.',
+                                  })
+                                  navigate('/login', { state: { from: { pathname: '/courses', search: '?tab=webinars' } } })
+                                  return
+                                }
+                                setEnrollWebinar(featuredWebinar)
+                              }}
+                              className={`w-full inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-white shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl ${
+                                featuredIsEffectivelyFree
+                                  ? 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 shadow-violet-500/20'
+                                  : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-emerald-500/20'
+                              }`}
+                            >
+                              <CalendarDays size={16} />
+                              {featuredIsEffectivelyFree
+                                ? (featuredIsEnrolledPass ? 'Register (Free with Enrolled Course)' : 'Register for Webinar (Free)')
+                                : `Register & Pay (₹${featuredWebinar.price})`}
+                            </button>
+                          )}
+
+                          {/* Helper Subtext */}
+                          <p className={`text-[11px] font-semibold text-center mt-2 flex items-center justify-center gap-1 ${
+                            featuredIsApproved
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : featuredIsPending
+                              ? 'text-amber-600 dark:text-amber-400'
+                              : featuredTiming.isRegUpcoming
+                              ? 'text-brand-muted'
+                              : featuredTiming.isRegOpen
+                              ? 'text-violet-600 dark:text-violet-400'
+                              : 'text-red-500'
+                          }`}>
+                            <Clock size={12} />
+                            {featuredIsApproved
+                              ? (featuredTiming.isWebinarLive
+                                  ? 'You are registered! Session is live now · Click above to enter'
+                                  : 'You are registered! Meeting link will remain unlocked')
+                              : featuredIsPending
+                              ? 'Payment proof submitted. Admin will approve your access shortly.'
+                              : featuredTiming.isRegUpcoming
+                              ? `Registration opens ${new Date(featuredTiming.regStartMs).toLocaleString('en-US', {
+                                  month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
+                                })}`
+                              : featuredTiming.isRegOpen
+                              ? `Registration open · Compulsory registration before accessing join link (Closes ${new Date(featuredTiming.regEndMs).toLocaleString('en-US', {
+                                  month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
+                                })})`
+                              : featuredTiming.isWebinarEnded
+                              ? `Session ended on ${new Date(featuredTiming.webinarEndMs).toLocaleString('en-US', {
+                                  month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
+                                })}`
+                              : `Registration closed on ${new Date(featuredTiming.regEndMs).toLocaleString('en-US', {
+                                  month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
+                                })}`
+                            }
+                          </p>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="rounded-3xl border border-dashed border-gray-200 dark:border-white/10 p-10 text-center mb-10"><MonitorPlay className="mx-auto text-violet-400 mb-3" size={30} /><h3 className="font-black text-brand-text dark:text-white">No live webinar right now</h3><p className="text-sm text-brand-muted mt-1">Check the replays below or come back when the next session is scheduled.</p></div>
-              )}
+                )}
 
-              <div>
-                <div className="flex items-end justify-between mb-5"><div><p className="text-xs font-bold uppercase tracking-widest text-violet-500">Webinar Library</p><h3 className="text-2xl font-black text-brand-text dark:text-white">Past sessions</h3></div><span className="text-xs text-brand-muted">{webinarRecordings.length} replay{webinarRecordings.length !== 1 ? 's' : ''}</span></div>
-                {webinarRecordings.length === 0 ? <div className="rounded-3xl border border-gray-100 dark:border-white/10 p-10 text-center text-sm text-brand-muted">No webinar recordings have been published yet.</div> : <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">{webinarRecordings.map(w => <article key={w.id} className="group overflow-hidden rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-brand-dark-card shadow-sm hover:shadow-xl transition-shadow"><div className="h-40 bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-500 relative flex items-center justify-center">{w.thumbnailUrl ? <img src={w.thumbnailUrl} alt="" className="absolute inset-0 w-full h-full object-cover" /> : <Play size={38} className="text-white/90" />}<span className="absolute left-3 top-3 rounded-full bg-black/35 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur">REPLAY</span></div><div className="p-5"><p className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">{new Date(w.sessionDate).toLocaleDateString()}</p><span className="mt-1 inline-flex text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300">{webinarAccessLabel(w)}</span><h4 className="mt-1 font-black text-brand-text dark:text-white line-clamp-2">{w.title}</h4><p className="mt-2 text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-2">{w.description}</p>{w.videoUrl && <button onClick={() => handleOpenReplay(w)} disabled={openingReplayId === w.id} className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-violet-600 dark:text-violet-300 disabled:opacity-60">{canAccessWebinar(w) ? (openingReplayId === w.id ? <><Loader2 size={13} className="animate-spin" /> Opening...</> : <>Watch replay <ExternalLink size={13} /></>) : <><Lock size={13} /> {webinarAccessLabel(w)}</>}</button>}</div></article>)}</div>}
-              </div>
-            </>
-          )}
+                {/* Additional Scheduled Webinars from live_webinars */}
+                {otherWebinars.length > 0 && (
+                  <div className="mb-10 space-y-4">
+                    <h3 className="text-xl font-black text-brand-text dark:text-white">Other Scheduled Sessions</h3>
+                    <div className="grid md:grid-cols-2 gap-5">
+                      {otherWebinars.map(w => {
+                        const timing = getWebinarTimingState(w, currentTime)
+                        const isApproved = Boolean(isAdmin || (userId ? enrolledIds.has(w.id) : false))
+                        const isPending = Boolean(!isAdmin && (userId ? pendingIds.has(w.id) : false))
+                        const isFreeWebinar = w.access === 'free' || !w.price || w.price === 0
+                        const isEnrolledPass = Boolean(w.access === 'enrolled_free' && (enrolledIds.size > 0 || user?.isPremium))
+                        const isEffectivelyFree = isFreeWebinar || isEnrolledPass
+
+                        return (
+                          <div key={w.id} className="rounded-3xl border border-violet-100 dark:border-white/10 bg-white dark:bg-brand-dark-card p-6 shadow-sm flex flex-col justify-between">
+                            <div>
+                              <div className="flex items-center justify-between gap-2 mb-2">
+                                <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full ${
+                                  timing.isWebinarLive
+                                    ? 'bg-red-500 text-white'
+                                    : timing.isWebinarUpcoming
+                                    ? 'bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-300'
+                                    : 'bg-gray-100 dark:bg-white/10 text-gray-500'
+                                }`}>
+                                  {timing.isWebinarLive
+                                    ? 'Live Now'
+                                    : timing.isWebinarUpcoming
+                                    ? `Starts in ${timing.remainingTimeWebinarStr}`
+                                    : 'Session Ended'}
+                                </span>
+
+                                <div className="flex items-center gap-1.5">
+                                  {isApproved && (
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                      ✓ Registered
+                                    </span>
+                                  )}
+                                  {isPending && (
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                      ⏳ Under Review
+                                    </span>
+                                  )}
+                                  <span className="text-xs font-semibold text-brand-muted">
+                                    {isFreeWebinar ? 'Free' : isEnrolledPass ? `Free (Pass) · ₹${w.price}` : `₹${w.price}`}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <h4 className="text-lg font-black text-brand-text dark:text-white mb-1">{w.title}</h4>
+                              {w.speakerName && (
+                                <p className="text-xs font-semibold text-violet-600 dark:text-violet-400 mb-2">Speaker: {w.speakerName}</p>
+                              )}
+                              <p className="text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-3 mb-4">{w.description}</p>
+                              <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-muted">
+                                <Clock size={13} className="text-violet-500" />
+                                {new Date(w.startsAt).toLocaleString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                  hour: 'numeric',
+                                  minute: '2-digit',
+                                  hour12: true,
+                                })}
+                              </div>
+                            </div>
+
+                            <div className="mt-5 pt-4 border-t border-gray-100 dark:border-white/10">
+                              {timing.isRegUpcoming ? (
+                                <button
+                                  type="button"
+                                  disabled
+                                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-100 dark:bg-white/10 px-4 py-2.5 text-xs font-bold text-gray-400 dark:text-gray-500 cursor-not-allowed border border-gray-200 dark:border-white/10 select-none"
+                                >
+                                  <Clock size={14} /> Registration Opens Soon
+                                </button>
+                              ) : isApproved ? (
+                                timing.isWebinarEnded ? (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-100 dark:bg-white/10 px-4 py-2.5 text-xs font-bold text-gray-400 dark:text-gray-500 cursor-not-allowed border border-gray-200 dark:border-white/10 select-none"
+                                  >
+                                    <Clock size={14} /> Webinar Ended
+                                  </button>
+                                ) : (
+                                  <a
+                                    href={w.joinUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold text-white transition-colors ${
+                                      timing.isWebinarLive
+                                        ? 'bg-emerald-600 hover:bg-emerald-700'
+                                        : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 shadow-md shadow-violet-500/20'
+                                    }`}
+                                  >
+                                    {timing.isWebinarLive ? (
+                                      <>
+                                        <Video size={14} /> Join Live Now <ExternalLink size={12} />
+                                      </>
+                                    ) : (
+                                      <>
+                                        <CheckCircle2 size={14} /> Registered ✓ · Join Link <ExternalLink size={12} />
+                                      </>
+                                    )}
+                                  </a>
+                                )
+                              ) : isPending ? (
+                                <button
+                                  type="button"
+                                  disabled
+                                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500/10 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-4 py-2.5 text-xs font-bold cursor-wait select-none"
+                                  title="Your payment proof is under admin review"
+                                >
+                                  <Clock size={14} className="animate-spin text-amber-500" /> Payment Under Admin Review
+                                </button>
+                              ) : timing.isRegClosed ? (
+                                <button
+                                  type="button"
+                                  disabled
+                                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-100 dark:bg-white/10 px-4 py-2.5 text-xs font-bold text-gray-400 dark:text-gray-500 cursor-not-allowed border border-gray-200 dark:border-white/10 select-none"
+                                >
+                                  <Clock size={14} /> {timing.isWebinarEnded ? 'Webinar Ended' : 'Registration Closed'}
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!isAuthenticated) {
+                                      showAuthRequiredToast({
+                                        title: 'Sign In Required',
+                                        message: 'Please sign in with your Skills021 account to register for this webinar.',
+                                      })
+                                      navigate('/login', { state: { from: { pathname: '/courses', search: '?tab=webinars' } } })
+                                      return
+                                    }
+                                    setEnrollWebinar(w)
+                                  }}
+                                  className={`w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold text-white transition-colors ${
+                                    isEffectivelyFree
+                                      ? 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 shadow-md shadow-violet-500/20'
+                                      : 'bg-emerald-600 hover:bg-emerald-700'
+                                  }`}
+                                >
+                                  <CalendarDays size={14} />
+                                  {isEffectivelyFree
+                                    ? (isEnrolledPass ? 'Register (Free with Course)' : 'Register for Webinar (Free)')
+                                    : `Register & Pay (₹${w.price})`}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Saved Replays Library */}
+                {webinarRecordings.length > 0 && (
+                  <div>
+                    <div className="flex items-end justify-between mb-5">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-widest text-violet-500">Webinar Library</p>
+                        <h3 className="text-2xl font-black text-brand-text dark:text-white">Past sessions</h3>
+                      </div>
+                      <span className="text-xs text-brand-muted">{webinarRecordings.length} replay{webinarRecordings.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                      {webinarRecordings.map(w => (
+                        <article key={w.id} className="group overflow-hidden rounded-2xl border border-gray-100 dark:border-white/10 bg-white dark:bg-brand-dark-card shadow-sm hover:shadow-xl transition-shadow">
+                          <div className="h-40 bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-500 relative flex items-center justify-center">
+                            {w.thumbnailUrl ? <img src={w.thumbnailUrl} alt="" className="absolute inset-0 w-full h-full object-cover" /> : <Play size={38} className="text-white/90" />}
+                            <span className="absolute left-3 top-3 rounded-full bg-black/35 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur">REPLAY</span>
+                          </div>
+                          <div className="p-5">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">{new Date(w.sessionDate).toLocaleDateString()}</p>
+                            <span className="mt-1 inline-flex text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-300">{webinarAccessLabel(w)}</span>
+                            <h4 className="mt-1 font-black text-brand-text dark:text-white line-clamp-2">{w.title}</h4>
+                            <p className="mt-2 text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-2">{w.description}</p>
+                            {w.videoUrl && (
+                              <button onClick={() => handleOpenReplay(w)} disabled={openingReplayId === w.id} className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-violet-600 dark:text-violet-300 disabled:opacity-60">
+                                {canAccessWebinar(w) ? (openingReplayId === w.id ? <><Loader2 size={13} className="animate-spin" /> Opening...</> : <>Watch replay <ExternalLink size={13} /></>) : <><Lock size={13} /> {webinarAccessLabel(w)}</>}
+                              </button>
+                            )}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )
+          })()}
         </section>
       ) : courseSection === 'semester-bundles' ? (
         <div className="max-w-7xl mx-auto px-4 py-8 flex gap-6">
@@ -2475,93 +2831,54 @@ export default function Courses() {
             </div>
           </div>
 
-              <div className="flex items-center justify-between mb-6 gap-3">
-                <div className="min-w-0">
-                  <h2 className="text-xl font-bold text-brand-text dark:text-brand-dark-text truncate">{appliedHierarchyLabel || activeSub || activeGroup}</h2>
-                  <p className="text-sm text-brand-muted dark:text-brand-dark-muted mt-0.5">{filtered.length} course{filtered.length !== 1 ? 's' : ''} found</p>
-                </div>
-                {/* Mobile filter trigger */}
-                <button
-                  onClick={() => setMobileFiltersOpen(true)}
-                  className="md:hidden flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-                >
-                  <SlidersHorizontal size={15} />
-                  Filters
-                  {activeFilterCount > 0 && (
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary-500 text-white">{activeFilterCount}</span>
-                  )}
-                </button>
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <Loader2 size={32} className="animate-spin text-brand-muted dark:text-brand-dark-muted mb-3" />
+                <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Loading courses...</p>
               </div>
-
-              {loading ? (
-                <div className="flex flex-col items-center justify-center py-20">
-                  <Loader2 size={32} className="animate-spin text-brand-muted dark:text-brand-dark-muted mb-3" />
-                  <p className="text-brand-muted dark:text-brand-dark-muted text-sm">Loading courses...</p>
-                </div>
-              ) : filtered.length === 0 ? (
-                <div className="text-center py-20">
-                  <BookOpen size={48} className="mx-auto text-gray-200 dark:text-brand-dark-muted mb-4" />
-                  <h3 className="text-lg font-semibold text-brand-text dark:text-brand-dark-text mb-2">No courses found</h3>
-                  <p className="text-brand-muted dark:text-brand-dark-muted text-sm">
-                    {hierarchyActive
-                      ? 'No courses have been linked to this College/Course/Branch/Semester/Subject yet. Try a broader level (e.g. just the Course) or reset the Academic Filter.'
-                      : 'Try adjusting your filters or search terms.'}
-                  </p>
-                  {hierarchyActive && (
-                    <button
-                      onClick={handleHResetHierarchy}
-                      className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-                    >
-                      Reset Academic Filter
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
-                  {filtered.map(course => (
-                    <CourseCard
-                      key={course.id}
-                      course={course}
-                      userId={userId}
-                      isAdmin={isAdmin}
-                      isPremium={Boolean(user?.isPremium)}
-                      isEnrolled={enrolledIds.has(course.id)}
-                      isPending={pendingIds.has(course.id)}
-                      isSubjectBundleUnlocked={Boolean(course.isBundleOnly && course.subjectId && unlockedSubjectIds.has(course.subjectId))}
-                      isResourceBundleUnlocked={course.subjectId ? unlockedResourceSubjectIds.has(course.subjectId) : false}
-                      onPlay={handlePlay}
-                      onEnroll={handleEnroll}
-                      onRated={handleCourseRated}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
-              {filtered.map(course => (
-                <CourseCard
-                  key={course.id}
-                  course={course}
-                  userId={userId}
-                  isAdmin={isAdmin}
-                  isPremium={Boolean(user?.isPremium)}
-                  isEnrolled={enrolledIds.has(course.id)}
-                  isPending={pendingIds.has(course.id)}
-                  isSubjectBundleUnlocked={Boolean(course.isBundleOnly && course.subjectId && unlockedSubjectIds.has(course.subjectId))}
-                  isResourceBundleUnlocked={course.subjectId ? unlockedResourceSubjectIds.has(course.subjectId) : false}
-                  isCourseBundleUnlocked={ownedBundleChildCourseIds.has(course.id) || ownedBundleChildCourseIds.has(course.id.replace(/^course_/, ''))}
-                  allCourses={courses}
-                  onPlay={handlePlay}
-                  onEnroll={handleEnroll}
-                  onRated={handleCourseRated}
-                  onViewBundleDetails={(bundle) => setBundleDetailModalCourse(bundle)}
-                />
-              ))}
-            </div>
-          )}
-        </main>
-      </div>
+            ) : filtered.length === 0 ? (
+              <div className="text-center py-20">
+                <BookOpen size={48} className="mx-auto text-gray-200 dark:text-brand-dark-muted mb-4" />
+                <h3 className="text-lg font-semibold text-brand-text dark:text-brand-dark-text mb-2">No courses found</h3>
+                <p className="text-brand-muted dark:text-brand-dark-muted text-sm">
+                  {hierarchyActive
+                    ? 'No courses have been linked to this College/Course/Branch/Semester/Subject yet. Try a broader level (e.g. just the Course) or reset the Academic Filter.'
+                    : 'Try adjusting your filters or search terms.'}
+                </p>
+                {hierarchyActive && (
+                  <button
+                    onClick={handleHResetHierarchy}
+                    className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border border-gray-200 dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                  >
+                    Reset Academic Filter
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+                {filtered.map(course => (
+                  <CourseCard
+                    key={course.id}
+                    course={course}
+                    userId={userId}
+                    isAdmin={isAdmin}
+                    isPremium={Boolean(user?.isPremium)}
+                    isEnrolled={enrolledIds.has(course.id)}
+                    isPending={pendingIds.has(course.id)}
+                    isSubjectBundleUnlocked={Boolean(course.isBundleOnly && course.subjectId && unlockedSubjectIds.has(course.subjectId))}
+                    isResourceBundleUnlocked={course.subjectId ? unlockedResourceSubjectIds.has(course.subjectId) : false}
+                    isCourseBundleUnlocked={ownedBundleChildCourseIds.has(course.id) || ownedBundleChildCourseIds.has(course.id.replace(/^course_/, ''))}
+                    allCourses={courses}
+                    onPlay={handlePlay}
+                    onEnroll={handleEnroll}
+                    onRated={handleCourseRated}
+                    onViewBundleDetails={(bundle) => setBundleDetailModalCourse(bundle)}
+                  />
+                ))}
+              </div>
+            )}
+          </main>
+        </div>
 
 
           {/* Mobile Filter Drawer */}
@@ -2702,6 +3019,21 @@ export default function Courses() {
           onEnrolled={() => {
             loadUserEnrollments()
             setShowPremiumModal(false)
+          }}
+        />
+      )}
+
+      {enrollWebinar && (
+        <EnrollModal
+          webinar={enrollWebinar}
+          isEnrolledStudentPass={enrolledIds.size > 0 || user?.isPremium}
+          userId={userId ?? `guest-${Date.now()}`}
+          defaultEmail={user?.email}
+          defaultName={user?.name}
+          onClose={() => setEnrollWebinar(null)}
+          onEnrolled={() => {
+            loadUserEnrollments()
+            setEnrollWebinar(null)
           }}
         />
       )}

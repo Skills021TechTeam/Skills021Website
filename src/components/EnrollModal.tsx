@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Loader2, CheckCircle2, QrCode, Copy, Check,
   UploadCloud, AlertCircle, Phone, GraduationCap, Sparkles, Clock,
-  Tag, ChevronRight, BadgePercent, XCircle, FileText
+  Tag, ChevronRight, BadgePercent, XCircle, FileText, Video
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Course, Resource } from '../store/contentStore'
@@ -16,10 +16,13 @@ import {
 } from '../lib/pricingService'
 import type { CheckoutPricing, ProductType } from '../lib/pricingTypes'
 import { supabase } from '../lib/supabase'
+import type { LiveWebinar } from '../lib/webinarService'
 
 export interface EnrollModalProps {
   course?: Course | null
   resource?: Resource | null
+  webinar?: LiveWebinar | null
+  isEnrolledStudentPass?: boolean
   isPremiumMembership?: boolean
   premiumAmount?: number
   userId: string
@@ -34,6 +37,8 @@ type Step = 'details' | 'upi_payment' | 'submitted' | 'free_success'
 export default function EnrollModal({
   course,
   resource,
+  webinar,
+  isEnrolledStudentPass = false,
   isPremiumMembership = false,
   premiumAmount = 999,
   userId,
@@ -62,34 +67,42 @@ export default function EnrollModal({
   // ─── Pricing state ────────────────────────────────────────────────────────
   const itemType: ProductType = isPremiumMembership
     ? 'premium_membership'
-    : resource
-      ? 'resource'
-      : 'course'
+    : webinar
+      ? 'webinar'
+      : resource
+        ? 'resource'
+        : 'course'
 
   const isFree = !isPremiumMembership && (
-    resource
-      ? (!resource.isPremium || !resource.price || resource.price === 0)
-      : (course?.price === 'FREE' || course?.price === 0)
+    webinar
+      ? (webinar.access === 'free' || !webinar.price || webinar.price === 0 || (webinar.access === 'enrolled_free' && isEnrolledStudentPass))
+      : resource
+        ? (!resource.isPremium || !resource.price || resource.price === 0)
+        : (course?.price === 'FREE' || course?.price === 0)
   )
 
   const title = isPremiumMembership
     ? 'All-Access Premium Membership'
-    : resource
-      ? (resource.title || 'Resource Access')
-      : (course?.title || 'Course Access')
+    : webinar
+      ? (webinar.title || 'Live Webinar Session')
+      : resource
+        ? (resource.title || 'Resource Access')
+        : (course?.title || 'Course Access')
 
   const itemId = isPremiumMembership
     ? 'premium_all_access'
-    : resource
-      ? String(resource.id)
-      : (course?.id || 'course_generic')
+    : webinar
+      ? String(webinar.id)
+      : resource
+        ? String(resource.id)
+        : (course?.id || 'course_generic')
 
   const effectivePremiumAmount = paymentSettings.allAccessPrice || premiumAmount || 999
   const knownDefaultPrice = isPremiumMembership
     ? effectivePremiumAmount
     : isFree
       ? 0
-      : (resource ? (resource.price || 0) : (typeof course?.price === 'number' ? course.price : 499))
+      : (webinar ? (webinar.price || 0) : resource ? (resource.price || 0) : (typeof course?.price === 'number' ? course.price : 499))
 
   // Server-verified pricing (the source of truth for the payment amount)
   const [pricing, setPricing] = useState<CheckoutPricing>(
@@ -316,13 +329,13 @@ export default function EnrollModal({
           status: 'free',
           amount: 0,
           itemTitle: title,
-          itemType: itemType === 'resource' ? 'resource' : 'course',
+          itemType: itemType === 'webinar' ? 'webinar' : (itemType === 'resource' ? 'resource' : 'course'),
         })
-        toast.success('Enrolled successfully for Free! 🎉')
+        toast.success(webinar ? 'Registered successfully for Webinar! 🎉' : 'Enrolled successfully for Free! 🎉')
         setStep('free_success')
         onEnrolled(itemId)
       } catch (err: unknown) {
-        toast.error((err as Error).message || 'Failed to enroll')
+        toast.error((err as Error).message || 'Failed to register')
       } finally {
         setSubmitting(false)
       }
@@ -368,7 +381,7 @@ export default function EnrollModal({
 
       await submitPaymentProof({
         userId,
-        itemType: itemType === 'premium_membership' ? 'premium_membership' : (itemType === 'resource' ? 'resource' : 'course'),
+        itemType: itemType === 'webinar' ? 'webinar' : (itemType === 'premium_membership' ? 'premium_membership' : (itemType === 'resource' ? 'resource' : 'course')),
         itemId,
         itemTitle: title,
         firstName: firstName.trim(),
@@ -423,11 +436,11 @@ export default function EnrollModal({
           <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 dark:border-brand-dark-border">
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-primary-500/10 dark:bg-primary-500/20 text-primary-500 flex items-center justify-center">
-                {isPremiumMembership ? <Sparkles size={18} /> : (resource ? <FileText size={18} /> : <GraduationCap size={18} />)}
+                {isPremiumMembership ? <Sparkles size={18} /> : (webinar ? <Video size={18} /> : (resource ? <FileText size={18} /> : <GraduationCap size={18} />))}
               </div>
               <div>
                 <h3 className="text-base font-bold text-brand-text dark:text-brand-dark-text leading-tight">
-                  {isPremiumMembership ? 'Upgrade to Premium' : isFree ? 'Free Access' : (resource ? 'Purchase Resource' : 'Purchase Course')}
+                  {isPremiumMembership ? 'Upgrade to Premium' : isFree ? (webinar ? 'Free Webinar Registration' : 'Free Access') : (webinar ? 'Register for Live Webinar' : (resource ? 'Purchase Resource' : 'Purchase Course'))}
                 </h3>
                 <p className="text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-1">{title}</p>
               </div>
@@ -641,7 +654,7 @@ export default function EnrollModal({
                   {submitting ? (
                     <Loader2 size={18} className="animate-spin" />
                   ) : isFree ? (
-                    'Enroll Instantly for Free'
+                    webinar ? 'Register Instantly for Free' : 'Enroll Instantly for Free'
                   ) : pricing.isLoading ? (
                     <><Loader2 size={16} className="animate-spin" /> Loading price…</>
                   ) : (
@@ -843,7 +856,9 @@ export default function EnrollModal({
                 </div>
 
                 <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted">
-                  Once the Skills021 team verifies your payment details, your access will be activated immediately!
+                  {webinar
+                    ? 'Once the Skills021 admin verifies your payment proof, your webinar link will be activated and unlocked immediately!'
+                    : 'Once the Skills021 team verifies your payment details, your access will be activated immediately!'}
                 </p>
 
                 <button
@@ -860,9 +875,13 @@ export default function EnrollModal({
               <div className="p-6 text-center space-y-4">
                 <CheckCircle2 size={48} className="mx-auto text-primary-500" />
                 <div>
-                  <h3 className="text-xl font-bold text-brand-text dark:text-brand-dark-text">You're Enrolled!</h3>
+                  <h3 className="text-xl font-bold text-brand-text dark:text-brand-dark-text">
+                    {webinar ? "You're Registered! 🎉" : "You're Enrolled!"}
+                  </h3>
                   <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1">
-                    {course?.isCourseBundle
+                    {webinar
+                      ? `You have successfully registered for ${title}. Your webinar link is unlocked and ready.`
+                      : course?.isCourseBundle
                       ? `You now have full access to ${title} and all ${course.bundledCourseIds?.length || 0} individual videos inside this combo bundle!`
                       : `You now have full free access to ${title}.`}
                   </p>
@@ -871,7 +890,7 @@ export default function EnrollModal({
                   onClick={onClose}
                   className="w-full py-3 bg-primary-500 text-white font-bold text-sm rounded-xl hover:bg-primary-600 transition-colors"
                 >
-                  Start Learning Now
+                  {webinar ? 'Go to Webinar Link' : 'Start Learning Now'}
                 </button>
               </div>
             )}

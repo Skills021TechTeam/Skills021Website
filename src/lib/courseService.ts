@@ -397,6 +397,8 @@ export interface CreateSiteCourseInput {
   isCourseBundle?: boolean
   // Array of course IDs bundled inside
   bundledCourseIds?: string[]
+  // Optional unit/module title for auto-mapping to subject bundle curriculum
+  unitTitle?: string
 }
 
 export async function createSiteCourse(input: CreateSiteCourseInput): Promise<Course> {
@@ -523,6 +525,7 @@ export interface UpdateSiteCourseInput {
   isBundleOnly?: boolean
   isCourseBundle?: boolean
   bundledCourseIds?: string[]
+  unitTitle?: string
 }
 
 export async function updateSiteCourse(id: string, input: UpdateSiteCourseInput): Promise<Course> {

@@ -1244,6 +1244,7 @@ export default function UserDashboard() {
                     {enrollments.map((enr) => {
                       const matched = coursesList.find((c) => String(c.id) === String(enr.courseId))
                       const isPremium = enr.itemType === 'premium_membership'
+                      const isWebinar = enr.itemType === 'webinar'
                       const isPaid = enr.status === 'paid'
                       const isPending = enr.status === 'pending'
                       const isRejected = enr.status === 'rejected'
@@ -1258,7 +1259,7 @@ export default function UserDashboard() {
                         <tr key={enr.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                           <td className="px-4 py-3 font-medium text-brand-text dark:text-brand-dark-text max-w-xs">
                             <p className="font-semibold text-sm truncate">
-                              {enr.itemTitle || matched?.title || (isPremium ? 'All-Access Premium Membership' : `Course #${enr.courseId}`)}
+                              {enr.itemTitle || matched?.title || (isPremium ? 'All-Access Premium Membership' : isWebinar ? 'Live Webinar Session' : `Course #${enr.courseId}`)}
                             </p>
                           </td>
                           <td className="px-4 py-3">
@@ -1266,12 +1267,14 @@ export default function UserDashboard() {
                               className={`badge text-xs font-bold ${
                                 isPremium
                                   ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                                  : isWebinar
+                                  ? 'bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300'
                                   : enr.amount > 0
                                   ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
                                   : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                               }`}
                             >
-                              {isPremium ? '⭐ PREMIUM PASS' : enr.amount > 0 ? 'PAID COURSE' : 'FREE'}
+                              {isPremium ? '⭐ PREMIUM PASS' : isWebinar ? '📹 WEBINAR' : enr.amount > 0 ? 'PAID COURSE' : 'FREE'}
                             </span>
                           </td>
                           <td className="px-4 py-3 font-bold text-brand-text dark:text-brand-dark-text">
@@ -1340,6 +1343,7 @@ export default function UserDashboard() {
                   enrollments.map((enr) => {
                     const matched = coursesList.find((c) => String(c.id) === String(enr.courseId))
                     const isPremium = enr.itemType === 'premium_membership'
+                    const isWebinar = enr.itemType === 'webinar'
                     const isPaid = enr.status === 'paid'
                     const isPending = enr.status === 'pending'
                     const isRejected = enr.status === 'rejected'
@@ -1353,9 +1357,16 @@ export default function UserDashboard() {
                     return (
                       <div key={enr.id} className="p-4 space-y-2">
                         <div className="flex items-start justify-between gap-2">
-                          <p className="font-bold text-sm text-brand-text dark:text-brand-dark-text leading-snug">
-                            {enr.itemTitle || matched?.title || (isPremium ? 'All-Access Premium Membership' : `Course #${enr.courseId}`)}
-                          </p>
+                          <div>
+                            <p className="font-bold text-sm text-brand-text dark:text-brand-dark-text leading-snug">
+                              {enr.itemTitle || matched?.title || (isPremium ? 'All-Access Premium Membership' : isWebinar ? 'Live Webinar Session' : `Course #${enr.courseId}`)}
+                            </p>
+                            {isWebinar && (
+                              <span className="inline-block badge text-[9px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300 mt-1">
+                                📹 WEBINAR
+                              </span>
+                            )}
+                          </div>
                           <span className="font-bold text-sm text-brand-text dark:text-brand-dark-text shrink-0">
                             {enr.amount > 0 ? `₹${enr.amount}` : 'FREE'}
                           </span>

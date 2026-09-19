@@ -5,9 +5,11 @@ import {
   Menu, X, Sun, Moon, ChevronDown,
   BookOpen, FileText, Users,
   Code2, Target, HelpCircle,
-  FileQuestion, ArrowRight, Home, LogIn, LogOut, UserCircle2, LayoutDashboard, Compass, Trophy, Shield, Briefcase
+  FileQuestion, ArrowRight, Home, LogIn, LogOut, UserCircle2, LayoutDashboard, Compass, Trophy, Shield, Briefcase,
+  Smartphone
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
+import { usePWAStore } from '../store/pwaStore'
 import LogoutConfirmModal from './LogoutConfirmModal'
 import Logo from './Logo'
 import toast from 'react-hot-toast'
@@ -277,6 +279,7 @@ export default function Navbar() {
   const [mobileExpanded, setMobileExpanded] = useState<string | null>(null)
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('skills021_theme') === 'dark')
   const { user, isAuthenticated, logout, isAdminAuthenticated, adminLogout, logoutUser, adminUser } = useAuthStore()
+  const { isInstalled, openPrompt } = usePWAStore()
   const [showLogoutModal, setShowLogoutModal] = useState(false)
   const [logoutIsAdmin, setLogoutIsAdmin] = useState(false)
   const navigate = useNavigate()
@@ -631,8 +634,20 @@ export default function Navbar() {
                 )
               })}
 
-              {/* Mobile: Careers / Join Us */}
-              <div className="pt-3 border-t border-gray-100 dark:border-brand-dark-border mt-1">
+              {/* Mobile: Install App & Careers / Join Us */}
+              <div className="pt-3 border-t border-gray-100 dark:border-brand-dark-border mt-1 space-y-2">
+                {!isInstalled && (
+                  <button
+                    onClick={() => {
+                      haptic.medium()
+                      setMobileOpen(false)
+                      openPrompt()
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold bg-gradient-to-r from-primary-600 to-indigo-600 hover:from-primary-500 hover:to-indigo-500 text-white shadow-md shadow-primary-500/20 active:scale-[0.98] transition-all cursor-pointer"
+                  >
+                    <Smartphone size={16} /> Install Skills021 App
+                  </button>
+                )}
                 <Link
                   to="/apply"
                   onClick={() => setMobileOpen(false)}

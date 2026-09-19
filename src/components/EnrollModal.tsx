@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Loader2, CheckCircle2, QrCode, Copy, Check,
   UploadCloud, AlertCircle, Phone, GraduationCap, Sparkles, Clock,
-  Tag, ChevronRight, BadgePercent, XCircle, FileText
+  Tag, ChevronRight, BadgePercent, XCircle, FileText, Video
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Course, Resource } from '../store/contentStore'
@@ -15,10 +15,14 @@ import {
   formatPrice,
 } from '../lib/pricingService'
 import type { CheckoutPricing, ProductType } from '../lib/pricingTypes'
+import { supabase } from '../lib/supabase'
+import type { LiveWebinar } from '../lib/webinarService'
 
 export interface EnrollModalProps {
   course?: Course | null
   resource?: Resource | null
+  webinar?: LiveWebinar | null
+  isEnrolledStudentPass?: boolean
   isPremiumMembership?: boolean
   premiumAmount?: number
   userId: string
@@ -33,6 +37,8 @@ type Step = 'details' | 'upi_payment' | 'submitted' | 'free_success'
 export default function EnrollModal({
   course,
   resource,
+  webinar,
+  isEnrolledStudentPass = false,
   isPremiumMembership = false,
   premiumAmount = 999,
   userId,
@@ -61,37 +67,46 @@ export default function EnrollModal({
   // ─── Pricing state ────────────────────────────────────────────────────────
   const itemType: ProductType = isPremiumMembership
     ? 'premium_membership'
-    : resource
-      ? 'resource'
-      : 'course'
+    : webinar
+      ? 'webinar'
+      : resource
+        ? 'resource'
+        : 'course'
 
   const isFree = !isPremiumMembership && (
-    resource
-      ? (!resource.isPremium || !resource.price || resource.price === 0)
-      : course?.price === 'FREE'
+    webinar
+      ? (webinar.access === 'free' || !webinar.price || webinar.price === 0 || (webinar.access === 'enrolled_free' && isEnrolledStudentPass))
+      : resource
+        ? (!resource.isPremium || !resource.price || resource.price === 0)
+        : (course?.price === 'FREE' || course?.price === 0)
   )
 
   const title = isPremiumMembership
     ? 'All-Access Premium Membership'
-    : resource
-      ? (resource.title || 'Resource Access')
-      : (course?.title || 'Course Access')
+    : webinar
+      ? (webinar.title || 'Live Webinar Session')
+      : resource
+        ? (resource.title || 'Resource Access')
+        : (course?.title || 'Course Access')
 
   const itemId = isPremiumMembership
     ? 'premium_all_access'
-    : resource
-      ? String(resource.id)
-      : (course?.id || 'course_generic')
+    : webinar
+      ? String(webinar.id)
+      : resource
+        ? String(resource.id)
+        : (course?.id || 'course_generic')
+
+  const effectivePremiumAmount = paymentSettings.allAccessPrice || premiumAmount || 999
+  const knownDefaultPrice = isPremiumMembership
+    ? effectivePremiumAmount
+    : isFree
+      ? 0
+      : (webinar ? (webinar.price || 0) : resource ? (resource.price || 0) : (typeof course?.price === 'number' ? course.price : 499))
 
   // Server-verified pricing (the source of truth for the payment amount)
   const [pricing, setPricing] = useState<CheckoutPricing>(
-    initialCheckoutPricing(
-      isPremiumMembership
-        ? premiumAmount
-        : resource
-          ? (resource.price || 0)
-          : (typeof course?.price === 'number' ? course.price : 0)
-    )
+    initialCheckoutPricing(knownDefaultPrice)
   )
 
   // Coupon input UI state
@@ -126,7 +141,8 @@ export default function EnrollModal({
         itemType,
         itemId,
         couponCode,
-        userId || null
+        userId || null,
+        knownDefaultPrice
       )
       if (token !== pricingFetchRef.current) return // Stale response — discard
       const p = toCheckoutPricing(breakdown)
@@ -134,7 +150,7 @@ export default function EnrollModal({
       if (couponCode && p.couponError) {
         setCouponError(p.couponError)
         // Pricing without coupon
-        const base = await fetchCheckoutPrice(itemType, itemId, null, userId || null)
+        const base = await fetchCheckoutPrice(itemType, itemId, null, userId || null, knownDefaultPrice)
         if (token !== pricingFetchRef.current) return
         setPricing({ ...toCheckoutPricing(base), isLoading: false })
       } else {
@@ -153,15 +169,12 @@ export default function EnrollModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const effectivePremiumAmount = paymentSettings.allAccessPrice || premiumAmount
-  // Always use server-calculated amount — NEVER trust a frontend-derived amount
+  // Always use server-calculated amount, but protect against RPC failure defaulting to 0 for paid products
   const displayAmount = pricing.isLoading
-    ? (isPremiumMembership
-        ? effectivePremiumAmount
-        : isFree
-          ? 0
-          : (resource ? (resource.price || 0) : (typeof course?.price === 'number' ? course.price : 499)))
-    : pricing.finalAmount
+    ? knownDefaultPrice
+    : (pricing.finalAmount === 0 && !isFree && !pricing.isFree && !pricing.couponCode)
+      ? knownDefaultPrice
+      : pricing.finalAmount
 
   const activeUpiId = paymentSettings.upiId || 'skills021@upi'
   const activePayeeName = paymentSettings.upiName || 'Skills021'
@@ -189,14 +202,58 @@ export default function EnrollModal({
       toast.error('Image size must be under 5 MB')
       return
     }
-    const reader = new FileReader()
-    reader.onload = () => setScreenshotBase64(reader.result as string)
-    reader.readAsDataURL(file)
+    // Compress image to ≤800px wide at 75% JPEG quality
+    const img = new Image()
+    const objectUrl = URL.createObjectURL(file)
+    img.onload = () => {
+      const MAX = 800
+      const scale = Math.min(1, MAX / img.width)
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(img.width * scale)
+      canvas.height = Math.round(img.height * scale)
+      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+      setScreenshotBase64(canvas.toDataURL('image/jpeg', 0.75))
+      URL.revokeObjectURL(objectUrl)
+    }
+    img.src = objectUrl
+  }
+
+  // Upload screenshot: try Supabase Storage first, fall back to compressed base64
+  const uploadScreenshot = async (base64: string): Promise<string> => {
+    // Try Storage upload
+    try {
+      const blob = await (await fetch(base64)).blob()
+      const path = `payment-proofs/${userId}/${Date.now()}.jpg`
+      const { error } = await supabase.storage
+        .from('payment-screenshots')
+        .upload(path, blob, { contentType: 'image/jpeg', upsert: true })
+      if (!error) {
+        const { data } = supabase.storage.from('payment-screenshots').getPublicUrl(path)
+        return data.publicUrl
+      }
+    } catch {
+      // Storage not available — fall through to base64 fallback
+    }
+
+    // Fallback: re-compress to 600px / 65% for a very small base64 (~50-100 KB)
+    return new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => {
+        const MAX = 600
+        const scale = Math.min(1, MAX / img.width)
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', 0.65))
+      }
+      img.src = base64
+    })
   }
 
   // ─── Coupon Handlers ──────────────────────────────────────────────────────
   const handleApplyCoupon = async () => {
-    const code = couponInput.trim()
+    const code = couponInput.trim().toUpperCase()
     if (!code) {
       setCouponError('Please enter a coupon code.')
       return
@@ -206,29 +263,30 @@ export default function EnrollModal({
     setCouponError(null)
 
     try {
-      await loadPricing(code)
-      // After loadPricing completes, check if pricing has the coupon applied
-      // We check the ref via a fresh fetch to get the state
-      const breakdown = await fetchCheckoutPrice(itemType, itemId, code, userId || null)
+      // Pass knownDefaultPrice so the fallback path still has a price anchor
+      const breakdown = await fetchCheckoutPrice(itemType, itemId, code, userId || null, knownDefaultPrice)
       const result = toCheckoutPricing(breakdown)
 
       if (result.couponError) {
+        // Server explicitly rejected the coupon
         setCouponError(result.couponError)
         setAppliedCoupon(null)
-      } else if (result.couponCode) {
-        setAppliedCoupon(result.couponCode)
+        await loadPricing(null)
+      } else if (result.couponCode || result.couponDiscountAmount > 0) {
+        // Coupon was accepted — RPC may not always return couponId but the discount is real
+        const appliedCode = result.couponCode || code
+        setAppliedCoupon(appliedCode)
         setCouponError(null)
         setPricing({ ...result, isLoading: false })
-        toast.success(`Coupon "${result.couponCode}" applied! 🎉`)
+        toast.success(`Coupon "${appliedCode}" applied! 🎉`)
       } else {
-        // Coupon may have been rejected in favor of product discount
-        if (pricing.productDiscountAmount > 0) {
-          toast.success('Product discount is already better than this coupon.')
-        }
+        setCouponError('Invalid coupon code. Only saved coupons can be applied.')
         setAppliedCoupon(null)
+        await loadPricing(null)
       }
     } catch {
       setCouponError('Unable to validate coupon. Please try again.')
+      setAppliedCoupon(null)
     } finally {
       setCouponLoading(false)
     }
@@ -271,13 +329,13 @@ export default function EnrollModal({
           status: 'free',
           amount: 0,
           itemTitle: title,
-          itemType: itemType === 'resource' ? 'resource' : 'course',
+          itemType: itemType === 'webinar' ? 'webinar' : (itemType === 'resource' ? 'resource' : 'course'),
         })
-        toast.success('Enrolled successfully for Free! 🎉')
+        toast.success(webinar ? 'Registered successfully for Webinar! 🎉' : 'Enrolled successfully for Free! 🎉')
         setStep('free_success')
         onEnrolled(itemId)
       } catch (err: unknown) {
-        toast.error((err as Error).message || 'Failed to enroll')
+        toast.error((err as Error).message || 'Failed to register')
       } finally {
         setSubmitting(false)
       }
@@ -294,13 +352,13 @@ export default function EnrollModal({
 
   const handlePaymentProofSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const trimmedUtr = utrNumber.trim()
-    if (!trimmedUtr || trimmedUtr.length < 6) {
-      toast.error('Please enter a valid 12-digit UTR / Transaction Reference Number')
+    const trimmedUtr = utrNumber.replace(/\D/g, '').trim()
+    if (!trimmedUtr || trimmedUtr.length !== 12) {
+      toast.error('UPI / UTR number must be exactly 12 digits')
       return
     }
-    if (!screenshotBase64) {
-      toast.error('Please upload your payment screenshot / receipt')
+    if (!screenshotBase64 || !screenshotBase64.trim()) {
+      toast.error('Payment screenshot is required. Please upload your receipt to submit verification.')
       return
     }
 
@@ -311,13 +369,19 @@ export default function EnrollModal({
         itemType,
         itemId,
         appliedCoupon,
-        userId || null
+        userId || null,
+        knownDefaultPrice
       )
-      const confirmedAmount = finalBreakdown.finalAmount
+      const confirmedAmount = (finalBreakdown.finalAmount === 0 && !isFree && !finalBreakdown.isFree && !finalBreakdown.couponCode)
+        ? knownDefaultPrice
+        : finalBreakdown.finalAmount
+
+      // Upload screenshot to Storage (much smaller payload than embedding base64 in DB row)
+      const screenshotUrl = await uploadScreenshot(screenshotBase64)
 
       await submitPaymentProof({
         userId,
-        itemType: itemType === 'premium_membership' ? 'premium_membership' : (itemType === 'resource' ? 'resource' : 'course'),
+        itemType: itemType === 'webinar' ? 'webinar' : (itemType === 'premium_membership' ? 'premium_membership' : (itemType === 'resource' ? 'resource' : 'course')),
         itemId,
         itemTitle: title,
         firstName: firstName.trim(),
@@ -326,9 +390,9 @@ export default function EnrollModal({
         phone: phone.trim(),
         amount: confirmedAmount,
         utrNumber: trimmedUtr,
-        screenshotUrl: screenshotBase64,
+        screenshotUrl,
         // Pricing snapshot fields
-        originalAmount: finalBreakdown.originalPrice,
+        originalAmount: finalBreakdown.originalPrice || knownDefaultPrice,
         productDiscountAmount: finalBreakdown.productDiscountAmount,
         couponCode: finalBreakdown.couponCode,
         couponDiscountAmount: finalBreakdown.couponDiscountAmount,
@@ -372,11 +436,11 @@ export default function EnrollModal({
           <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 dark:border-brand-dark-border">
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-primary-500/10 dark:bg-primary-500/20 text-primary-500 flex items-center justify-center">
-                {isPremiumMembership ? <Sparkles size={18} /> : (resource ? <FileText size={18} /> : <GraduationCap size={18} />)}
+                {isPremiumMembership ? <Sparkles size={18} /> : (webinar ? <Video size={18} /> : (resource ? <FileText size={18} /> : <GraduationCap size={18} />))}
               </div>
               <div>
                 <h3 className="text-base font-bold text-brand-text dark:text-brand-dark-text leading-tight">
-                  {isPremiumMembership ? 'Upgrade to Premium' : isFree ? 'Free Access' : (resource ? 'Purchase Resource' : 'Purchase Course')}
+                  {isPremiumMembership ? 'Upgrade to Premium' : isFree ? (webinar ? 'Free Webinar Registration' : 'Free Access') : (webinar ? 'Register for Live Webinar' : (resource ? 'Purchase Resource' : 'Purchase Course'))}
                 </h3>
                 <p className="text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-1">{title}</p>
               </div>
@@ -452,6 +516,19 @@ export default function EnrollModal({
                         <span className="font-bold text-brand-text dark:text-brand-dark-text">Total</span>
                         <span className="font-black text-primary-500">{formatPrice(pricing.finalAmount)}</span>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Course Bundle Notice */}
+                  {course?.isCourseBundle && (
+                    <div className="mt-3 pt-3 border-t border-primary-100 dark:border-primary-900/30">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-violet-700 dark:text-violet-300 mb-1">
+                        <Sparkles size={13} className="text-amber-500" />
+                        <span>Combo Course Bundle ({course.bundledCourseIds?.length || 0} Individual Videos Included)</span>
+                      </div>
+                      <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted leading-relaxed">
+                        Enrolling in this bundle will automatically grant you full access to all {course.bundledCourseIds?.length || 0} individual video masterclasses in your account!
+                      </p>
                     </div>
                   )}
                 </div>
@@ -577,7 +654,7 @@ export default function EnrollModal({
                   {submitting ? (
                     <Loader2 size={18} className="animate-spin" />
                   ) : isFree ? (
-                    'Enroll Instantly for Free'
+                    webinar ? 'Register Instantly for Free' : 'Enroll Instantly for Free'
                   ) : pricing.isLoading ? (
                     <><Loader2 size={16} className="animate-spin" /> Loading price…</>
                   ) : (
@@ -658,15 +735,32 @@ export default function EnrollModal({
 
                 {/* UTR Input */}
                 <div>
-                  <label className="block text-xs font-bold text-brand-text dark:text-brand-dark-text mb-1">
-                    12-digit UTR / Transaction ID *
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-brand-text dark:text-brand-dark-text">
+                      12-digit UTR / Transaction ID *
+                    </label>
+                    <span className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded ${
+                      utrNumber.length === 12
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-gray-100 dark:bg-white/10 text-brand-muted'
+                    }`}>
+                      {utrNumber.length}/12 digits {utrNumber.length === 12 ? '✓' : ''}
+                    </span>
+                  </div>
                   <input
                     type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]{12}"
+                    maxLength={12}
                     value={utrNumber}
-                    onChange={(e) => setUtrNumber(e.target.value)}
+                    onChange={(e) => {
+                      const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 12)
+                      setUtrNumber(digitsOnly)
+                    }}
                     placeholder="e.g. 423456789012"
-                    className="input text-xs font-mono tracking-wider"
+                    className={`input text-xs font-mono tracking-wider ${
+                      utrNumber.length === 12 ? 'border-emerald-500 ring-1 ring-emerald-500/20' : ''
+                    }`}
                     required
                   />
                 </div>
@@ -762,7 +856,9 @@ export default function EnrollModal({
                 </div>
 
                 <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted">
-                  Once the Skills021 team verifies your payment details, your access will be activated immediately!
+                  {webinar
+                    ? 'Once the Skills021 admin verifies your payment proof, your webinar link will be activated and unlocked immediately!'
+                    : 'Once the Skills021 team verifies your payment details, your access will be activated immediately!'}
                 </p>
 
                 <button
@@ -779,16 +875,22 @@ export default function EnrollModal({
               <div className="p-6 text-center space-y-4">
                 <CheckCircle2 size={48} className="mx-auto text-primary-500" />
                 <div>
-                  <h3 className="text-xl font-bold text-brand-text dark:text-brand-dark-text">You're Enrolled!</h3>
+                  <h3 className="text-xl font-bold text-brand-text dark:text-brand-dark-text">
+                    {webinar ? "You're Registered! 🎉" : "You're Enrolled!"}
+                  </h3>
                   <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-1">
-                    You now have full free access to {title}.
+                    {webinar
+                      ? `You have successfully registered for ${title}. Your webinar link is unlocked and ready.`
+                      : course?.isCourseBundle
+                      ? `You now have full access to ${title} and all ${course.bundledCourseIds?.length || 0} individual videos inside this combo bundle!`
+                      : `You now have full free access to ${title}.`}
                   </p>
                 </div>
                 <button
                   onClick={onClose}
                   className="w-full py-3 bg-primary-500 text-white font-bold text-sm rounded-xl hover:bg-primary-600 transition-colors"
                 >
-                  Start Learning Now
+                  {webinar ? 'Go to Webinar Link' : 'Start Learning Now'}
                 </button>
               </div>
             )}

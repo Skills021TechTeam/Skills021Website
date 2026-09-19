@@ -6,7 +6,7 @@ import {
   Clock, CheckCircle, TrendingUp, Play, Save,
   User, Phone, School, Lock, AlertCircle, CreditCard, ShieldCheck, Loader2, Sparkles, Copy, Camera, Image as ImageIcon, LogOut,
   GraduationCap, Calendar, BookMarked, FileText, ChevronDown, ChevronUp, BarChart3, Target,
-  Smartphone, Volume2, Download, ArrowRight, CheckCircle2, Layers, Package, ExternalLink
+  Smartphone, Volume2, Download, ArrowRight, CheckCircle2, Layers, Package, ExternalLink, Video
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import LogoutConfirmModal from '../components/LogoutConfirmModal'
@@ -191,16 +191,33 @@ export default function UserDashboard() {
       setResourcesList(allResources)
       setEnrollments(userEnrollments)
 
-      // Identify active semester bundles
+      // Identify active vs revoked semester bundles
       const semBundleIds = new Set<string>()
       const semBundleKeywords: string[] = []
+      const revokedBundleIds = new Set<string>()
+      const revokedSemesterIds = new Set<number>()
 
       userEnrollments.forEach((enr) => {
-        if (
+        const isRevoked = enr.status === 'rejected'
+        const isSemester = enr.itemType === 'semester_bundle' || enr.itemTitle?.toLowerCase().includes('semester bundle')
+        const rawId = String(enr.courseId).split(':')[0]
+        const numId = Number(rawId)
+
+        if (isRevoked && isSemester) {
+          if (rawId && rawId !== 'undefined' && rawId !== 'null') {
+            revokedBundleIds.add(rawId)
+          }
+          if (!isNaN(numId) && rawId !== '') {
+            revokedSemesterIds.add(numId)
+          }
+          const semNumMatch = enr.itemTitle?.match(/semester\s*(\d+)/i)
+          if (semNumMatch) {
+            revokedSemesterIds.add(Number(semNumMatch[1]))
+          }
+        } else if (
           (enr.status === 'paid' || enr.status === 'free') &&
-          (enr.itemType === 'semester_bundle' || enr.itemTitle?.toLowerCase().includes('semester bundle'))
+          isSemester
         ) {
-          const rawId = String(enr.courseId).split(':')[0]
           if (rawId && rawId !== 'undefined' && rawId !== 'null') {
             semBundleIds.add(rawId)
           }
@@ -209,18 +226,37 @@ export default function UserDashboard() {
           }
         }
       })
+
       if (userEntitlements?.semesterBundleIds) {
-        userEntitlements.semesterBundleIds.forEach((id) => semBundleIds.add(String(id)))
+        userEntitlements.semesterBundleIds.forEach((id) => {
+          if (!revokedBundleIds.has(String(id))) {
+            semBundleIds.add(String(id))
+          }
+        })
       }
       if (userEntitlements?.semesterBundleSemesterIds) {
-        userEntitlements.semesterBundleSemesterIds.forEach((id) => semBundleIds.add(String(id)))
+        userEntitlements.semesterBundleSemesterIds.forEach((id) => {
+          if (!revokedSemesterIds.has(Number(id))) {
+            semBundleIds.add(String(id))
+          }
+        })
       }
+
+      // Purge any revoked bundle IDs
+      revokedBundleIds.forEach((rId) => semBundleIds.delete(rId))
 
       const loadedBundles: SemesterBundle[] = []
       for (const bId of semBundleIds) {
+        if (revokedBundleIds.has(bId)) continue
         try {
           const b = await fetchSemesterBundle(bId)
-          if (b && !loadedBundles.some((existing) => existing.id === b.id)) {
+          if (
+            b &&
+            !revokedBundleIds.has(b.id) &&
+            !(b.semesterId && revokedSemesterIds.has(b.semesterId)) &&
+            !(b.semesterNumber && revokedSemesterIds.has(b.semesterNumber)) &&
+            !loadedBundles.some((existing) => existing.id === b.id)
+          ) {
             loadedBundles.push(b)
           }
         } catch (e) {
@@ -233,6 +269,9 @@ export default function UserDashboard() {
         try {
           const published = await fetchPublishedSemesterBundles()
           for (const pb of published) {
+            if (revokedBundleIds.has(pb.id) || (pb.semesterId && revokedSemesterIds.has(pb.semesterId)) || (pb.semesterNumber && revokedSemesterIds.has(pb.semesterNumber))) {
+              continue
+            }
             const matches = semBundleKeywords.some((kw) => {
               const semMatch = kw.match(/semester\s*(\d+)/i)
               if (semMatch && Number(semMatch[1]) === pb.semesterNumber) return true
@@ -332,11 +371,23 @@ export default function UserDashboard() {
     const cleanId = String(enr.courseId).split(':')[0]
     const matchedSemBundle = isSemesterBundle ? enrolledSemesterBundles.find((b) => b.id === cleanId) : null
     const matchedCourse = coursesList.find((c) => String(c.id) === String(enr.courseId))
+    const isCourseBundle = Boolean(matchedCourse?.isCourseBundle)
+    const bundledChildCourses = isCourseBundle && matchedCourse?.bundledCourseIds?.length
+      ? coursesList.filter((c) => {
+          const isBundle = c.isCourseBundle || (c.tags || []).includes('__is_course_bundle')
+          const isUnderBundle = c.isBundleOnly || (c.tags || []).includes('__bundle_only')
+          if (isBundle || isUnderBundle) return false
+          const cId = String(c.id).replace(/^course_/, '')
+          return matchedCourse.bundledCourseIds?.some((id) => String(id).replace(/^course_/, '') === cId)
+        })
+      : []
 
     return {
       enrollment: enr,
       isSemesterBundle,
       isSubjectBundle,
+      isCourseBundle,
+      bundledChildCourses,
       semesterBundle: matchedSemBundle,
       cleanId,
       course: (matchedCourse || {
@@ -365,9 +416,30 @@ export default function UserDashboard() {
     }
   })
 
-  // Separate non-semester-bundle courses so semester bundles can be rendered as full semester packs
+  // Separate non-semester-bundle courses so semester bundles can be rendered as full semester packs.
+  // Also exclude individual courses that are part of an enrolled Course Bundle so they only show inside that bundle!
   const otherCourses = useMemo(() => {
-    return enrolledCoursesWithMeta.filter((item) => !item.isSemesterBundle)
+    const bundledChildIds = new Set<string>()
+    for (const item of enrolledCoursesWithMeta) {
+      if (item.isCourseBundle && item.course.bundledCourseIds?.length) {
+        for (const id of item.course.bundledCourseIds) {
+          const cleanId = String(id).replace(/^course_/, '')
+          bundledChildIds.add(cleanId)
+          bundledChildIds.add(String(id))
+        }
+      }
+    }
+
+    return enrolledCoursesWithMeta.filter((item) => {
+      if (item.isSemesterBundle) return false
+      if (!item.isCourseBundle) {
+        const cId = String(item.course.id).replace(/^course_/, '')
+        if (bundledChildIds.has(cId) || bundledChildIds.has(String(item.course.id))) {
+          return false
+        }
+      }
+      return true
+    })
   }, [enrolledCoursesWithMeta])
 
   // Total courses count aggregating semester subjects and individual courses
@@ -935,19 +1007,28 @@ export default function UserDashboard() {
                   </h3>
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {otherCourses.map(({ enrollment, course, isSubjectBundle, cleanId }) => (
+                  {otherCourses.map(({ enrollment, course, isSubjectBundle, isCourseBundle, bundledChildCourses, cleanId }) => (
                     <div key={enrollment.id} className="card overflow-hidden flex flex-col justify-between">
                       <div className="p-5">
                         <div className="flex items-center justify-between gap-2 mb-3">
                           <span
-                            className={`badge text-xs ${enrollment.status === 'paid' || enrollment.amount > 0
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                              : 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
-                              }`}
+                            className={`badge text-xs ${
+                              isCourseBundle
+                                ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-bold'
+                                : enrollment.status === 'paid' || enrollment.amount > 0
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                : 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                            }`}
                           >
-                            {enrollment.status === 'paid' || enrollment.amount > 0
-                              ? `PAID COURSE — ₹${enrollment.amount}`
-                              : 'FREE COURSE'}
+                            {isCourseBundle ? (
+                              <span className="flex items-center gap-1">
+                                <Sparkles size={11} /> Combo Bundle ({bundledChildCourses?.length || course.bundledCourseIds?.length || 0} Videos)
+                              </span>
+                            ) : enrollment.status === 'paid' || enrollment.amount > 0 ? (
+                              `PAID COURSE — ₹${enrollment.amount}`
+                            ) : (
+                              'FREE COURSE'
+                            )}
                           </span>
                           <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted">
                             {new Date(enrollment.createdAt).toLocaleDateString()}
@@ -960,12 +1041,38 @@ export default function UserDashboard() {
                         <p className="text-xs text-brand-muted dark:text-brand-dark-muted line-clamp-2 mb-4">
                           {course.description}
                         </p>
+
+                        {/* Bundled Courses Preview / Direct Watch for Combo Bundles */}
+                        {isCourseBundle && (bundledChildCourses?.length ?? 0) > 0 && (
+                          <div className="mb-4 p-3 rounded-xl bg-violet-50/70 dark:bg-violet-950/30 border border-violet-100 dark:border-violet-900/30 space-y-2">
+                            <div className="text-[11px] font-bold text-violet-700 dark:text-violet-300 uppercase tracking-wider flex items-center gap-1.5">
+                              <Video size={12} />
+                              <span>Included Individual Videos ({bundledChildCourses?.length})</span>
+                            </div>
+                            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                              {bundledChildCourses?.map((cc) => (
+                                <div
+                                  key={cc.id}
+                                  className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-brand-dark-card border border-gray-100 dark:border-brand-dark-border text-xs gap-2"
+                                >
+                                  <span className="font-medium truncate max-w-[200px] sm:max-w-xs">{cc.title}</span>
+                                  <button
+                                    onClick={() => setActivePlayCourse(cc)}
+                                    className="flex items-center gap-1 px-2.5 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-[10px] font-bold transition-colors flex-shrink-0"
+                                  >
+                                    <Play size={10} /> Watch
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       <div className="p-5 pt-0 border-t border-brand-border dark:border-brand-dark-border mt-auto">
                         <div className="flex items-center justify-between text-xs text-brand-muted dark:text-brand-dark-muted py-3">
                           <span>Instructor: {course.instructor || 'Skills021'}</span>
-                          <span className="font-semibold">{course.duration || 'Full Access'}</span>
+                          <span className="font-semibold">{isCourseBundle ? 'All Courses Unlocked' : (course.duration || 'Full Access')}</span>
                         </div>
                         {isSubjectBundle ? (
                           <Link
@@ -974,6 +1081,24 @@ export default function UserDashboard() {
                           >
                             <Play size={13} /> Study Subject & Watch Lectures
                           </Link>
+                        ) : isCourseBundle ? (
+                          <div className="flex items-center gap-2">
+                            {bundledChildCourses && bundledChildCourses.length > 0 ? (
+                              <button
+                                onClick={() => setActivePlayCourse(bundledChildCourses[0])}
+                                className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-xs font-bold rounded-xl hover:from-violet-700 hover:to-indigo-700 transition-all shadow-xs"
+                              >
+                                <Play size={13} /> Watch {bundledChildCourses[0].title.slice(0, 20)}...
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setActivePlayCourse(course)}
+                                className="w-full flex items-center justify-center gap-2 py-2.5 bg-violet-600 text-white text-xs font-bold rounded-xl hover:bg-violet-700 transition-colors"
+                              >
+                                <Play size={13} /> Access Course Bundle
+                              </button>
+                            )}
+                          </div>
                         ) : (
                           <button
                             onClick={() => setActivePlayCourse(course)}
@@ -1119,6 +1244,7 @@ export default function UserDashboard() {
                     {enrollments.map((enr) => {
                       const matched = coursesList.find((c) => String(c.id) === String(enr.courseId))
                       const isPremium = enr.itemType === 'premium_membership'
+                      const isWebinar = enr.itemType === 'webinar'
                       const isPaid = enr.status === 'paid'
                       const isPending = enr.status === 'pending'
                       const isRejected = enr.status === 'rejected'
@@ -1133,7 +1259,7 @@ export default function UserDashboard() {
                         <tr key={enr.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                           <td className="px-4 py-3 font-medium text-brand-text dark:text-brand-dark-text max-w-xs">
                             <p className="font-semibold text-sm truncate">
-                              {enr.itemTitle || matched?.title || (isPremium ? 'All-Access Premium Membership' : `Course #${enr.courseId}`)}
+                              {enr.itemTitle || matched?.title || (isPremium ? 'All-Access Premium Membership' : isWebinar ? 'Live Webinar Session' : `Course #${enr.courseId}`)}
                             </p>
                           </td>
                           <td className="px-4 py-3">
@@ -1141,12 +1267,14 @@ export default function UserDashboard() {
                               className={`badge text-xs font-bold ${
                                 isPremium
                                   ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                                  : isWebinar
+                                  ? 'bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300'
                                   : enr.amount > 0
                                   ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
                                   : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                               }`}
                             >
-                              {isPremium ? '⭐ PREMIUM PASS' : enr.amount > 0 ? 'PAID COURSE' : 'FREE'}
+                              {isPremium ? '⭐ PREMIUM PASS' : isWebinar ? '📹 WEBINAR' : enr.amount > 0 ? 'PAID COURSE' : 'FREE'}
                             </span>
                           </td>
                           <td className="px-4 py-3 font-bold text-brand-text dark:text-brand-dark-text">
@@ -1215,6 +1343,7 @@ export default function UserDashboard() {
                   enrollments.map((enr) => {
                     const matched = coursesList.find((c) => String(c.id) === String(enr.courseId))
                     const isPremium = enr.itemType === 'premium_membership'
+                    const isWebinar = enr.itemType === 'webinar'
                     const isPaid = enr.status === 'paid'
                     const isPending = enr.status === 'pending'
                     const isRejected = enr.status === 'rejected'
@@ -1228,9 +1357,16 @@ export default function UserDashboard() {
                     return (
                       <div key={enr.id} className="p-4 space-y-2">
                         <div className="flex items-start justify-between gap-2">
-                          <p className="font-bold text-sm text-brand-text dark:text-brand-dark-text leading-snug">
-                            {enr.itemTitle || matched?.title || (isPremium ? 'All-Access Premium Membership' : `Course #${enr.courseId}`)}
-                          </p>
+                          <div>
+                            <p className="font-bold text-sm text-brand-text dark:text-brand-dark-text leading-snug">
+                              {enr.itemTitle || matched?.title || (isPremium ? 'All-Access Premium Membership' : isWebinar ? 'Live Webinar Session' : `Course #${enr.courseId}`)}
+                            </p>
+                            {isWebinar && (
+                              <span className="inline-block badge text-[9px] font-bold bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300 mt-1">
+                                📹 WEBINAR
+                              </span>
+                            )}
+                          </div>
                           <span className="font-bold text-sm text-brand-text dark:text-brand-dark-text shrink-0">
                             {enr.amount > 0 ? `₹${enr.amount}` : 'FREE'}
                           </span>

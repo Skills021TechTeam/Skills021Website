@@ -81,7 +81,7 @@ export async function fetchUserEntitlements(userId: string | null | undefined): 
       // Individual enrollments and bundle enrollments
       supabase
         .from('enrollments')
-        .select('id, item_type, item_id, payment_status, status')
+        .select('id, item_type, item_id, item_title, payment_status, status')
         .eq('user_id', userId),
     ])
 
@@ -160,9 +160,47 @@ export async function fetchUserEntitlements(userId: string | null | undefined): 
 
     // Process enrollments: courses, resources, and bundle fallbacks
     if (enrollmentRes.data && enrollmentRes.data.length > 0) {
+      const revokedItemIds = new Set<string>()
+      const revokedSemesterIds = new Set<number>()
+      const revokedSubjectIds = new Set<number>()
+
       for (const enr of enrollmentRes.data) {
-        const isApproved = enr.payment_status === 'paid' || enr.payment_status === 'free' || enr.status === 'paid' || enr.status === 'free'
-        const isPending = enr.payment_status === 'pending' || enr.status === 'pending'
+        const isRevoked =
+          enr.payment_status === 'rejected' ||
+          enr.status === 'rejected' ||
+          enr.status === 'revoked' ||
+          enr.status === 'cancelled'
+
+        if (isRevoked) {
+          const rawItemId = String(enr.item_id || '')
+          const rawBundleId = rawItemId.split(':')[0]
+          if (rawBundleId) revokedItemIds.add(rawBundleId)
+          if (rawItemId) revokedItemIds.add(rawItemId)
+          const numId = Number(rawBundleId)
+          if (!isNaN(numId) && rawBundleId !== '') {
+            if (enr.item_type === 'semester_bundle' || enr.item_title?.toLowerCase().includes('semester')) {
+              revokedSemesterIds.add(numId)
+            } else {
+              revokedSubjectIds.add(numId)
+            }
+          }
+          const semMatch = enr.item_title?.match(/semester\s*(\d+)/i)
+          if (semMatch) {
+            revokedSemesterIds.add(Number(semMatch[1]))
+          }
+          continue
+        }
+
+        const isApproved =
+          (enr.payment_status === 'paid' || enr.payment_status === 'free') &&
+          enr.status !== 'rejected' &&
+          enr.status !== 'revoked' &&
+          enr.status !== 'cancelled'
+        const isPending =
+          (enr.payment_status === 'pending' || enr.status === 'pending') &&
+          enr.payment_status !== 'rejected' &&
+          enr.status !== 'rejected' &&
+          enr.status !== 'cancelled'
         const rawItemId = enr.item_id
 
         if (enr.item_type === 'course' || (!enr.item_type && rawItemId)) {
@@ -246,6 +284,95 @@ export async function fetchUserEntitlements(userId: string | null | undefined): 
               }
             }
           }
+        }
+      }
+
+      // Proactively purge any revoked items, semester bundles, and subject bundles
+      revokedItemIds.forEach((id) => {
+        result.enrolledCourseIds.delete(id)
+        result.enrolledCourseIds.delete(`course_${id}`)
+        result.semesterBundleIds.delete(id)
+      })
+      revokedSemesterIds.forEach((sId) => {
+        result.semesterBundleSemesterIds.delete(sId)
+      })
+      revokedSubjectIds.forEach((subId) => {
+        result.subjectBundleSubjectIds.delete(subId)
+        result.resourceBundleSubjectIds.delete(subId)
+      })
+
+      // Actively purge all subjects mapped to revoked semester bundles
+      if (revokedItemIds.size > 0) {
+        try {
+          const { data: revMappings } = await supabase
+            .from('semester_bundle_subjects')
+            .select('subject_bundles(subject_id)')
+            .in('bundle_id', Array.from(revokedItemIds))
+
+          if (revMappings) {
+            for (const rm of revMappings) {
+              const sid = (rm as any)?.subject_bundles?.subject_id
+              if (sid) {
+                result.subjectBundleSubjectIds.delete(Number(sid))
+                result.resourceBundleSubjectIds.delete(Number(sid))
+              }
+            }
+          }
+        } catch {}
+      }
+
+      // Actively purge all subjects belonging to revoked semester IDs
+      if (revokedSemesterIds.size > 0) {
+        try {
+          const { data: revSubjs } = await supabase
+            .from('subjects')
+            .select('id')
+            .in('semester_id', Array.from(revokedSemesterIds))
+
+          if (revSubjs) {
+            for (const s of revSubjs) {
+              result.subjectBundleSubjectIds.delete(Number(s.id))
+              result.resourceBundleSubjectIds.delete(Number(s.id))
+            }
+          }
+        } catch {}
+      }
+    }
+
+    // 5. Expand Course Bundle entitlements:
+    // If user is enrolled in any Course Bundle, automatically entitle all child courses inside it
+    if (result.enrolledCourseIds.size > 0) {
+      const cleanEnrolledIds = Array.from(result.enrolledCourseIds)
+        .map(id => id.replace(/^course_/, ''))
+        .filter(id => !isNaN(Number(id)))
+
+      if (cleanEnrolledIds.length > 0) {
+        try {
+          const { data: bundleCourses } = await supabase
+            .from('site_courses')
+            .select('id, tags')
+            .in('id', cleanEnrolledIds)
+
+          if (bundleCourses) {
+            for (const bc of bundleCourses) {
+              const tags = bc.tags || []
+              if (tags.includes('__is_course_bundle')) {
+                const bundleTag = tags.find((t: string) => t.startsWith('__bundled_courses:'))
+                if (bundleTag) {
+                  const raw = bundleTag.slice('__bundled_courses:'.length)
+                  const childIds = raw.split(',').map((s: string) => s.trim()).filter(Boolean)
+                  for (const cid of childIds) {
+                    const cleanCid = cid.replace(/^course_/, '')
+                    result.enrolledCourseIds.add(cleanCid)
+                    result.enrolledCourseIds.add(cid)
+                    result.enrolledCourseIds.add(`course_${cleanCid}`)
+                  }
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[bundleAuthorizationService] Error expanding course bundle entitlements:', err)
         }
       }
     }

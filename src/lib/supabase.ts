@@ -499,6 +499,12 @@ export async function fetchAllUsersWithEnrollments(): Promise<UserWithEnrollment
     const enrollmentsByEmail = new Map<string, UserEnrollmentSummary[]>()
 
     for (const row of enrollments) {
+      const isRejected = row.payment_status === 'rejected' || row.status === 'rejected' || row.status === 'revoked'
+      if (isRejected) {
+        // Skip revoked/rejected enrollments so they do not appear as active granted permissions
+        continue
+      }
+
       const summary: UserEnrollmentSummary = {
         id: row.id,
         courseId: String(row.item_id),
@@ -537,9 +543,11 @@ export async function fetchAllUsersWithEnrollments(): Promise<UserWithEnrollment
         []
 
       const paidEnrolls = userEnrolls.filter(
-        (e) => e.paymentStatus === 'paid' || (e.amount > 0 && e.paymentStatus !== 'pending')
+        (e) => e.paymentStatus === 'paid' || e.status === 'paid'
       )
-      const freeEnrolls = userEnrolls.filter((e) => e.paymentStatus === 'free' || e.amount === 0)
+      const freeEnrolls = userEnrolls.filter(
+        (e) => e.paymentStatus === 'free' || e.status === 'free'
+      )
       const totalAmount = paidEnrolls.reduce((sum, e) => sum + (e.amount || 0), 0)
 
       const fullName =

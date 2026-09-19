@@ -178,16 +178,38 @@ export default function SemesterBundleView() {
 
   // Handle coupon apply
   const handleApplyCoupon = async () => {
-    if (!couponInput.trim()) return
+    const code = couponInput.trim().toUpperCase()
+    if (!code) {
+      setCouponError('Please enter a coupon code.')
+      return
+    }
+    if (!bundle) return
     setCouponLoading(true)
     setCouponError(null)
     try {
-      const code = couponInput.trim().toUpperCase()
-      await loadAuthoritativePricing(code)
-      setAppliedCoupon(code)
-      toast.success(`Coupon "${code}" applied!`)
+      const rawProductId = `${bundle.id}:${selectedPlan}`
+      const breakdown = await fetchCheckoutPrice('semester_bundle', rawProductId, code, user?.id || null)
+      const p = toCheckoutPricing(breakdown)
+
+      if (p.couponError) {
+        setCouponError(p.couponError)
+        setAppliedCoupon(null)
+        const base = await fetchCheckoutPrice('semester_bundle', rawProductId, null, user?.id || null)
+        setPricing({ ...toCheckoutPricing(base), isLoading: false })
+      } else if (p.couponCode && p.couponId) {
+        setAppliedCoupon(p.couponCode)
+        setCouponError(null)
+        setPricing({ ...p, isLoading: false })
+        toast.success(`Coupon "${p.couponCode}" applied! 🎉`)
+      } else {
+        setCouponError('Invalid coupon code. Only saved coupons can be applied.')
+        setAppliedCoupon(null)
+        const base = await fetchCheckoutPrice('semester_bundle', rawProductId, null, user?.id || null)
+        setPricing({ ...toCheckoutPricing(base), isLoading: false })
+      }
     } catch {
       setCouponError('Invalid or expired coupon')
+      setAppliedCoupon(null)
     } finally {
       setCouponLoading(false)
     }
@@ -268,8 +290,14 @@ export default function SemesterBundleView() {
       toast.error('Please enter a valid phone number')
       return
     }
-    if (!utrNumber.trim()) {
-      toast.error('Please enter the 12-digit UPI / UTR Transaction ID')
+    const cleanUtr = utrNumber.replace(/\D/g, '').trim()
+    if (!cleanUtr || cleanUtr.length !== 12) {
+      toast.error('UPI / UTR number must be exactly 12 digits')
+      return
+    }
+
+    if (!screenshotUrl || !screenshotUrl.trim()) {
+      toast.error('Payment screenshot is required. Please upload your receipt to submit verification.')
       return
     }
 
@@ -286,8 +314,8 @@ export default function SemesterBundleView() {
         email: email.trim(),
         phone: phone.trim(),
         amount: pricing.finalAmount,
-        utrNumber: utrNumber.trim(),
-        screenshotUrl: screenshotUrl || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=400&q=80',
+        utrNumber: cleanUtr,
+        screenshotUrl: screenshotUrl.trim(),
         originalAmount: pricing.originalPrice,
         productDiscountAmount: pricing.productDiscountAmount,
         couponCode: pricing.couponCode,
@@ -297,7 +325,14 @@ export default function SemesterBundleView() {
       })
 
       setStep('submitted')
-      setAccess(prev => ({ ...prev, isPending: true, hasPending: true }))
+      setAccess(prev => ({
+        ...prev,
+        isPending: true,
+        hasPending: true,
+        amount: pricing.finalAmount,
+        utrNumber: cleanUtr,
+        planType: selectedPlan,
+      }))
       toast.success('Payment proof submitted successfully! 🎉')
     } catch (err: any) {
       toast.error(err.message || 'Failed to submit payment proof')
@@ -698,6 +733,74 @@ export default function SemesterBundleView() {
                   )}
                 </div>
               </div>
+            ) : access.isPending ? (
+              /* ── Payment Submitted / Pending Approval: ONLY show Amount Paid & Status (NO coupon code) ── */
+              <div className="rounded-3xl border border-amber-300 dark:border-amber-900/40 bg-white dark:bg-brand-dark-card p-6 shadow-xl space-y-5">
+                {/* Access Plan */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-brand-muted mb-1.5">
+                    Access Plan
+                  </label>
+                  <div className="p-3 rounded-2xl bg-gray-100/80 dark:bg-white/5 border border-brand-border flex items-center justify-between">
+                    <span className="text-xs font-bold text-brand-text dark:text-white">
+                      {access.planType === 'lifetime' || selectedPlan === 'lifetime' ? 'Lifetime Access Plan' : '6-Month Access Plan'}
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                      Payment Submitted
+                    </span>
+                  </div>
+                </div>
+
+                {/* Amount Paid Display */}
+                <div className="p-4 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/40 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                      Amount Paid
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      Payment Received
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-black text-brand-text dark:text-white">
+                      ₹{access.amount || pricing.finalAmount}
+                    </span>
+                    <span className="text-xs text-brand-muted">
+                      {access.planType === 'lifetime' || selectedPlan === 'lifetime' ? 'Full lifetime access' : 'Full access for 6 months'}
+                    </span>
+                  </div>
+                  {(access.utrNumber || utrNumber) && (
+                    <p className="text-[11px] font-mono text-brand-muted pt-1 border-t border-amber-200/50 dark:border-amber-900/30">
+                      UTR / Reference:{' '}
+                      <strong className="text-brand-text dark:text-white">
+                        {access.utrNumber || utrNumber}
+                      </strong>
+                    </p>
+                  )}
+                </div>
+
+                {/* Pending Verification Notice */}
+                <div className="p-4 rounded-2xl bg-amber-100/60 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-center space-y-1">
+                  <span className="block text-xs font-bold text-amber-800 dark:text-amber-200 flex items-center justify-center gap-1.5">
+                    ⏳ Payment Pending Approval
+                  </span>
+                  <span className="block text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">
+                    Your verification proof is under admin review. Access will activate shortly.
+                  </span>
+                </div>
+
+                {/* Trust Badges */}
+                <div className="space-y-2 pt-2 border-t border-brand-border text-xs text-brand-muted">
+                  <div className="flex items-center gap-2">
+                    <Check size={14} className="text-emerald-500" />
+                    <span>Unlocks all {bundle.subjects?.length || 0} Subject Bundles automatically upon approval</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check size={14} className="text-emerald-500" />
+                    <span>Full access on mobile, tablet & desktop</span>
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="rounded-3xl border border-brand-border bg-white dark:bg-brand-dark-card p-6 shadow-xl space-y-6 relative overflow-hidden">
 
@@ -1063,36 +1166,83 @@ export default function SemesterBundleView() {
 
                     {/* UTR Input */}
                     <div>
-                      <label className="block text-xs font-bold text-brand-text dark:text-brand-dark-text mb-1">
-                        UPI Reference / UTR Number (12 Digits) *
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-bold text-brand-text dark:text-brand-dark-text">
+                          UPI Reference / UTR Number (12 Digits) *
+                        </label>
+                        <span className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded ${
+                          utrNumber.length === 12
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                            : 'bg-gray-100 dark:bg-white/10 text-brand-muted'
+                        }`}>
+                          {utrNumber.length}/12 digits {utrNumber.length === 12 ? '✓' : ''}
+                        </span>
+                      </div>
                       <input
                         type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]{12}"
+                        maxLength={12}
                         value={utrNumber}
-                        onChange={(e) => setUtrNumber(e.target.value)}
+                        onChange={(e) => {
+                          const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 12)
+                          setUtrNumber(digitsOnly)
+                        }}
                         placeholder="e.g. 423456789012"
-                        className="input text-xs w-full font-mono font-bold"
+                        className={`input text-xs w-full font-mono font-bold tracking-wider ${
+                          utrNumber.length === 12 ? 'border-emerald-500 focus:border-emerald-500 ring-1 ring-emerald-500/20' : ''
+                        }`}
+                        required
                       />
-                      <p className="text-[10px] text-brand-muted mt-1">Found in your payment app transaction history</p>
+                      <p className="text-[10px] text-brand-muted mt-1">
+                        Found in your payment app (Google Pay, PhonePe, Paytm) transaction receipt
+                      </p>
                     </div>
 
-                    {/* Screenshot Receipt Upload */}
+                    {/* Screenshot Receipt Upload (Required) */}
                     <div>
-                      <label className="block text-xs font-semibold text-brand-muted mb-1">
-                        Payment Screenshot / Receipt (Optional)
-                      </label>
-                      <label className="flex flex-col items-center justify-center p-3 rounded-2xl border border-dashed border-brand-border cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5">
-                        {screenshotUrl ? (
-                          <div className="flex items-center gap-2 text-xs font-bold text-emerald-600">
-                            <CheckCircle2 size={16} /> Screenshot Attached
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-bold text-brand-text dark:text-brand-dark-text">
+                          Payment Screenshot / Receipt *
+                        </label>
+                        <span className="text-[10px] text-red-500 font-semibold">
+                          Required
+                        </span>
+                      </div>
+
+                      {screenshotUrl ? (
+                        <div className="relative p-2.5 rounded-2xl border border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-500/10 flex items-center justify-between">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <img
+                              src={screenshotUrl}
+                              alt="Payment receipt proof"
+                              className="w-12 h-12 rounded-xl object-cover border border-emerald-500/30 shrink-0 bg-white"
+                            />
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                <CheckCircle2 size={14} /> Receipt Attached
+                              </p>
+                              <p className="text-[10px] text-brand-muted truncate">Ready for verification</p>
+                            </div>
                           </div>
-                        ) : (
-                          <div className="flex items-center gap-2 text-xs text-brand-muted">
-                            <Upload size={14} /> Upload receipt screenshot
+                          <button
+                            type="button"
+                            onClick={() => setScreenshotUrl('')}
+                            className="p-1.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/20 text-red-500 transition-colors text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                            title="Remove screenshot"
+                          >
+                            <X size={14} /> Remove
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="flex flex-col items-center justify-center p-3.5 rounded-2xl border-2 border-dashed border-brand-border dark:border-brand-dark-border cursor-pointer hover:border-primary-500 dark:hover:border-primary-500 hover:bg-gray-50 dark:hover:bg-white/5 transition-all">
+                          <div className="flex items-center gap-2 text-xs font-semibold text-primary-600 dark:text-primary-400">
+                            <Upload size={16} /> Upload receipt screenshot (Required)
                           </div>
-                        )}
-                        <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
-                      </label>
+                          <span className="text-[10px] text-brand-muted mt-0.5">PNG, JPG, or WEBP up to 5MB</span>
+                          <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+                        </label>
+                      )}
                     </div>
 
                     {/* Submit CTA */}

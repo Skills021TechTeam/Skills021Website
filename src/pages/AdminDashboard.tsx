@@ -7,7 +7,7 @@ import {
   X, Shield, TrendingUp, Eye, Download, EyeOff,
   CheckCircle, Zap, Video, Loader2, RotateCw, Compass, ListVideo, Clock, Briefcase, Mail, Phone, Trophy, Minus, Save, LogOut, ChevronDown, Check, Radio,
   CreditCard, DollarSign, ExternalLink, RefreshCw, ChevronRight, Copy, ShieldAlert,
-  QrCode, UploadCloud, Sparkles, GraduationCap, Calendar, UserCheck, Award,
+  QrCode, UploadCloud, Sparkles, GraduationCap, Calendar, CalendarDays, UserCheck, Award,
   Package, Layers, PlayCircle, FolderPlus,
   Upload, Image as ImageIcon, AlertCircle
 } from 'lucide-react'
@@ -279,7 +279,23 @@ import {
 } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { isBackblazeRef, deleteBackblazeFile } from '../lib/backblazeService'
-import { getLiveWebinars, createLiveWebinar, updateLiveWebinar, deleteLiveWebinar, getWebinarRecordings, uploadWebinarVideo, createWebinarRecording, deleteWebinarRecording, type LiveWebinar, type WebinarRecording, type WebinarProvider, type WebinarAccess } from '../lib/webinarService'
+import {
+  getLiveWebinars,
+  createLiveWebinar,
+  updateLiveWebinar,
+  deleteLiveWebinar,
+  getWebinarRecordings,
+  uploadWebinarVideo,
+  uploadSpeakerPhoto,
+  createWebinarRecording,
+  deleteWebinarRecording,
+  getWebinarTimingState,
+  type LiveWebinar,
+  type WebinarRecording,
+  type WebinarProvider,
+  type WebinarAccess,
+  type SpeakerHighlight,
+} from '../lib/webinarService'
 import { getBackblazeVideoUrl } from '../lib/backblazeService'
 import {
   fetchAllDiscounts,
@@ -1573,6 +1589,76 @@ export default function AdminDashboard() {
   const [webinarBusy, setWebinarBusy] = useState(false)
   const [editingWebinarId, setEditingWebinarId] = useState<string | null>(null)
   const [showWebinarEditModal, setShowWebinarEditModal] = useState(false)
+  const [viewWebinarAttendees, setViewWebinarAttendees] = useState<LiveWebinar | null>(null)
+
+  // Webinar Speaker Details (Saved directly in live_webinars row)
+  const [liveSpeakerName, setLiveSpeakerName] = useState('')
+  const [liveSpeakerBadge, setLiveSpeakerBadge] = useState('Featured Speaker')
+  const [liveSpeakerPhotoUrl, setLiveSpeakerPhotoUrl] = useState('')
+  const [liveSpeakerPhotoFile, setLiveSpeakerPhotoFile] = useState<File | null>(null)
+  const [liveSpeakerPhotoUploading, setLiveSpeakerPhotoUploading] = useState(false)
+  const [liveBioText, setLiveBioText] = useState('')
+  const [liveTagsText, setLiveTagsText] = useState('')
+  const [liveHighlights, setLiveHighlights] = useState<SpeakerHighlight[]>([
+    { title: '', subtitle: '' },
+    { title: '', subtitle: '' },
+    { title: '', subtitle: '' },
+  ])
+  const [liveIsFeatured, setLiveIsFeatured] = useState(true)
+
+  // Webinar Registrations Filter & CSV Export State
+  const [webinarRegSearch, setWebinarRegSearch] = useState('')
+  const [webinarRegWebinarFilter, setWebinarRegWebinarFilter] = useState('all')
+  const [webinarRegStatusFilter, setWebinarRegStatusFilter] = useState<'all' | 'approved' | 'pending' | 'rejected'>('all')
+
+  const exportWebinarRegistrationsCSV = (filteredRows?: Enrollment[], customFilename?: string) => {
+    const liveIds = new Set(liveWebinars.map(w => w.id))
+    const fallbackRows = paymentRequests.filter(
+      p => p.itemType === 'webinar' || liveIds.has(p.courseId) || p.itemTitle?.toLowerCase().includes('webinar')
+    )
+    const targetRows = filteredRows ?? fallbackRows
+    if (targetRows.length === 0) {
+      toast.error('No webinar registrations found to export')
+      return
+    }
+
+    const headers = [
+      'Webinar Title',
+      'Student Name',
+      'Email',
+      'Phone',
+      'Status',
+      'Amount (INR)',
+      'UTR / Reference',
+      'Registration Date',
+      'Reviewed Date',
+    ]
+
+    const rows = targetRows.map((r) => [
+      `"${(r.itemTitle || '').replace(/"/g, '""')}"`,
+      `"${(`${r.firstName || ''} ${r.lastName || ''}`).trim().replace(/"/g, '""')}"`,
+      `"${(r.email || '').replace(/"/g, '""')}"`,
+      `"${(r.phone || '').replace(/"/g, '""')}"`,
+      `"${r.status === 'paid' ? 'Approved' : r.status === 'free' ? 'Free Access' : r.status === 'pending' ? 'Pending Review' : 'Rejected'}"`,
+      r.amount ?? 0,
+      `"${(r.utrNumber || '').replace(/"/g, '""')}"`,
+      `"${r.createdAt ? new Date(r.createdAt).toLocaleString() : ''}"`,
+      `"${r.reviewedAt ? new Date(r.reviewedAt).toLocaleString() : ''}"`,
+    ])
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.setAttribute('href', url)
+    const defaultName = `Skills021_Webinar_Registrations_${new Date().toISOString().slice(0, 10)}.csv`
+    link.setAttribute('download', customFilename || defaultName)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    toast.success(`Exported ${targetRows.length} webinar registration(s) to CSV! 📊`)
+  }
 
   // Lock the page behind the webinar edit modal. The modal itself remains scrollable.
   useEffect(() => {
@@ -1605,6 +1691,19 @@ export default function AdminDashboard() {
   const [endHour, setEndHour] = useState('')
   const [endMinute, setEndMinute] = useState('00')
   const [endPeriod, setEndPeriod] = useState<'AM' | 'PM'>('AM')
+
+  // Registration Window States
+  const [hasRegStartTime, setHasRegStartTime] = useState(false)
+  const [regStartDate, setRegStartDate] = useState('')
+  const [regStartHour, setRegStartHour] = useState('')
+  const [regStartMinute, setRegStartMinute] = useState('00')
+  const [regStartPeriod, setRegStartPeriod] = useState<'AM' | 'PM'>('AM')
+
+  const [regEndType, setRegEndType] = useState<'webinar_end' | 'webinar_start' | 'custom'>('webinar_end')
+  const [regEndDate, setRegEndDate] = useState('')
+  const [regEndHour, setRegEndHour] = useState('')
+  const [regEndMinute, setRegEndMinute] = useState('00')
+  const [regEndPeriod, setRegEndPeriod] = useState<'AM' | 'PM'>('AM')
   const [recordingTitle, setRecordingTitle] = useState('')
   const [recordingDescription, setRecordingDescription] = useState('')
   const [recordingDate, setRecordingDate] = useState(new Date().toISOString().slice(0, 10))
@@ -1771,6 +1870,7 @@ export default function AdminDashboard() {
       setPaymentRequests(data)
     } catch (err) {
       console.error('Failed to load payment requests:', err)
+      toast.error(err instanceof Error ? err.message : 'Failed to load payment requests')
     } finally {
       setPaymentsLoading(false)
     }
@@ -1793,7 +1893,7 @@ export default function AdminDashboard() {
     if (activeTab === 'users') {
       loadDbUsers()
     }
-    if (activeTab === 'payment-approvals') {
+    if (activeTab === 'payment-approvals' || activeTab === 'webinars') {
       loadPaymentRequests()
     }
   }, [activeTab, loadDbUsers, loadPaymentRequests])
@@ -1845,13 +1945,25 @@ export default function AdminDashboard() {
   const loadWebinars = useCallback(async () => {
     setWebinarBusy(true)
     try {
-      const [live, recordings] = await Promise.all([getLiveWebinars(), getWebinarRecordings()])
-      setLiveWebinars(live); setWebinarRecordings(recordings)
-    } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to load webinars') }
-    finally { setWebinarBusy(false) }
+      const [live, recordings] = await Promise.all([
+        getLiveWebinars(),
+        getWebinarRecordings(),
+      ])
+      setLiveWebinars(live)
+      setWebinarRecordings(recordings)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load webinars')
+    } finally {
+      setWebinarBusy(false)
+    }
   }, [])
 
-  useEffect(() => { if (activeTab === 'webinars') loadWebinars() }, [activeTab, loadWebinars])
+  useEffect(() => {
+    if (activeTab === 'webinars') {
+      loadWebinars()
+      loadPaymentRequests()
+    }
+  }, [activeTab, loadWebinars, loadPaymentRequests])
 
   // ─── Load mentorship data from Supabase ────────────────────────────────────
   const loadMentorship = useCallback(async () => {
@@ -2430,7 +2542,10 @@ export default function AdminDashboard() {
         level: 'Beginner',
         isFree: false,
         price: '',
-        uploadMode: 'bundle',
+        uploadMode: 'individual',
+        isCourseBundle: false,
+        bundledCourseIds: [],
+        bundleCourseSearch: '',
       })
     } else {
       setEditItem({ _type: type })
@@ -2439,7 +2554,9 @@ export default function AdminDashboard() {
   }
   const openEdit = async (item: any) => {
     if (item._type === 'course') {
-      item.uploadMode = item.isBundleOnly ? 'bundle' : 'individual'
+      item.uploadMode = item.isCourseBundle ? 'combo_bundle' : (item.isBundleOnly ? 'bundle' : 'individual')
+      item.bundledCourseIds = item.bundledCourseIds || []
+      item.bundleCourseSearch = ''
       setCourseVideoFile(null); setCourseVideoUploadStatus('idle'); setCourseVideoUploadProgress(0); setCourseExistingVideoUrl(item.videoUrl || '')
       setCourseThumbFile(null); setCourseThumbUploadStatus('idle'); setCourseExistingThumbUrl(item.thumbnail || '')
       setNewTimestampTime(''); setNewTimestampLabel('')
@@ -2722,49 +2839,82 @@ export default function AdminDashboard() {
                   ))}</tr>
                 </thead>
                 <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
-                  {filtered.map(c => (
-                    <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
-                      <td className="px-4 py-3 font-medium text-brand-text dark:text-brand-dark-text max-w-[180px] truncate">{c.title}</td>
-                      <td className="px-4 py-3 text-xs text-brand-muted dark:text-brand-dark-muted whitespace-nowrap">{c.group}</td>
-                      <td className="px-4 py-3 font-medium">
-                        {c.isBundleOnly ? (
-                          <span className="badge bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-xs inline-flex items-center gap-1 font-bold">
-                            <Package size={12} /> Under Bundle
-                          </span>
-                        ) : c.price === 'FREE' ? (
-                          <span className="text-green-500 font-bold">FREE</span>
-                        ) : (
-                          `₹${c.price}`
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {c.videoUrl ? (
-                          <span className="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-600 font-semibold px-2 py-0.5 rounded-md">Uploaded</span>
-                        ) : (
-                          <span className="text-[10px] bg-gray-100 dark:bg-white/10 text-brand-muted font-semibold px-2 py-0.5 rounded-md">None</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted">{(c.enrolled ?? 0).toLocaleString()}</td>
-                      <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={async () => {
-                              try {
-                                const updated = await toggleSiteCourseStatus(c.id, c.status)
-                                setDbCourses(prev => prev.map(x => x.id === c.id ? updated : x))
-                                toast.success(`Course ${updated.status === 'Published' ? 'published' : 'unpublished'}`)
-                              } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to toggle status') }
-                            }}
-                            title={c.status === 'Published' ? 'Unpublish' : 'Publish'}
-                            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted dark:text-brand-dark-muted transition-colors"
-                          >{c.status === 'Published' ? <EyeOff size={14} /> : <Eye size={14} />}</button>
-                          <button onClick={() => openEdit({ ...c, _type: 'course' })} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500"><Edit2 size={14} /></button>
-                          <button onClick={() => setDeleteId({ id: c.id, title: c.title, type: 'course' })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 size={14} /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {filtered.map(c => {
+                    const parentCourseBundle = !c.isCourseBundle && !c.isBundleOnly ? dbCourses.find(b => {
+                      const isB = b.isCourseBundle || (b.tags || []).includes('__is_course_bundle')
+                      if (!isB) return false
+                      const ids = (b.bundledCourseIds || []).map(id => String(id).replace(/^course_/, ''))
+                      return ids.includes(String(c.id).replace(/^course_/, ''))
+                    }) : null
+
+                    return (
+                      <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                        <td className="px-4 py-3 font-medium text-brand-text dark:text-brand-dark-text max-w-[220px]">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="truncate">{c.title}</span>
+                            {c.isCourseBundle && (
+                              <span className="badge bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 text-[10px] w-fit inline-flex items-center gap-1 font-bold">
+                                <Video size={10} /> Video Bundle ({c.bundledCourseIds?.length || 0} Videos)
+                              </span>
+                            )}
+                            {parentCourseBundle && (
+                              <span className="badge bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-[10px] w-fit inline-flex items-center gap-1 font-semibold">
+                                <Video size={10} /> In Bundle: {parentCourseBundle.title}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-brand-muted dark:text-brand-dark-muted whitespace-nowrap">{c.group}</td>
+                        <td className="px-4 py-3 font-medium">
+                          {c.isCourseBundle ? (
+                            c.price === 'FREE' || c.price === 0 ? (
+                              <span className="text-emerald-500 font-bold text-xs bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">FREE BUNDLE</span>
+                            ) : (
+                              <span className="text-purple-600 dark:text-purple-400 font-bold text-xs">₹{c.price} <span className="text-[10px] font-normal text-brand-muted">Bundle</span></span>
+                            )
+                          ) : c.isBundleOnly ? (
+                            <span className="badge bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-xs inline-flex items-center gap-1 font-bold">
+                              <Package size={12} /> Under Bundle
+                            </span>
+                          ) : parentCourseBundle ? (
+                            <span className="badge bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-xs inline-flex items-center gap-1 font-bold">
+                              <Video size={12} /> In Bundle
+                            </span>
+                          ) : c.price === 'FREE' ? (
+                            <span className="text-green-500 font-bold">FREE</span>
+                          ) : (
+                            `₹${c.price}`
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {c.videoUrl ? (
+                            <span className="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-600 font-semibold px-2 py-0.5 rounded-md">Uploaded</span>
+                          ) : (
+                            <span className="text-[10px] bg-gray-100 dark:bg-white/10 text-brand-muted font-semibold px-2 py-0.5 rounded-md">None</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-brand-muted dark:text-brand-dark-muted">{(c.enrolled ?? 0).toLocaleString()}</td>
+                        <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const updated = await toggleSiteCourseStatus(c.id, c.status)
+                                  setDbCourses(prev => prev.map(x => x.id === c.id ? updated : x))
+                                  toast.success(`Course ${updated.status === 'Published' ? 'published' : 'unpublished'}`)
+                                } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to toggle status') }
+                              }}
+                              title={c.status === 'Published' ? 'Unpublish' : 'Publish'}
+                              className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-brand-muted dark:text-brand-dark-muted transition-colors"
+                            >{c.status === 'Published' ? <EyeOff size={14} /> : <Eye size={14} />}</button>
+                            <button onClick={() => openEdit({ ...c, _type: 'course' })} className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-500"><Edit2 size={14} /></button>
+                            <button onClick={() => setDeleteId({ id: c.id, title: c.title, type: 'course' })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"><Trash2 size={14} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                   {filtered.length === 0 && !coursesLoading && (
                     <tr><td colSpan={8} className="px-4 py-8 text-center text-brand-muted text-sm">No courses found.</td></tr>
                   )}
@@ -3372,13 +3522,13 @@ export default function AdminDashboard() {
         setSelectedUserDetail((prev) =>
           prev
             ? {
-                ...prev,
-                enrollments: [summaryItem, ...prev.enrollments],
-                totalCoursesCount: prev.totalCoursesCount + 1,
-                paidCoursesCount: grantAccessType === 'paid' ? prev.paidCoursesCount + 1 : prev.paidCoursesCount,
-                freeCoursesCount: grantAccessType === 'free' ? prev.freeCoursesCount + 1 : prev.freeCoursesCount,
-                hasPaidCourses: prev.hasPaidCourses || grantAccessType === 'paid',
-              }
+              ...prev,
+              enrollments: [summaryItem, ...prev.enrollments],
+              totalCoursesCount: prev.totalCoursesCount + 1,
+              paidCoursesCount: grantAccessType === 'paid' ? prev.paidCoursesCount + 1 : prev.paidCoursesCount,
+              freeCoursesCount: grantAccessType === 'free' ? prev.freeCoursesCount + 1 : prev.freeCoursesCount,
+              hasPaidCourses: prev.hasPaidCourses || grantAccessType === 'paid',
+            }
             : null
         )
 
@@ -3386,13 +3536,13 @@ export default function AdminDashboard() {
           prev.map((u) =>
             u.id === selectedUserDetail.id
               ? {
-                  ...u,
-                  enrollments: [summaryItem, ...u.enrollments],
-                  totalCoursesCount: u.totalCoursesCount + 1,
-                  paidCoursesCount: grantAccessType === 'paid' ? u.paidCoursesCount + 1 : u.paidCoursesCount,
-                  freeCoursesCount: grantAccessType === 'free' ? u.freeCoursesCount + 1 : u.freeCoursesCount,
-                  hasPaidCourses: u.hasPaidCourses || grantAccessType === 'paid',
-                }
+                ...u,
+                enrollments: [summaryItem, ...u.enrollments],
+                totalCoursesCount: u.totalCoursesCount + 1,
+                paidCoursesCount: grantAccessType === 'paid' ? u.paidCoursesCount + 1 : u.paidCoursesCount,
+                freeCoursesCount: grantAccessType === 'free' ? u.freeCoursesCount + 1 : u.freeCoursesCount,
+                hasPaidCourses: u.hasPaidCourses || grantAccessType === 'paid',
+              }
               : u
           )
         )
@@ -3418,15 +3568,15 @@ export default function AdminDashboard() {
         setSelectedUserDetail((prev) =>
           prev
             ? {
-                ...prev,
-                enrollments: prev.enrollments.filter((e) => e.id !== enrollmentId),
-                totalCoursesCount: Math.max(0, prev.totalCoursesCount - 1),
-                paidCoursesCount: Math.max(0, prev.paidCoursesCount - (isPaid ? 1 : 0)),
-                freeCoursesCount: Math.max(0, prev.freeCoursesCount - (!isPaid ? 1 : 0)),
-                hasPaidCourses: prev.enrollments
-                  .filter((e) => e.id !== enrollmentId)
-                  .some((e) => e.paymentStatus === 'paid' || e.amount > 0),
-              }
+              ...prev,
+              enrollments: prev.enrollments.filter((e) => e.id !== enrollmentId),
+              totalCoursesCount: Math.max(0, prev.totalCoursesCount - 1),
+              paidCoursesCount: Math.max(0, prev.paidCoursesCount - (isPaid ? 1 : 0)),
+              freeCoursesCount: Math.max(0, prev.freeCoursesCount - (!isPaid ? 1 : 0)),
+              hasPaidCourses: prev.enrollments
+                .filter((e) => e.id !== enrollmentId)
+                .some((e) => e.paymentStatus === 'paid' || e.amount > 0),
+            }
             : null
         )
 
@@ -3434,15 +3584,15 @@ export default function AdminDashboard() {
           prev.map((u) =>
             u.id === selectedUserDetail.id
               ? {
-                  ...u,
-                  enrollments: u.enrollments.filter((e) => e.id !== enrollmentId),
-                  totalCoursesCount: Math.max(0, u.totalCoursesCount - 1),
-                  paidCoursesCount: Math.max(0, u.paidCoursesCount - (isPaid ? 1 : 0)),
-                  freeCoursesCount: Math.max(0, u.freeCoursesCount - (!isPaid ? 1 : 0)),
-                  hasPaidCourses: u.enrollments
-                    .filter((e) => e.id !== enrollmentId)
-                    .some((e) => e.paymentStatus === 'paid' || e.amount > 0),
-                }
+                ...u,
+                enrollments: u.enrollments.filter((e) => e.id !== enrollmentId),
+                totalCoursesCount: Math.max(0, u.totalCoursesCount - 1),
+                paidCoursesCount: Math.max(0, u.paidCoursesCount - (isPaid ? 1 : 0)),
+                freeCoursesCount: Math.max(0, u.freeCoursesCount - (!isPaid ? 1 : 0)),
+                hasPaidCourses: u.enrollments
+                  .filter((e) => e.id !== enrollmentId)
+                  .some((e) => e.paymentStatus === 'paid' || e.amount > 0),
+              }
               : u
           )
         )
@@ -3648,11 +3798,10 @@ export default function AdminDashboard() {
               <button
                 key={f.id}
                 onClick={() => setUserFilter(f.id as any)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  userFilter === f.id
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${userFilter === f.id
                     ? 'bg-primary-500 text-white shadow-sm'
                     : 'bg-gray-100 dark:bg-white/5 text-brand-muted hover:bg-gray-200 dark:hover:bg-white/10'
-                }`}
+                  }`}
               >
                 {f.label}
               </button>
@@ -3718,11 +3867,10 @@ export default function AdminDashboard() {
                       {/* Role */}
                       <td className="px-4 py-3">
                         <span
-                          className={`badge text-xs ${
-                            u.role === 'admin'
+                          className={`badge text-xs ${u.role === 'admin'
                               ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 font-semibold'
                               : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300'
-                          }`}
+                            }`}
                         >
                           {u.role}
                         </span>
@@ -3745,9 +3893,8 @@ export default function AdminDashboard() {
                           <div>
                             <button
                               onClick={() => handleTogglePremium(u)}
-                              className={`text-[10px] font-semibold underline transition-colors ${
-                                u.is_premium ? 'text-red-500 hover:text-red-600' : 'text-primary-600 dark:text-primary-400 hover:text-primary-700'
-                              }`}
+                              className={`text-[10px] font-semibold underline transition-colors ${u.is_premium ? 'text-red-500 hover:text-red-600' : 'text-primary-600 dark:text-primary-400 hover:text-primary-700'
+                                }`}
                             >
                               {u.is_premium ? 'Revoke Premium' : '+ Grant All-Access'}
                             </button>
@@ -3867,11 +4014,10 @@ export default function AdminDashboard() {
                   <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
                     <button
                       onClick={() => handleTogglePremium(selectedUserDetail)}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ${
-                        selectedUserDetail.is_premium
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ${selectedUserDetail.is_premium
                           ? 'bg-red-500/10 text-red-600 border border-red-500/20 hover:bg-red-500 hover:text-white'
                           : 'bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500'
-                      }`}
+                        }`}
                     >
                       {selectedUserDetail.is_premium ? (
                         <>
@@ -3925,11 +4071,10 @@ export default function AdminDashboard() {
                     <button
                       key={t.id}
                       onClick={() => setStudentModalTab(t.id as any)}
-                      className={`px-3.5 py-3 text-xs font-semibold whitespace-nowrap border-b-2 transition-all flex items-center gap-1.5 ${
-                        studentModalTab === t.id
+                      className={`px-3.5 py-3 text-xs font-semibold whitespace-nowrap border-b-2 transition-all flex items-center gap-1.5 ${studentModalTab === t.id
                           ? 'border-primary-500 text-primary-600 dark:text-primary-400'
                           : 'border-transparent text-brand-muted hover:text-brand-text dark:hover:text-brand-dark-text'
-                      }`}
+                        }`}
                     >
                       {t.label}
                       {t.count !== null && t.count > 0 && (
@@ -4148,8 +4293,8 @@ export default function AdminDashboard() {
                                 {grantItemCategory === 'course'
                                   ? 'Course'
                                   : grantItemCategory === 'resource'
-                                  ? 'Study Resource'
-                                  : 'Webinar'}{' '}
+                                    ? 'Study Resource'
+                                    : 'Webinar'}{' '}
                                 --
                               </option>
                               {grantItemCategory === 'course' &&
@@ -4238,11 +4383,10 @@ export default function AdminDashboard() {
 
                         <button
                           onClick={() => handleTogglePremium(selectedUserDetail)}
-                          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm whitespace-nowrap ${
-                            selectedUserDetail.is_premium
+                          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm whitespace-nowrap ${selectedUserDetail.is_premium
                               ? 'bg-red-500/10 text-red-600 border border-red-500/20 hover:bg-red-500 hover:text-white'
                               : 'bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500 font-bold'
-                          }`}
+                            }`}
                         >
                           {selectedUserDetail.is_premium ? (
                             <>
@@ -4308,11 +4452,10 @@ export default function AdminDashboard() {
                                         </span>
                                       )}
                                       <span
-                                        className={`badge text-[10px] font-bold ${
-                                          isPaid
+                                        className={`badge text-[10px] font-bold ${isPaid
                                             ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
                                             : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                                        }`}
+                                          }`}
                                       >
                                         {isPaid ? `FULL ACCESS (₹${enr.amount})` : 'FREE ACCESS'}
                                       </span>
@@ -4377,13 +4520,12 @@ export default function AdminDashboard() {
                                 <div className="min-w-0 flex-1 space-y-1">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span
-                                      className={`badge text-[10px] font-bold ${
-                                        p.status === 'paid'
+                                      className={`badge text-[10px] font-bold ${p.status === 'paid'
                                           ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
                                           : p.status === 'pending'
-                                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
-                                          : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-                                      }`}
+                                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                                        }`}
                                     >
                                       {p.status.toUpperCase()}
                                     </span>
@@ -4997,13 +5139,15 @@ export default function AdminDashboard() {
                             className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider ${req.itemType === 'subject_bundle'
                               ? 'bg-purple-50 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/40'
                               : req.itemType === 'resource_bundle'
-                              ? 'bg-indigo-50 text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/40'
-                              : req.itemType === 'premium_membership'
-                              ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/40'
-                              : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300'
+                                ? 'bg-indigo-50 text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/40'
+                                : req.itemType === 'premium_membership'
+                                  ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/40'
+                                  : req.itemType === 'webinar'
+                                    ? 'bg-violet-50 text-violet-800 dark:bg-violet-950/40 dark:text-violet-300 border border-violet-200/60 dark:border-violet-800/40'
+                                    : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300'
                               }`}
                           >
-                            {req.itemType === 'subject_bundle' ? '📦 SUBJECT BUNDLE' : req.itemType === 'resource_bundle' ? '📄 RESOURCE BUNDLE' : req.itemType === 'premium_membership' ? '⭐ PREMIUM PASS' : 'COURSE PURCHASE'}
+                            {req.itemType === 'subject_bundle' ? '📦 SUBJECT BUNDLE' : req.itemType === 'resource_bundle' ? '📄 RESOURCE BUNDLE' : req.itemType === 'premium_membership' ? '⭐ PREMIUM PASS' : req.itemType === 'webinar' ? '📹 LIVE WEBINAR' : 'COURSE PURCHASE'}
                           </span>
                           <p className="text-xs font-semibold text-brand-text dark:text-brand-dark-text line-clamp-1">
                             {req.itemTitle || `Course #${req.courseId}`}
@@ -6631,11 +6775,10 @@ export default function AdminDashboard() {
                   <button
                     type="button"
                     onClick={() => setResUploadMode('bundle')}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                      resUploadMode === 'bundle'
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${resUploadMode === 'bundle'
                         ? 'border-primary-500 bg-primary-50/70 dark:bg-primary-950/30 ring-2 ring-primary-500/20 shadow-xs'
                         : 'border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card hover:bg-gray-50 dark:hover:bg-white/5'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${resUploadMode === 'bundle' ? 'border-primary-500 bg-primary-500' : 'border-gray-400'}`}>
@@ -6652,11 +6795,10 @@ export default function AdminDashboard() {
                   <button
                     type="button"
                     onClick={() => setResUploadMode('individual')}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                      resUploadMode === 'individual'
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${resUploadMode === 'individual'
                         ? 'border-violet-500 bg-violet-50/70 dark:bg-violet-950/30 ring-2 ring-violet-500/20 shadow-xs'
                         : 'border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card hover:bg-gray-50 dark:hover:bg-white/5'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${resUploadMode === 'individual' ? 'border-violet-500 bg-violet-500' : 'border-gray-400'}`}>
@@ -6959,14 +7101,23 @@ export default function AdminDashboard() {
             }
           }
 
-          const isUnderBundle = (editItem.uploadMode ?? (editItem.id ? (editItem.isBundleOnly ? 'bundle' : 'individual') : 'bundle')) === 'bundle'
+          const uploadMode = editItem.uploadMode ?? (editItem.id ? (editItem.isCourseBundle ? 'combo_bundle' : (editItem.isBundleOnly ? 'bundle' : 'individual')) : 'individual')
+          const isComboBundle = uploadMode === 'combo_bundle'
+          const isUnderBundle = !isComboBundle && uploadMode === 'bundle'
+
           if (isUnderBundle && !cSelectedSubjectId) {
             toast.error('Please select a Subject in the Academic Hierarchy to place this course under its Subject Bundle.')
             setCourseSaving(false)
             return
           }
 
-          const isFree = !isUnderBundle && editItem.price === 'FREE'
+          if (isComboBundle && (!editItem.bundledCourseIds || editItem.bundledCourseIds.length === 0)) {
+            toast.error('Please select at least one individual video to include inside this Course Bundle.')
+            setCourseSaving(false)
+            return
+          }
+
+          const isFree = !isUnderBundle && (editItem.price === 'FREE' || editItem.price === 0 || editItem.price === '0')
           const payload = {
             title: editItem.title,
             description: editItem.description || '',
@@ -6974,7 +7125,7 @@ export default function AdminDashboard() {
             subcategory: editItem.subcategory || 'DSA',
             instructor: editItem.instructor || 'Skills021 Team',
             duration: editItem.duration || '',
-            lectures: editItem.lectures ?? 0,
+            lectures: isComboBundle ? (editItem.bundledCourseIds?.length ?? 0) : (editItem.lectures ?? 0),
             level: editItem.level || 'Beginner',
             isFree: isUnderBundle ? false : isFree,
             price: isUnderBundle ? 0 : (isFree ? 0 : (Number(editItem.price) || 0)),
@@ -6985,7 +7136,8 @@ export default function AdminDashboard() {
             notesSubject: editItem.notesSubject || '',
             subjectId: cSelectedSubjectId ? Number(cSelectedSubjectId) : null,
             isBundleOnly: isUnderBundle,
-            unitTitle: editItem.unitTitle || undefined,
+            isCourseBundle: isComboBundle,
+            bundledCourseIds: isComboBundle ? (editItem.bundledCourseIds || []) : [],
           }
 
           let savedCourseId: string
@@ -7043,7 +7195,9 @@ export default function AdminDashboard() {
       }
 
       const uploadBusy = courseVideoUploadStatus === 'uploading' || courseSaving
-      const isUnderBundle = (editItem.uploadMode ?? (editItem.id ? (editItem.isBundleOnly ? 'bundle' : 'individual') : 'bundle')) === 'bundle'
+      const uploadMode = editItem.uploadMode ?? (editItem.id ? (editItem.isCourseBundle ? 'combo_bundle' : (editItem.isBundleOnly ? 'bundle' : 'individual')) : 'individual')
+      const isComboBundle = uploadMode === 'combo_bundle'
+      const isUnderBundle = !isComboBundle && uploadMode === 'bundle'
 
       return (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
@@ -7053,55 +7207,241 @@ export default function AdminDashboard() {
               <button onClick={closeModal}><X size={18} className="text-brand-muted" /></button>
             </div>
             <div className="space-y-4">
-              {/* Content Type Selector: Subject Bundle vs Individual */}
+              {/* Content Type Selector: Individual vs Course Bundle vs Subject Bundle */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold uppercase tracking-wider text-brand-text dark:text-brand-dark-text">
                   Content Type *
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <button
                     type="button"
-                    onClick={() => setEditItem((p: any) => ({ ...p, uploadMode: 'bundle' }))}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                      isUnderBundle
-                        ? 'border-primary-500 bg-primary-50/70 dark:bg-primary-950/30 ring-2 ring-primary-500/20 shadow-xs'
+                    onClick={() => setEditItem((p: any) => ({ ...p, uploadMode: 'individual' }))}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${uploadMode === 'individual'
+                        ? 'border-violet-500 bg-violet-50/70 dark:bg-violet-950/30 ring-2 ring-violet-500/20 shadow-xs'
                         : 'border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card hover:bg-gray-50 dark:hover:bg-white/5'
-                    }`}
+                      }`}
                   >
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${isUnderBundle ? 'border-primary-500 bg-primary-500' : 'border-gray-400'}`}>
-                        {isUnderBundle && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${uploadMode === 'individual' ? 'border-violet-500 bg-violet-500' : 'border-gray-400'}`}>
+                        {uploadMode === 'individual' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                       </div>
-                      <Package size={16} className="text-primary-500 shrink-0" />
-                      <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text">Subject Bundle</span>
+                      <BookOpen size={15} className="text-violet-500 shrink-0" />
+                      <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text">Individual</span>
                     </div>
-                    <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted leading-relaxed pl-5">
-                      Curriculum under Subject Bundle. Access & pricing are managed by the Subject Bundle.
+                    <p className="text-[10px] text-brand-muted dark:text-brand-dark-muted leading-relaxed">
+                      Single course with standalone pricing.
                     </p>
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => setEditItem((p: any) => ({ ...p, uploadMode: 'individual' }))}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                      !isUnderBundle
-                        ? 'border-violet-500 bg-violet-50/70 dark:bg-violet-950/30 ring-2 ring-violet-500/20 shadow-xs'
+                    onClick={() => setEditItem((p: any) => ({ ...p, uploadMode: 'combo_bundle' }))}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${uploadMode === 'combo_bundle'
+                        ? 'border-purple-500 bg-purple-50/70 dark:bg-purple-950/30 ring-2 ring-purple-500/20 shadow-xs'
                         : 'border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card hover:bg-gray-50 dark:hover:bg-white/5'
-                    }`}
+                      }`}
                   >
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${!isUnderBundle ? 'border-violet-500 bg-violet-500' : 'border-gray-400'}`}>
-                        {!isUnderBundle && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${uploadMode === 'combo_bundle' ? 'border-purple-500 bg-purple-500' : 'border-gray-400'}`}>
+                        {uploadMode === 'combo_bundle' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                       </div>
-                      <BookOpen size={16} className="text-violet-500 shrink-0" />
-                      <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text">Individual</span>
+                      <Package size={15} className="text-purple-500 shrink-0" />
+                      <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text">Course Bundle</span>
                     </div>
-                    <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted leading-relaxed pl-5">
-                      Standalone course under this Subject. Maintains individual Free / Paid pricing.
+                    <p className="text-[10px] text-brand-muted dark:text-brand-dark-muted leading-relaxed">
+                      Combo pack of multiple individual courses.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEditItem((p: any) => ({ ...p, uploadMode: 'bundle' }))}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${uploadMode === 'bundle'
+                        ? 'border-primary-500 bg-primary-50/70 dark:bg-primary-950/30 ring-2 ring-primary-500/20 shadow-xs'
+                        : 'border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card hover:bg-gray-50 dark:hover:bg-white/5'
+                      }`}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${uploadMode === 'bundle' ? 'border-primary-500 bg-primary-500' : 'border-gray-400'}`}>
+                        {uploadMode === 'bundle' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </div>
+                      <Sparkles size={15} className="text-primary-500 shrink-0" />
+                      <span className="text-xs font-bold text-brand-text dark:text-brand-dark-text">Subject Bundle</span>
+                    </div>
+                    <p className="text-[10px] text-brand-muted dark:text-brand-dark-muted leading-relaxed">
+                      Curriculum under Subject syllabus.
                     </p>
                   </button>
                 </div>
               </div>
+
+              {/* If Course Bundle: Courses Selector & Value Calculation */}
+              {isComboBundle && (() => {
+                const selectedIds: string[] = (editItem.bundledCourseIds || []).map((id: any) => String(id))
+                // Strictly only individual video courses: exclude Course Bundles and exclude Subject Bundle curriculum items
+                const isIndividualVideoCourse = (c: Course) => {
+                  const isBundle = c.isCourseBundle || (c.tags || []).includes('__is_course_bundle')
+                  const isUnderBundle = c.isBundleOnly || (c.tags || []).includes('__bundle_only')
+                  return !isBundle && !isUnderBundle
+                }
+
+                const selectedCourses = dbCourses.filter(c => isIndividualVideoCourse(c) && selectedIds.includes(String(c.id)))
+                const totalStandalonePrice = selectedCourses.reduce((sum, c) => sum + (typeof c.price === 'number' ? c.price : 0), 0)
+                const bundleSearch = (editItem.bundleCourseSearch || '').toLowerCase().trim()
+                const availableCourses = dbCourses.filter(c => {
+                  if (!isIndividualVideoCourse(c)) return false
+                  if (String(c.id) === String(editItem.id)) return false
+                  // If this individual video is already in ANOTHER course bundle (excluding the current one), exclude it
+                  const inOtherBundle = dbCourses.find(other => {
+                    if (String(other.id) === String(editItem.id)) return false
+                    const isB = other.isCourseBundle || (other.tags || []).includes('__is_course_bundle')
+                    if (!isB) return false
+                    const ids = (other.bundledCourseIds || []).map(id => String(id).replace(/^course_/, ''))
+                    return ids.includes(String(c.id).replace(/^course_/, ''))
+                  })
+                  if (inOtherBundle) return false
+                  if (bundleSearch) {
+                    const titleMatch = c.title.toLowerCase().includes(bundleSearch)
+                    const subMatch = c.subcategory && c.subcategory.toLowerCase().includes(bundleSearch)
+                    if (!titleMatch && !subMatch) return false
+                  }
+                  return true
+                })
+                const isBundleFree = editItem.price === 'FREE' || editItem.price === 0 || editItem.price === '0'
+                const bundleNumericPrice = isBundleFree ? 0 : (Number(editItem.price) || 0)
+                const savings = totalStandalonePrice > bundleNumericPrice ? (totalStandalonePrice - bundleNumericPrice) : 0
+                const savingsPercent = totalStandalonePrice > 0 ? Math.round((savings / totalStandalonePrice) * 100) : 0
+
+                return (
+                  <div className="p-4 rounded-2xl bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/50 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="text-xs font-bold uppercase tracking-wider text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
+                          <Video size={14} className="text-purple-600 dark:text-purple-400" />
+                          Included Individual Videos ({selectedIds.length} selected) *
+                        </label>
+                        <p className="text-[11px] text-purple-800/80 dark:text-purple-300/80 mt-0.5">
+                          Only standalone individual videos appear here to add to this bundle.
+                        </p>
+                      </div>
+                      {selectedIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setEditItem((p: any) => ({ ...p, bundledCourseIds: [] }))}
+                          className="text-[10px] font-semibold text-purple-600 dark:text-purple-400 hover:underline"
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Standalone vs Bundle Price preview */}
+                    <div className="p-3 rounded-xl bg-white dark:bg-brand-dark-card border border-purple-200/70 dark:border-purple-800/40 text-xs flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">Total Standalone Value:</span>
+                        <span className="text-sm font-bold text-brand-text dark:text-brand-dark-text">₹{totalStandalonePrice}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[11px] text-brand-muted dark:text-brand-dark-muted block">Bundle Offer:</span>
+                        {isBundleFree ? (
+                          <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">FREE Access</span>
+                        ) : (
+                          <span className="text-sm font-bold text-purple-600 dark:text-purple-400">
+                            ₹{bundleNumericPrice} {savings > 0 && <span className="text-[10px] text-emerald-600 font-semibold">(Save {savingsPercent}%)</span>}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Selected individual videos tags */}
+                    {selectedCourses.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1">
+                        {selectedCourses.map(sc => (
+                          <span
+                            key={sc.id}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 border border-purple-200 dark:border-purple-800"
+                          >
+                            <Video size={11} className="text-purple-500 shrink-0" />
+                            <span className="max-w-[150px] truncate">{sc.title}</span>
+                            <span className="text-[10px] opacity-75">({sc.price === 'FREE' ? 'FREE' : `₹${sc.price}`})</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditItem((p: any) => ({
+                                  ...p,
+                                  bundledCourseIds: (p.bundledCourseIds || []).filter((id: string) => String(id) !== String(sc.id))
+                                }))
+                              }}
+                              className="ml-0.5 hover:text-red-500"
+                              title="Remove from bundle"
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Search filter */}
+                    <div className="relative">
+                      <Search size={13} className="absolute left-3 top-2.5 text-brand-muted" />
+                      <input
+                        type="text"
+                        value={editItem.bundleCourseSearch || ''}
+                        onChange={e => setEditItem((p: any) => ({ ...p, bundleCourseSearch: e.target.value }))}
+                        placeholder="Search individual videos to add to bundle..."
+                        className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-purple-200 dark:border-purple-800/60 bg-white dark:bg-brand-dark-card text-brand-text dark:text-brand-dark-text focus:outline-none focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+
+                    {/* Available Individual Videos list */}
+                    <div className="max-h-40 overflow-y-auto rounded-xl border border-purple-200/70 dark:border-purple-900/40 bg-white dark:bg-brand-dark-card divide-y divide-gray-100 dark:divide-white/5">
+                      {availableCourses.length === 0 ? (
+                        <div className="p-3 text-center text-xs text-brand-muted">
+                          {bundleSearch ? 'No matching individual videos found' : 'No individual videos available to add'}
+                        </div>
+                      ) : (
+                        availableCourses.map(ac => {
+                          const isChecked = selectedIds.includes(String(ac.id))
+                          return (
+                            <label
+                              key={ac.id}
+                              className={`p-2.5 flex items-center justify-between gap-3 text-xs cursor-pointer hover:bg-purple-50/50 dark:hover:bg-white/5 transition-colors ${isChecked ? 'bg-purple-50/70 dark:bg-purple-950/30' : ''
+                                }`}
+                            >
+                              <div className="flex items-center gap-2.5 truncate">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    const next = isChecked
+                                      ? selectedIds.filter(id => id !== String(ac.id))
+                                      : [...selectedIds, String(ac.id)]
+                                    setEditItem((p: any) => ({ ...p, bundledCourseIds: next }))
+                                  }}
+                                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500 shrink-0"
+                                />
+                                <div className="w-7 h-7 rounded-lg bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center flex-shrink-0 text-purple-600 dark:text-purple-300">
+                                  <Video size={13} />
+                                </div>
+                                <div className="truncate text-left">
+                                  <p className="font-semibold text-brand-text dark:text-brand-dark-text truncate">{ac.title}</p>
+                                  <p className="text-[10px] text-brand-muted dark:text-brand-dark-muted">
+                                    Individual Video {ac.duration ? `• ${ac.duration}` : ''} {ac.subcategory ? `• ${ac.subcategory}` : ''}
+                                  </p>
+                                </div>
+                              </div>
+                              <span className="text-[11px] font-bold text-brand-text dark:text-brand-dark-text shrink-0">
+                                {ac.price === 'FREE' ? <span className="text-green-500">FREE</span> : `₹${ac.price}`}
+                              </span>
+                            </label>
+                          )
+                        })
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
 
               <Field label="Title *"><input value={editItem.title || ''} onChange={e => setEditItem((p: any) => ({ ...p, title: e.target.value }))} className={inputCls} placeholder="Course title" /></Field>
               <div className="grid grid-cols-2 gap-4">
@@ -7126,8 +7466,13 @@ export default function AdminDashboard() {
                     <span>Bundle Pricing (No price needed here)</span>
                   </div>
                 ) : (
-                  <Field label="Price">
-                    <input value={editItem.price === 'FREE' ? 'FREE' : (editItem.price || '')} onChange={e => { const v = e.target.value.toUpperCase(); setEditItem((p: any) => ({ ...p, price: v === 'FREE' ? 'FREE' : parseInt(v) || 0 })) }} className={inputCls} placeholder="FREE or 999" />
+                  <Field label={isComboBundle ? 'Bundle Price (FREE or ₹)' : 'Price'}>
+                    <input
+                      value={editItem.price === 'FREE' ? 'FREE' : (editItem.price || '')}
+                      onChange={e => { const v = e.target.value.toUpperCase(); setEditItem((p: any) => ({ ...p, price: v === 'FREE' ? 'FREE' : parseInt(v) || 0 })) }}
+                      className={inputCls}
+                      placeholder={isComboBundle ? 'e.g. 499 or FREE' : 'FREE or 999'}
+                    />
                   </Field>
                 )}
                 <Field label="Duration"><input value={editItem.duration || ''} onChange={e => setEditItem((p: any) => ({ ...p, duration: e.target.value }))} className={inputCls} placeholder="40 hours" /></Field>
@@ -7139,15 +7484,13 @@ export default function AdminDashboard() {
               </div>
 
               {/* Academic Hierarchy */}
-              <div className={`p-4 rounded-xl border space-y-3 ${
-                isUnderBundle
+              <div className={`p-4 rounded-xl border space-y-3 ${isUnderBundle
                   ? 'bg-amber-50/50 dark:bg-amber-950/10 border-amber-200 dark:border-amber-900/40'
                   : 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800'
-              }`}>
+                }`}>
                 <div className="flex items-center justify-between">
-                  <p className={`text-xs font-semibold uppercase tracking-wider ${
-                    isUnderBundle ? 'text-amber-700 dark:text-amber-300' : 'text-blue-700 dark:text-blue-300'
-                  }`}>
+                  <p className={`text-xs font-semibold uppercase tracking-wider ${isUnderBundle ? 'text-amber-700 dark:text-amber-300' : 'text-blue-700 dark:text-blue-300'
+                    }`}>
                     Academic Hierarchy {isUnderBundle ? '(Required for Subject Bundle)' : '(Optional)'}
                   </p>
                   {isUnderBundle && (
@@ -7260,158 +7603,172 @@ export default function AdminDashboard() {
                 />
               </Field>
 
-              {/* Video Upload */}
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-brand-text dark:text-brand-dark-text">Course Video</label>
-                <div className="border-2 border-dashed border-brand-border dark:border-brand-dark-border rounded-xl p-5 text-center bg-gray-50 dark:bg-brand-dark-bg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors relative group">
-                  <input
-                    type="file"
-                    accept="video/*"
-                    onChange={e => {
-                      const file = e.target.files?.[0]
-                      if (file) {
-                        setCourseVideoFile(file)
-                        setCourseVideoUploadStatus('idle')
-                        setCourseVideoUploadProgress(0)
-                        setCourseVideoAudioCheck('checking')
-                        checkVideoHasAudio(file).then(result => {
-                          setCourseVideoAudioCheck(result === 'yes' ? 'has-audio' : result === 'no' ? 'no-audio' : null)
-                        })
-                        setCourseVideoDurationSeconds(null)
-                        getVideoDurationSeconds(file).then(setCourseVideoDurationSeconds)
-                      }
-                    }}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                  />
-                  <div className="flex flex-col items-center justify-center space-y-2">
-                    <Video className="text-brand-muted dark:text-brand-dark-muted group-hover:scale-105 transition-transform" size={24} />
-                    <p className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
-                      {courseVideoFile ? 'Change Selected Video' : courseExistingVideoUrl ? 'Replace Video' : 'Choose Video File'}
-                    </p>
-                    <p className="text-[10px] text-brand-muted">MP4, WebM, MOV — keeps original audio track</p>
+              {/* Video Upload & Chapters (Only for individual courses) */}
+              {isComboBundle ? (
+                <div className="p-4 rounded-2xl bg-purple-50/70 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/40 text-xs space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-purple-700 dark:text-purple-300">
+                    <Package size={16} /> All Bundled Course Videos Included Automatically
                   </div>
-                </div>
-                {courseVideoAudioCheck === 'checking' && (
-                  <p className="text-xs text-brand-muted dark:text-brand-dark-muted flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> Checking video for an audio track...</p>
-                )}
-                {courseVideoAudioCheck === 'no-audio' && (
-                  <p className="text-xs text-amber-600 font-semibold flex items-start gap-1.5">
-                    <span>⚠</span>
-                    <span>Couldn't detect sound in this video in a quick browser check. If you're confident the file has audio (e.g. it plays fine in VLC), it's likely fine — this check can occasionally misfire. Just verify sound plays after uploading.</span>
+                  <p className="text-purple-800/80 dark:text-purple-300/80 text-[11px] leading-relaxed">
+                    When students enroll in this Course Bundle, all video lectures, chapters, and resources of the included courses are automatically unlocked for them. No separate video file needs to be uploaded for this combo bundle.
                   </p>
-                )}
-                {courseVideoAudioCheck === 'has-audio' && (
-                  <p className="text-xs text-green-600 font-semibold flex items-center gap-1.5"><span>✔</span> Audio track detected — this video has sound.</p>
-                )}
-                {(courseVideoFile || courseExistingVideoUrl) && (
-                  <div className="p-3 bg-gray-50 dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border rounded-xl flex items-center justify-between text-xs text-brand-text dark:text-brand-dark-text">
-                    <div className="flex items-center gap-2 truncate max-w-[70%]">
-                      <span className="text-green-500 font-bold">✔</span>
-                      <div className="truncate text-left">
-                        <p className="font-semibold truncate">{courseVideoFile ? courseVideoFile.name : 'Current Stored Video'}</p>
-                        {courseVideoFile && <p className="text-[10px] text-brand-muted">{(courseVideoFile.size / 1024 / 1024).toFixed(2)} MB</p>}
+                </div>
+              ) : (
+                <>
+                  {/* Video Upload */}
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-brand-text dark:text-brand-dark-text">Course Video</label>
+                    <div className="border-2 border-dashed border-brand-border dark:border-brand-dark-border rounded-xl p-5 text-center bg-gray-50 dark:bg-brand-dark-bg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors relative group">
+                      <input
+                        type="file"
+                        accept="video/*"
+                        onChange={e => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            setCourseVideoFile(file)
+                            setCourseVideoUploadStatus('idle')
+                            setCourseVideoUploadProgress(0)
+                            setCourseVideoAudioCheck('checking')
+                            checkVideoHasAudio(file).then(result => {
+                              setCourseVideoAudioCheck(result === 'yes' ? 'has-audio' : result === 'no' ? 'no-audio' : null)
+                            })
+                            setCourseVideoDurationSeconds(null)
+                            getVideoDurationSeconds(file).then(setCourseVideoDurationSeconds)
+                          }
+                        }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                      />
+                      <div className="flex flex-col items-center justify-center space-y-2">
+                        <Video className="text-brand-muted dark:text-brand-dark-muted group-hover:scale-105 transition-transform" size={24} />
+                        <p className="text-xs font-semibold text-brand-text dark:text-brand-dark-text">
+                          {courseVideoFile ? 'Change Selected Video' : courseExistingVideoUrl ? 'Replace Video' : 'Choose Video File'}
+                        </p>
+                        <p className="text-[10px] text-brand-muted">MP4, WebM, MOV — keeps original audio track</p>
                       </div>
                     </div>
-                    {courseExistingVideoUrl && !courseVideoFile && (
-                      <span className="text-[10px] bg-primary-50 dark:bg-primary-950/20 text-primary-600 font-semibold px-2 py-0.5 rounded-md">Active</span>
+                    {courseVideoAudioCheck === 'checking' && (
+                      <p className="text-xs text-brand-muted dark:text-brand-dark-muted flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> Checking video for an audio track...</p>
                     )}
-                  </div>
-                )}
-                {courseVideoUploadStatus === 'uploading' && (
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-brand-muted uppercase">
-                      <span>Uploading Video...</span><span>{courseVideoUploadProgress}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 dark:bg-white/10 rounded-full h-1.5 overflow-hidden">
-                      <motion.div initial={{ width: 0 }} animate={{ width: `${courseVideoUploadProgress}%` }} transition={{ duration: 0.1 }} className="bg-primary-500 h-full rounded-full" />
-                    </div>
-                  </div>
-                )}
-                {courseVideoUploadStatus === 'success' && <p className="text-xs text-green-600 font-semibold flex items-center gap-1.5"><span>✔</span> Video uploaded successfully!</p>}
-                {courseVideoUploadStatus === 'error' && <p className="text-xs text-red-600 font-semibold flex items-center gap-1.5"><span>❌</span> Video upload failed. Please try again.</p>}
-              </div>
-
-              {/* Chapters / YouTube-style Timestamps */}
-              <div className="space-y-2">
-                <label className="flex items-center gap-1.5 text-sm font-semibold text-brand-text dark:text-brand-dark-text">
-                  <ListVideo size={15} /> Chapters (Video Timestamps)
-                  {courseVideoDurationSeconds != null && (
-                    <span className="ml-auto text-[10px] font-mono font-normal text-brand-muted dark:text-brand-dark-muted bg-gray-100 dark:bg-white/5 px-1.5 py-0.5 rounded">
-                      Video length: {formatSeconds(courseVideoDurationSeconds)}
-                    </span>
-                  )}
-                </label>
-                <div className="border border-brand-border dark:border-brand-dark-border rounded-xl p-3 space-y-3 bg-gray-50 dark:bg-brand-dark-bg">
-                  {timestampsLoading ? (
-                    <div className="flex items-center justify-center py-3"><Loader2 size={16} className="animate-spin text-brand-muted" /></div>
-                  ) : courseTimestamps.length === 0 ? (
-                    <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted">No chapters yet. Add the first one below.</p>
-                  ) : (
-                    <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
-                      {courseTimestamps.map(t => (
-                        <div key={t.id ?? `pending-${t.sortOrder}-${t.timeSeconds}-${t.label}`} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border text-xs">
-                          <span className="font-mono font-semibold text-primary-500 flex-shrink-0">{formatSeconds(t.timeSeconds)}</span>
-                          <span className="flex-1 truncate text-brand-text dark:text-brand-dark-text">{t.label}</span>
-                          <button
-                            type="button"
-                            disabled={deletingTimestampId === t.id}
-                            onClick={async () => {
-                              if (!t.id) {
-                                setCourseTimestamps(prev => prev.filter(x => x !== t))
-                                return
-                              }
-                              setDeletingTimestampId(t.id)
-                              try {
-                                await deleteTimestampApi(t.id)
-                                setCourseTimestamps(prev => prev.filter(x => x.id !== t.id))
-                                toast.success('Chapter removed')
-                              } catch (err) {
-                                toast.error(err instanceof Error ? err.message : 'Failed to remove chapter')
-                              } finally {
-                                setDeletingTimestampId(null)
-                              }
-                            }}
-                            className="p-1 text-red-400 hover:text-red-600 flex-shrink-0 disabled:opacity-50"
-                          >
-                            {deletingTimestampId === t.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                          </button>
+                    {courseVideoAudioCheck === 'no-audio' && (
+                      <p className="text-xs text-amber-600 font-semibold flex items-start gap-1.5">
+                        <span>⚠</span>
+                        <span>Couldn't detect sound in this video in a quick browser check. If you're confident the file has audio (e.g. it plays fine in VLC), it's likely fine — this check can occasionally misfire. Just verify sound plays after uploading.</span>
+                      </p>
+                    )}
+                    {courseVideoAudioCheck === 'has-audio' && (
+                      <p className="text-xs text-green-600 font-semibold flex items-center gap-1.5"><span>✔</span> Audio track detected — this video has sound.</p>
+                    )}
+                    {(courseVideoFile || courseExistingVideoUrl) && (
+                      <div className="p-3 bg-gray-50 dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border rounded-xl flex items-center justify-between text-xs text-brand-text dark:text-brand-dark-text">
+                        <div className="flex items-center gap-2 truncate max-w-[70%]">
+                          <span className="text-green-500 font-bold">✔</span>
+                          <div className="truncate text-left">
+                            <p className="font-semibold truncate">{courseVideoFile ? courseVideoFile.name : 'Current Stored Video'}</p>
+                            {courseVideoFile && <p className="text-[10px] text-brand-muted">{(courseVideoFile.size / 1024 / 1024).toFixed(2)} MB</p>}
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <div className="relative w-24 flex-shrink-0">
-                      <Clock size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-brand-muted" />
-                      <input
-                        value={newTimestampTime}
-                        onChange={e => setNewTimestampTime(e.target.value)}
-                        placeholder="0.05 / 0:05"
-                        className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card text-xs text-brand-text dark:text-brand-dark-text"
-                      />
-                    </div>
-                    <input
-                      value={newTimestampLabel}
-                      onChange={e => setNewTimestampLabel(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && !timestampSaving && handleAddChapter()}
-                      placeholder="Chapter label, e.g. Introduction"
-                      className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card text-xs text-brand-text dark:text-brand-dark-text"
-                    />
-                    <button
-                      type="button"
-                      disabled={timestampSaving || !newTimestampTime || !newTimestampLabel.trim()}
-                      onClick={handleAddChapter}
-                      className="flex-shrink-0 p-1.5 rounded-lg bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-50"
-                    >
-                      {timestampSaving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-                    </button>
+                        {courseExistingVideoUrl && !courseVideoFile && (
+                          <span className="text-[10px] bg-primary-50 dark:bg-primary-950/20 text-primary-600 font-semibold px-2 py-0.5 rounded-md">Active</span>
+                        )}
+                      </div>
+                    )}
+                    {courseVideoUploadStatus === 'uploading' && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-brand-muted uppercase">
+                          <span>Uploading Video...</span><span>{courseVideoUploadProgress}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 dark:bg-white/10 rounded-full h-1.5 overflow-hidden">
+                          <motion.div initial={{ width: 0 }} animate={{ width: `${courseVideoUploadProgress}%` }} transition={{ duration: 0.1 }} className="bg-primary-500 h-full rounded-full" />
+                        </div>
+                      </div>
+                    )}
+                    {courseVideoUploadStatus === 'success' && <p className="text-xs text-green-600 font-semibold flex items-center gap-1.5"><span>✔</span> Video uploaded successfully!</p>}
+                    {courseVideoUploadStatus === 'error' && <p className="text-xs text-red-600 font-semibold flex items-center gap-1.5"><span>❌</span> Video upload failed. Please try again.</p>}
                   </div>
-                  <p className="text-[10px] text-brand-muted dark:text-brand-dark-muted">
-                    {courseVideoDurationSeconds != null
-                      ? `Enter 0.05 for 5 sec, 0.06 for 6 sec, 0.07 for 7 sec, or use 0:05 / 00:05. Video length: ${formatSeconds(courseVideoDurationSeconds)}.`
-                      : 'Enter 0.05 for 5 seconds, 0:05, or 00:05 for timestamp positions.'}
-                  </p>
-                </div>
-              </div>
+
+                  {/* Chapters / YouTube-style Timestamps */}
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-1.5 text-sm font-semibold text-brand-text dark:text-brand-dark-text">
+                      <ListVideo size={15} /> Chapters (Video Timestamps)
+                      {courseVideoDurationSeconds != null && (
+                        <span className="ml-auto text-[10px] font-mono font-normal text-brand-muted dark:text-brand-dark-muted bg-gray-100 dark:bg-white/5 px-1.5 py-0.5 rounded">
+                          Video length: {formatSeconds(courseVideoDurationSeconds)}
+                        </span>
+                      )}
+                    </label>
+                    <div className="border border-brand-border dark:border-brand-dark-border rounded-xl p-3 space-y-3 bg-gray-50 dark:bg-brand-dark-bg">
+                      {timestampsLoading ? (
+                        <div className="flex items-center justify-center py-3"><Loader2 size={16} className="animate-spin text-brand-muted" /></div>
+                      ) : courseTimestamps.length === 0 ? (
+                        <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted">No chapters yet. Add the first one below.</p>
+                      ) : (
+                        <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                          {courseTimestamps.map(t => (
+                            <div key={t.id ?? `pending-${t.sortOrder}-${t.timeSeconds}-${t.label}`} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border text-xs">
+                              <span className="font-mono font-semibold text-primary-500 flex-shrink-0">{formatSeconds(t.timeSeconds)}</span>
+                              <span className="flex-1 truncate text-brand-text dark:text-brand-dark-text">{t.label}</span>
+                              <button
+                                type="button"
+                                disabled={deletingTimestampId === t.id}
+                                onClick={async () => {
+                                  if (!t.id) {
+                                    setCourseTimestamps(prev => prev.filter(x => x !== t))
+                                    return
+                                  }
+                                  setDeletingTimestampId(t.id)
+                                  try {
+                                    await deleteTimestampApi(t.id)
+                                    setCourseTimestamps(prev => prev.filter(x => x.id !== t.id))
+                                    toast.success('Chapter removed')
+                                  } catch (err) {
+                                    toast.error(err instanceof Error ? err.message : 'Failed to remove chapter')
+                                  } finally {
+                                    setDeletingTimestampId(null)
+                                  }
+                                }}
+                                className="p-1 text-red-400 hover:text-red-600 flex-shrink-0 disabled:opacity-50"
+                              >
+                                {deletingTimestampId === t.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <div className="relative w-24 flex-shrink-0">
+                          <Clock size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-brand-muted" />
+                          <input
+                            value={newTimestampTime}
+                            onChange={e => setNewTimestampTime(e.target.value)}
+                            placeholder="0.05 / 0:05"
+                            className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card text-xs text-brand-text dark:text-brand-dark-text"
+                          />
+                        </div>
+                        <input
+                          value={newTimestampLabel}
+                          onChange={e => setNewTimestampLabel(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && !timestampSaving && handleAddChapter()}
+                          placeholder="Chapter label, e.g. Introduction"
+                          className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card text-xs text-brand-text dark:text-brand-dark-text"
+                        />
+                        <button
+                          type="button"
+                          disabled={timestampSaving || !newTimestampTime || !newTimestampLabel.trim()}
+                          onClick={handleAddChapter}
+                          className="flex-shrink-0 p-1.5 rounded-lg bg-primary-500 text-white hover:bg-primary-600 disabled:opacity-50"
+                        >
+                          {timestampSaving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-brand-muted dark:text-brand-dark-muted">
+                        {courseVideoDurationSeconds != null
+                          ? `Enter 0.05 for 5 sec, 0.06 for 6 sec, 0.07 for 7 sec, or use 0:05 / 00:05. Video length: ${formatSeconds(courseVideoDurationSeconds)}.`
+                          : 'Enter 0.05 for 5 seconds, 0:05, or 00:05 for timestamp positions.'}
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Thumbnail Upload */}
               <div className="space-y-2">
@@ -7933,6 +8290,18 @@ export default function AdminDashboard() {
     setLiveJoinUrl(webinar.joinUrl)
     setLiveAccess(webinar.access)
     setLivePrice(String(webinar.price ?? 0))
+    setLiveSpeakerName(webinar.speakerName || '')
+    setLiveSpeakerBadge(webinar.speakerBadge || 'Featured Speaker')
+    setLiveSpeakerPhotoUrl(webinar.speakerPhotoUrl || '')
+    setLiveSpeakerPhotoFile(null)
+    setLiveBioText((webinar.speakerBio || []).join('\n\n'))
+    setLiveTagsText((webinar.tags || []).join(', '))
+    setLiveHighlights(webinar.highlights && webinar.highlights.length > 0 ? webinar.highlights : [
+      { title: '', subtitle: '' },
+      { title: '', subtitle: '' },
+      { title: '', subtitle: '' }
+    ])
+    setLiveIsFeatured(webinar.isFeatured ?? true)
     setStartDate(`${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`)
     setStartHour(String(startHour12))
     setStartMinute(String(start.getMinutes()).padStart(2, '0'))
@@ -7950,6 +8319,42 @@ export default function AdminDashboard() {
       setHasEndTime(false)
       setEndDate(''); setEndHour(''); setEndMinute(''); setEndPeriod('AM')
     }
+
+    // Load registration window
+    if (webinar.registrationStartsAt) {
+      const regStart = new Date(webinar.registrationStartsAt)
+      const regStartH24 = regStart.getHours()
+      setHasRegStartTime(true)
+      setRegStartDate(`${regStart.getFullYear()}-${String(regStart.getMonth() + 1).padStart(2, '0')}-${String(regStart.getDate()).padStart(2, '0')}`)
+      setRegStartHour(String(regStartH24 % 12 || 12))
+      setRegStartMinute(String(regStart.getMinutes()).padStart(2, '0'))
+      setRegStartPeriod(regStartH24 >= 12 ? 'PM' : 'AM')
+    } else {
+      setHasRegStartTime(false)
+      setRegStartDate(''); setRegStartHour(''); setRegStartMinute('00'); setRegStartPeriod('AM')
+    }
+
+    if (webinar.registrationEndsAt) {
+      if (webinar.endsAt && webinar.registrationEndsAt === webinar.endsAt) {
+        setRegEndType('webinar_end')
+        setRegEndDate(''); setRegEndHour(''); setRegEndMinute('00'); setRegEndPeriod('AM')
+      } else if (webinar.registrationEndsAt === webinar.startsAt) {
+        setRegEndType('webinar_start')
+        setRegEndDate(''); setRegEndHour(''); setRegEndMinute('00'); setRegEndPeriod('AM')
+      } else {
+        const regEnd = new Date(webinar.registrationEndsAt)
+        const regEndH24 = regEnd.getHours()
+        setRegEndType('custom')
+        setRegEndDate(`${regEnd.getFullYear()}-${String(regEnd.getMonth() + 1).padStart(2, '0')}-${String(regEnd.getDate()).padStart(2, '0')}`)
+        setRegEndHour(String(regEndH24 % 12 || 12))
+        setRegEndMinute(String(regEnd.getMinutes()).padStart(2, '0'))
+        setRegEndPeriod(regEndH24 >= 12 ? 'PM' : 'AM')
+      }
+    } else {
+      setRegEndType('webinar_end')
+      setRegEndDate(''); setRegEndHour(''); setRegEndMinute('00'); setRegEndPeriod('AM')
+    }
+
     setWebinarEditVideoFile(null); setWebinarEditVideoUploadStatus('idle'); setWebinarEditVideoUploadProgress(0)
     setWebinarEditVideoAudioCheck(null); setWebinarEditVideoDurationSeconds(null)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -7961,108 +8366,1108 @@ export default function AdminDashboard() {
     setLiveTitle(''); setLiveDescription(''); setLiveJoinUrl('')
     setLiveProvider('Google Meet')
     setLiveAccess('free'); setLivePrice('0')
+    setLiveSpeakerName('')
+    setLiveSpeakerBadge('Featured Speaker')
+    setLiveSpeakerPhotoUrl('')
+    setLiveSpeakerPhotoFile(null)
+    setLiveBioText('')
+    setLiveTagsText('')
+    setLiveHighlights([
+      { title: '', subtitle: '' },
+      { title: '', subtitle: '' },
+      { title: '', subtitle: '' }
+    ])
+    setLiveIsFeatured(true)
     setStartDate(''); setStartHour(''); setStartMinute('00'); setStartPeriod('AM')
     setHasEndTime(false); setEndDate(''); setEndHour(''); setEndMinute('00'); setEndPeriod('AM')
+    setHasRegStartTime(false); setRegStartDate(''); setRegStartHour(''); setRegStartMinute('00'); setRegStartPeriod('AM')
+    setRegEndType('webinar_end'); setRegEndDate(''); setRegEndHour(''); setRegEndMinute('00'); setRegEndPeriod('AM')
     setWebinarEditVideoFile(null); setWebinarEditVideoUploadStatus('idle'); setWebinarEditVideoUploadProgress(0)
     setWebinarEditVideoAudioCheck(null); setWebinarEditVideoDurationSeconds(null)
   }
 
+  const renderRegistrationFields = () => (
+    <div className="rounded-2xl border border-violet-200 dark:border-violet-900/50 p-4 bg-violet-50/40 dark:bg-violet-950/20 space-y-3.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <CalendarDays size={16} className="text-violet-600 dark:text-violet-400" />
+          <span className="text-xs font-black uppercase tracking-wider text-brand-text dark:text-white">
+            Registration Window (Button Timing)
+          </span>
+        </div>
+        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/60 text-violet-700 dark:text-violet-300">
+          3-Time Control
+        </span>
+      </div>
+
+      {/* 1. Registration Start */}
+      <div className="rounded-xl border border-brand-border dark:border-brand-dark-border p-3 bg-white dark:bg-brand-dark-card space-y-2">
+        <label className="flex items-center gap-2.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={hasRegStartTime}
+            onChange={e => {
+              const checked = e.target.checked
+              setHasRegStartTime(checked)
+              if (checked && !regStartDate) {
+                setRegStartDate(new Date().toISOString().slice(0, 10))
+                setRegStartHour('10')
+                setRegStartMinute('00')
+                setRegStartPeriod('AM')
+              }
+            }}
+            className="h-4 w-4 rounded accent-violet-600 cursor-pointer"
+          />
+          <div className="flex-1">
+            <span className="text-xs font-bold text-brand-text dark:text-white">
+              1. Registration Start Time
+            </span>
+            <p className="text-[11px] text-brand-muted">
+              {hasRegStartTime ? 'Registration button enables at this time' : 'Defaults to open immediately upon creation'}
+            </p>
+          </div>
+        </label>
+        {hasRegStartTime && (
+          <div className="pt-2 border-t border-brand-border/60 dark:border-brand-dark-border/60">
+            {webinarTimeField('Registration Start (Button Enables)', regStartDate, setRegStartDate, regStartHour, setRegStartHour, regStartMinute, setRegStartMinute, regStartPeriod, setRegStartPeriod, true)}
+          </div>
+        )}
+      </div>
+
+      {/* 2 & 3. Registration End */}
+      <div className="rounded-xl border border-brand-border dark:border-brand-dark-border p-3 bg-white dark:bg-brand-dark-card space-y-2.5">
+        <div>
+          <label className="block text-xs font-bold text-brand-text dark:text-white mb-0.5">
+            2. Registration End (Button will disable)
+          </label>
+          <p className="text-[11px] text-brand-muted">
+            Choose when the registration button turns off:
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+          <button
+            type="button"
+            onClick={() => setRegEndType('webinar_end')}
+            className={`p-2.5 rounded-xl font-semibold border transition-all text-left ${regEndType === 'webinar_end'
+                ? 'bg-violet-600 text-white border-violet-600 shadow-sm'
+                : 'bg-gray-50 dark:bg-white/5 border-brand-border dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-100 dark:hover:bg-white/10'
+              }`}
+          >
+            <div className="font-bold text-xs">At Webinar End</div>
+            <div className={`text-[10px] mt-0.5 ${regEndType === 'webinar_end' ? 'text-violet-100' : 'text-brand-muted'}`}>
+              Stay open during live
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setRegEndType('webinar_start')}
+            className={`p-2.5 rounded-xl font-semibold border transition-all text-left ${regEndType === 'webinar_start'
+                ? 'bg-violet-600 text-white border-violet-600 shadow-sm'
+                : 'bg-gray-50 dark:bg-white/5 border-brand-border dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-100 dark:hover:bg-white/10'
+              }`}
+          >
+            <div className="font-bold text-xs">At Webinar Start</div>
+            <div className={`text-[10px] mt-0.5 ${regEndType === 'webinar_start' ? 'text-violet-100' : 'text-brand-muted'}`}>
+              Close when live starts
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setRegEndType('custom')
+              if (!regEndDate) {
+                setRegEndDate(startDate || new Date().toISOString().slice(0, 10))
+                setRegEndHour(startHour || '12')
+                setRegEndMinute(startMinute || '00')
+                setRegEndPeriod(startPeriod || 'PM')
+              }
+            }}
+            className={`p-2.5 rounded-xl font-semibold border transition-all text-left ${regEndType === 'custom'
+                ? 'bg-violet-600 text-white border-violet-600 shadow-sm'
+                : 'bg-gray-50 dark:bg-white/5 border-brand-border dark:border-brand-dark-border text-brand-text dark:text-brand-dark-text hover:bg-gray-100 dark:hover:bg-white/10'
+              }`}
+          >
+            <div className="font-bold text-xs">Custom Deadline</div>
+            <div className={`text-[10px] mt-0.5 ${regEndType === 'custom' ? 'text-violet-100' : 'text-brand-muted'}`}>
+              Pick custom time
+            </div>
+          </button>
+        </div>
+
+        {regEndType === 'custom' && (
+          <div className="pt-2 border-t border-brand-border/60 dark:border-brand-dark-border/60">
+            {webinarTimeField('Registration Deadline (Button Disables)', regEndDate, setRegEndDate, regEndHour, setRegEndHour, regEndMinute, setRegEndMinute, regEndPeriod, setRegEndPeriod, true)}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
   // ─── Webinars ────────────────────────────────────────────────────────────────
   const renderWebinars = () => {
-    const liveNow = liveWebinars.filter(w => new Date(w.startsAt) <= new Date() && (!w.endsAt || new Date(w.endsAt) > new Date()))
     return (
       <div className="space-y-8">
-        <SectionHeader title="Manage Webinars" count={webinarRecordings.length} />
-        <div className="grid lg:grid-cols-2 gap-6">
-          <div className="card p-6">
-            <div className="flex items-center gap-2 mb-5"><Radio size={18} className="text-red-500" /><h3 className="font-bold text-lg">Schedule live webinar</h3></div>
-            <div className="space-y-4">
-              <Field label="Title *"><input value={liveTitle} onChange={e => setLiveTitle(e.target.value)} className={inputCls} placeholder="Career Q&A — Placement Strategy" /></Field>
-              <Field label="Description"><textarea value={liveDescription} onChange={e => setLiveDescription(e.target.value)} className={inputCls + ' resize-none'} rows={3} /></Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Platform"><select value={liveProvider} onChange={e => setLiveProvider(e.target.value as WebinarProvider)} className={inputCls}><option>Google Meet</option><option>Zoom</option></select></Field>
-                <Field label="Join URL *"><input value={liveJoinUrl} onChange={e => setLiveJoinUrl(e.target.value)} className={inputCls} placeholder="https://meet.google.com/..." /></Field>
+        <SectionHeader title="Manage Webinars" count={liveWebinars.length + webinarRecordings.length} />
+
+        {/* Schedule live webinar (Saved directly to live_webinars table in Supabase) */}
+        <div className="card p-6 border border-violet-200/70 dark:border-white/10 bg-gradient-to-br from-violet-50/20 via-white to-indigo-50/10 dark:from-brand-dark-card dark:via-brand-dark-card dark:to-brand-dark-card shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-brand-border dark:border-brand-dark-border">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-500/20">
+                <Radio size={20} className="text-white" />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <h3 className="font-bold text-lg text-brand-text dark:text-white flex items-center gap-2">
+                  Schedule Live Webinar
+                  <span className="text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                    Saves to live_webinars
+                  </span>
+                </h3>
+                <p className="text-xs text-brand-muted mt-0.5">
+                  Schedule live sessions with speaker details, join URL, and registration controls. Stored directly in the database.
+                </p>
+              </div>
+            </div>
+
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={liveIsFeatured}
+                onChange={e => setLiveIsFeatured(e.target.checked)}
+                className="h-4 w-4 rounded accent-violet-600 cursor-pointer"
+              />
+              <span className="text-sm font-semibold text-brand-text dark:text-white">
+                Feature as Main Banner on /courses
+              </span>
+            </label>
+          </div>
+
+          <div className="grid lg:grid-cols-12 gap-6 mt-6">
+            {/* Left: Session Details (7 cols) */}
+            <div className="lg:col-span-7 space-y-4">
+              <div className="text-xs font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400 flex items-center gap-1.5">
+                <Radio size={14} /> Session Information
+              </div>
+
+              <Field label="Webinar Title *">
+                <input
+                  value={liveTitle}
+                  onChange={e => setLiveTitle(e.target.value)}
+                  className={inputCls}
+                  placeholder="e.g., Masterclass on Generative AI & Career Roadmap"
+                />
+              </Field>
+
+              <Field label="Description">
+                <textarea
+                  value={liveDescription}
+                  onChange={e => setLiveDescription(e.target.value)}
+                  className={inputCls + ' resize-none'}
+                  rows={3}
+                  placeholder="What students will learn in this live webinar session..."
+                />
+              </Field>
+
+              <div className="grid sm:grid-cols-2 gap-3">
+                <Field label="Platform">
+                  <select
+                    value={liveProvider}
+                    onChange={e => setLiveProvider(e.target.value as WebinarProvider)}
+                    className={inputCls}
+                  >
+                    <option>Google Meet</option>
+                    <option>Zoom</option>
+                  </select>
+                </Field>
+                <Field label="Join / Registration URL *">
+                  <input
+                    value={liveJoinUrl}
+                    onChange={e => setLiveJoinUrl(e.target.value)}
+                    className={inputCls}
+                    placeholder="https://meet.google.com/... or Google Form"
+                  />
+                </Field>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-3">
                 <Field label="Access">
-                  <select value={liveAccess} onChange={e => setLiveAccess(e.target.value as WebinarAccess)} className={inputCls}>
+                  <select
+                    value={liveAccess}
+                    onChange={e => setLiveAccess(e.target.value as WebinarAccess)}
+                    className={inputCls}
+                  >
                     <option value="free">Free for everyone</option>
                     <option value="paid">Paid for everyone</option>
                     <option value="enrolled_free">Free for enrolled students, paid for others</option>
                   </select>
                 </Field>
                 <Field label="Price (₹)">
-                  <input type="number" min="0" step="1" value={livePrice} disabled={liveAccess === 'free'} onChange={e => setLivePrice(e.target.value)} className={inputCls} placeholder="499" />
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={livePrice}
+                    disabled={liveAccess === 'free'}
+                    onChange={e => setLivePrice(e.target.value)}
+                    className={inputCls}
+                    placeholder="0"
+                  />
                 </Field>
               </div>
-              {liveAccess === 'enrolled_free' && <p className="text-xs text-violet-600 dark:text-violet-300 -mt-2">Students with any active course enrollment get this webinar free. Everyone else sees the paid price.</p>}
-              <div className="space-y-3">
+
+              {/* Schedule time */}
+              <div className="space-y-3 pt-2">
                 {webinarTimeField('Start time *', startDate, setStartDate, startHour, setStartHour, startMinute, setStartMinute, startPeriod, setStartPeriod)}
                 <div className="rounded-xl border border-brand-border dark:border-brand-dark-border px-3 py-3">
                   <label className="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" checked={hasEndTime} onChange={e => { const checked = e.target.checked; setHasEndTime(checked); if (checked) { setEndDate(endDate || startDate); setEndHour(endHour || startHour || '12'); setEndMinute(endMinute || '00'); setEndPeriod(endHour ? endPeriod : startPeriod) } }} className="h-4 w-4 rounded" />
+                    <input
+                      type="checkbox"
+                      checked={hasEndTime}
+                      onChange={e => {
+                        const checked = e.target.checked
+                        setHasEndTime(checked)
+                        if (checked) {
+                          setEndDate(endDate || startDate)
+                          setEndHour(endHour || startHour || '12')
+                          setEndMinute(endMinute || '00')
+                          setEndPeriod(endHour ? endPeriod : startPeriod)
+                        }
+                      }}
+                      className="h-4 w-4 rounded"
+                    />
                     <span className="text-sm font-semibold text-brand-text dark:text-brand-dark-text">Add an end time</span>
                     <span className="text-xs font-medium text-brand-muted">Optional</span>
                   </label>
                   {!hasEndTime && <p className="text-xs text-brand-muted mt-2 ml-7">Leave this off if you want to end the webinar manually.</p>}
                 </div>
                 {hasEndTime && webinarTimeField('End time', endDate, setEndDate, endHour, setEndHour, endMinute, setEndMinute, endPeriod, setEndPeriod, true)}
+
+                {/* 3-Time Registration Window */}
+                {renderRegistrationFields()}
               </div>
-              <div className="flex gap-3">
-                <button disabled={webinarBusy} onClick={async () => {
+            </div>
+
+            {/* Right: Speaker & Banner Details (5 cols) */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className="text-xs font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400 flex items-center gap-1.5">
+                <Sparkles size={14} /> Speaker & Profile Details
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-3">
+                <Field label="Speaker Name">
+                  <input
+                    value={liveSpeakerName}
+                    onChange={e => setLiveSpeakerName(e.target.value)}
+                    className={inputCls}
+                    placeholder="e.g. Dr. Anubhav Bajpai"
+                  />
+                </Field>
+                <Field label="Badge Label">
+                  <input
+                    value={liveSpeakerBadge}
+                    onChange={e => setLiveSpeakerBadge(e.target.value)}
+                    className={inputCls}
+                    placeholder="Featured Speaker"
+                  />
+                </Field>
+              </div>
+
+              <div className="space-y-2">
+                <Field label="Speaker Photo URL (or Upload below)">
+                  <input
+                    value={liveSpeakerPhotoUrl}
+                    onChange={e => setLiveSpeakerPhotoUrl(e.target.value)}
+                    className={inputCls}
+                    placeholder="https://... image URL"
+                  />
+                </Field>
+                <Field label="Or Upload Speaker Photo">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={e => setLiveSpeakerPhotoFile(e.target.files?.[0] || null)}
+                    className={inputCls}
+                  />
+                </Field>
+                {liveSpeakerPhotoUrl && (
+                  <div className="flex items-center gap-3 p-2 rounded-xl bg-violet-50/60 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800">
+                    <img
+                      src={liveSpeakerPhotoUrl}
+                      alt="Speaker Preview"
+                      className="w-10 h-10 rounded-lg object-cover border border-violet-300 dark:border-violet-700"
+                      onError={e => { (e.target as HTMLElement).style.display = 'none' }}
+                    />
+                    <div className="text-xs truncate flex-1">
+                      <p className="font-semibold text-brand-text dark:text-white truncate">{liveSpeakerName || 'Speaker'}</p>
+                      <p className="text-brand-muted truncate text-[10px]">{liveSpeakerPhotoUrl}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <Field label="Speaker Bio / Intro">
+                <textarea
+                  rows={4}
+                  value={liveBioText}
+                  onChange={e => setLiveBioText(e.target.value)}
+                  className={inputCls}
+                  placeholder="Speaker bio, achievements, credentials..."
+                />
+              </Field>
+
+              <Field label="Expertise Tags (comma-separated)">
+                <input
+                  value={liveTagsText}
+                  onChange={e => setLiveTagsText(e.target.value)}
+                  className={inputCls}
+                  placeholder="AI, Machine Learning, Data Science"
+                />
+              </Field>
+
+              {/* 3 Highlights */}
+              <div className="rounded-2xl border border-brand-border dark:border-brand-dark-border p-3.5 bg-white/70 dark:bg-black/20 space-y-2.5">
+                <h4 className="font-bold text-xs text-brand-text dark:text-white flex items-center gap-1.5">
+                  <Trophy size={14} className="text-amber-500" />
+                  Key Highlights / Takeaways (up to 3)
+                </h4>
+
+                {[0, 1, 2].map(idx => {
+                  const hl = liveHighlights[idx] || { title: '', subtitle: '' }
+                  return (
+                    <div key={idx} className="p-2.5 rounded-xl bg-gray-50/80 dark:bg-white/5 border border-brand-border/60 dark:border-brand-dark-border/60 space-y-1">
+                      <div className="text-[10px] font-bold text-violet-600 dark:text-violet-400">
+                        Highlight #{idx + 1}
+                      </div>
+                      <div className="space-y-1">
+                        <input
+                          value={hl.title}
+                          onChange={e => {
+                            const val = e.target.value
+                            setLiveHighlights(prev => {
+                              const next = [...prev]
+                              next[idx] = { ...(next[idx] || { title: '', subtitle: '' }), title: val }
+                              return next
+                            })
+                          }}
+                          placeholder={`Title (e.g. 17+ Years Experience)`}
+                          className="w-full px-2.5 py-1 text-xs rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card"
+                        />
+                        <input
+                          value={hl.subtitle}
+                          onChange={e => {
+                            const val = e.target.value
+                            setLiveHighlights(prev => {
+                              const next = [...prev]
+                              next[idx] = { ...(next[idx] || { title: '', subtitle: '' }), subtitle: val }
+                              return next
+                            })
+                          }}
+                          placeholder={`Subtitle (e.g. Industry & Research Expert)`}
+                          className="w-full px-2.5 py-1 text-xs rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card text-brand-muted"
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <button
+                type="button"
+                disabled={webinarBusy || liveSpeakerPhotoUploading}
+                onClick={async () => {
                   const startValue = buildWebinarDateTime(startDate, startHour, startMinute, startPeriod)
                   const endValue = hasEndTime ? buildWebinarDateTime(endDate, endHour, endMinute, endPeriod) : ''
-                  if (!liveTitle || !liveJoinUrl || !startValue) { toast.error('Fill all required webinar fields'); return }
-                  if (hasEndTime && !endValue) { toast.error('Complete the optional end time or turn it off'); return }
-                  if (hasEndTime && new Date(endValue).getTime() <= new Date(startValue).getTime()) { toast.error('End time must be after the start time'); return }
+                  if (!liveTitle.trim() || !liveJoinUrl.trim() || !startValue) {
+                    toast.error('Fill in webinar title, join URL, and start time')
+                    return
+                  }
+                  if (hasEndTime && !endValue) {
+                    toast.error('Complete the optional end time or uncheck it')
+                    return
+                  }
+                  if (hasEndTime && new Date(endValue).getTime() <= new Date(startValue).getTime()) {
+                    toast.error('End time must be after the start time')
+                    return
+                  }
+
+                  // 3-Time Registration Logic
+                  const regStartValue = hasRegStartTime ? buildWebinarDateTime(regStartDate, regStartHour, regStartMinute, regStartPeriod) : null
+                  let regEndValue: string | null = null
+                  if (regEndType === 'webinar_end') {
+                    regEndValue = endValue ? new Date(endValue).toISOString() : null
+                  } else if (regEndType === 'webinar_start') {
+                    regEndValue = new Date(startValue).toISOString()
+                  } else if (regEndType === 'custom') {
+                    const customEnd = buildWebinarDateTime(regEndDate, regEndHour, regEndMinute, regEndPeriod)
+                    regEndValue = customEnd ? new Date(customEnd).toISOString() : null
+                  }
+
                   try {
                     setWebinarBusy(true)
-                    const payload = { title: liveTitle, description: liveDescription, provider: liveProvider, joinUrl: liveJoinUrl, startsAt: new Date(startValue).toISOString(), endsAt: endValue ? new Date(endValue).toISOString() : null, access: liveAccess, price: liveAccess === 'free' ? 0 : Math.max(0, Number(livePrice) || 0) }
+                    let finalPhotoUrl = liveSpeakerPhotoUrl.trim()
+                    if (liveSpeakerPhotoFile) {
+                      setLiveSpeakerPhotoUploading(true)
+                      finalPhotoUrl = await uploadSpeakerPhoto(liveSpeakerPhotoFile)
+                      setLiveSpeakerPhotoUploading(false)
+                    }
+
+                    const bioArray = liveBioText.split('\n\n').map(s => s.trim()).filter(Boolean)
+                    const tagsArray = liveTagsText.split(',').map(s => s.trim()).filter(Boolean)
+                    const highlightsArray = liveHighlights.filter(h => h.title.trim() || h.subtitle.trim())
+
+                    const payload = {
+                      title: liveTitle.trim(),
+                      description: liveDescription.trim(),
+                      provider: liveProvider,
+                      joinUrl: liveJoinUrl.trim(),
+                      startsAt: new Date(startValue).toISOString(),
+                      endsAt: endValue ? new Date(endValue).toISOString() : null,
+                      access: liveAccess,
+                      price: liveAccess === 'free' ? 0 : Math.max(0, Number(livePrice) || 0),
+                      speakerName: liveSpeakerName.trim() || undefined,
+                      speakerBadge: liveSpeakerBadge.trim() || undefined,
+                      speakerPhotoUrl: finalPhotoUrl || undefined,
+                      speakerBio: bioArray.length ? bioArray : undefined,
+                      tags: tagsArray.length ? tagsArray : undefined,
+                      highlights: highlightsArray.length ? highlightsArray : undefined,
+                      isFeatured: liveIsFeatured,
+                      registrationStartsAt: regStartValue ? new Date(regStartValue).toISOString() : null,
+                      registrationEndsAt: regEndValue,
+                    }
+
                     const created = await createLiveWebinar(payload)
                     setLiveWebinars(prev => [...prev, created])
-                    toast.success('Live webinar scheduled')
+                    toast.success('Live webinar scheduled and saved to live_webinars table!')
                     resetWebinarForm()
-                  } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to save webinar') } finally { setWebinarBusy(false) }
-                }} className="w-full py-3 rounded-xl bg-primary-500 text-white font-semibold">Schedule webinar</button>
-              </div>
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : 'Failed to schedule webinar')
+                  } finally {
+                    setWebinarBusy(false)
+                    setLiveSpeakerPhotoUploading(false)
+                  }
+                }}
+                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-bold flex items-center justify-center gap-2 shadow-lg shadow-violet-500/25 transition-all hover:shadow-xl hover:shadow-violet-500/30 disabled:opacity-50 cursor-pointer"
+              >
+                {webinarBusy || liveSpeakerPhotoUploading ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    {liveSpeakerPhotoUploading ? 'Uploading Speaker Photo...' : 'Saving to Database...'}
+                  </>
+                ) : (
+                  <>
+                    <Radio size={18} />
+                    Schedule & Save Webinar
+                  </>
+                )}
+              </button>
             </div>
           </div>
+        </div>
 
-          <div className="card p-6">
-            <div className="flex items-center gap-2 mb-5"><Video size={18} className="text-violet-500" /><h3 className="font-bold text-lg">Store webinar recording</h3></div>
-            <div className="space-y-4">
-              <Field label="Recording title *"><input value={recordingTitle} onChange={e => setRecordingTitle(e.target.value)} className={inputCls} /></Field>
-              <Field label="Description"><textarea value={recordingDescription} onChange={e => setRecordingDescription(e.target.value)} className={inputCls + ' resize-none'} rows={3} /></Field>
-              <div className="grid grid-cols-2 gap-3"><Field label="Session date"><input type="date" value={recordingDate} onChange={e => setRecordingDate(e.target.value)} className={inputCls} /></Field><Field label="Video duration (automatic)"><input value={recordingDurationLoading ? 'Detecting duration...' : recordingDuration} readOnly className={inputCls + ' bg-gray-50 dark:bg-white/5 cursor-not-allowed'} placeholder="Select a video first" /></Field></div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Field label="Replay access">
-                  <select value={recordingAccess} onChange={e => setRecordingAccess(e.target.value as WebinarAccess)} className={inputCls}>
-                    <option value="free">Free for everyone</option>
-                    <option value="paid">Paid for everyone</option>
-                    <option value="enrolled_free">Free for enrolled students, paid for others</option>
-                  </select>
-                </Field>
-                <Field label="Price (₹)">
-                  <input type="number" min="0" step="1" value={recordingPrice} disabled={recordingAccess !== 'paid' && recordingAccess !== 'enrolled_free'} onChange={e => setRecordingPrice(e.target.value)} className={inputCls} placeholder="299" />
-                </Field>
-              </div>
-              {recordingAccess === 'enrolled_free' && <p className="text-xs text-violet-600 dark:text-violet-300 -mt-2">Any active course-enrolled student gets the replay free; everyone else sees the paid price.</p>}
-              <Field label="Video file *"><input type="file" accept="video/*" onChange={e => setRecordingFile(e.target.files?.[0] ?? null)} className={inputCls} /></Field>
-              {recordingFile && <div className="rounded-xl border border-brand-border dark:border-brand-dark-border p-3 bg-gray-50 dark:bg-white/5"><div className="flex items-center justify-between text-xs mb-1.5"><span className="font-semibold text-brand-text dark:text-brand-dark-text truncate mr-3">{recordingFile.name}</span><span className="text-brand-muted">{(recordingFile.size / 1024 / 1024).toFixed(2)} MB</span></div><div className="h-1.5 rounded-full bg-gray-200 dark:bg-white/10 overflow-hidden"><motion.div className="h-full bg-violet-600 rounded-full" animate={{ width: `${recordingUploadProgress}%` }} /></div>{webinarBusy && <p className="mt-1.5 text-[10px] font-semibold text-brand-muted">Uploading {recordingUploadProgress}%...</p>}</div>}
-              <button disabled={webinarBusy || !recordingFile || !recordingTitle.trim()} onClick={async () => { let uploadedWebinarRef: string | null = null; try { setWebinarBusy(true); setRecordingUploadProgress(0); let duration = recordingDuration; if (!duration) { const seconds = await getVideoDurationSeconds(recordingFile!); if (seconds != null) duration = formatDurationHuman(seconds) } if (!duration) { throw new Error('Could not read the video duration. Please choose a valid video file and try again.') } uploadedWebinarRef = await uploadWebinarVideo(recordingFile!, recordingDate, p => setRecordingUploadProgress(p)); const created = await createWebinarRecording({ title: recordingTitle.trim(), description: recordingDescription.trim(), sessionDate: recordingDate, videoUrl: uploadedWebinarRef, duration, access: recordingAccess, price: recordingAccess === 'free' ? 0 : Math.max(0, Number(recordingPrice) || 0) }); setWebinarRecordings(prev => [created, ...prev]); setRecordingTitle(''); setRecordingDescription(''); setRecordingFile(null); setRecordingDuration(''); setRecordingAccess('free'); setRecordingPrice('0'); setRecordingUploadProgress(0); toast.success('Webinar recording published') } catch (e) { if (uploadedWebinarRef && isBackblazeRef(uploadedWebinarRef)) { await deleteBackblazeFile(uploadedWebinarRef).catch(() => { }) } toast.error(e instanceof Error ? e.message : 'Failed to upload recording') } finally { setWebinarBusy(false) } }} className="w-full py-3 rounded-xl bg-violet-600 text-white font-semibold disabled:opacity-50">{webinarBusy ? 'Uploading replay...' : 'Upload & publish replay'}</button>
+
+        <div className="card p-6">
+          <div className="flex items-center gap-2 mb-5"><Video size={18} className="text-violet-500" /><h3 className="font-bold text-lg">Store webinar recording</h3></div>
+          <div className="space-y-4">
+            <Field label="Recording title *"><input value={recordingTitle} onChange={e => setRecordingTitle(e.target.value)} className={inputCls} /></Field>
+            <Field label="Description"><textarea value={recordingDescription} onChange={e => setRecordingDescription(e.target.value)} className={inputCls + ' resize-none'} rows={3} /></Field>
+            <div className="grid grid-cols-2 gap-3"><Field label="Session date"><input type="date" value={recordingDate} onChange={e => setRecordingDate(e.target.value)} className={inputCls} /></Field><Field label="Video duration (automatic)"><input value={recordingDurationLoading ? 'Detecting duration...' : recordingDuration} readOnly className={inputCls + ' bg-gray-50 dark:bg-white/5 cursor-not-allowed'} placeholder="Select a video first" /></Field></div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="Replay access">
+                <select value={recordingAccess} onChange={e => setRecordingAccess(e.target.value as WebinarAccess)} className={inputCls}>
+                  <option value="free">Free for everyone</option>
+                  <option value="paid">Paid for everyone</option>
+                  <option value="enrolled_free">Free for enrolled students, paid for others</option>
+                </select>
+              </Field>
+              <Field label="Price (₹)">
+                <input type="number" min="0" step="1" value={recordingPrice} disabled={recordingAccess !== 'paid' && recordingAccess !== 'enrolled_free'} onChange={e => setRecordingPrice(e.target.value)} className={inputCls} placeholder="299" />
+              </Field>
             </div>
+            {recordingAccess === 'enrolled_free' && <p className="text-xs text-violet-600 dark:text-violet-300 -mt-2">Any active course-enrolled student gets the replay free; everyone else sees the paid price.</p>}
+            <Field label="Video file *"><input type="file" accept="video/*" onChange={e => setRecordingFile(e.target.files?.[0] ?? null)} className={inputCls} /></Field>
+            {recordingFile && <div className="rounded-xl border border-brand-border dark:border-brand-dark-border p-3 bg-gray-50 dark:bg-white/5"><div className="flex items-center justify-between text-xs mb-1.5"><span className="font-semibold text-brand-text dark:text-brand-dark-text truncate mr-3">{recordingFile.name}</span><span className="text-brand-muted">{(recordingFile.size / 1024 / 1024).toFixed(2)} MB</span></div><div className="h-1.5 rounded-full bg-gray-200 dark:bg-white/10 overflow-hidden"><motion.div className="h-full bg-violet-600 rounded-full" animate={{ width: `${recordingUploadProgress}%` }} /></div>{webinarBusy && <p className="mt-1.5 text-[10px] font-semibold text-brand-muted">Uploading {recordingUploadProgress}%...</p>}</div>}
+            <button disabled={webinarBusy || !recordingFile || !recordingTitle.trim()} onClick={async () => { let uploadedWebinarRef: string | null = null; try { setWebinarBusy(true); setRecordingUploadProgress(0); let duration = recordingDuration; if (!duration) { const seconds = await getVideoDurationSeconds(recordingFile!); if (seconds != null) duration = formatDurationHuman(seconds) } if (!duration) { throw new Error('Could not read the video duration. Please choose a valid video file and try again.') } uploadedWebinarRef = await uploadWebinarVideo(recordingFile!, recordingDate, p => setRecordingUploadProgress(p)); const created = await createWebinarRecording({ title: recordingTitle.trim(), description: recordingDescription.trim(), sessionDate: recordingDate, videoUrl: uploadedWebinarRef, duration, access: recordingAccess, price: recordingAccess === 'free' ? 0 : Math.max(0, Number(recordingPrice) || 0) }); setWebinarRecordings(prev => [created, ...prev]); setRecordingTitle(''); setRecordingDescription(''); setRecordingFile(null); setRecordingDuration(''); setRecordingAccess('free'); setRecordingPrice('0'); setRecordingUploadProgress(0); toast.success('Webinar recording published') } catch (e) { if (uploadedWebinarRef && isBackblazeRef(uploadedWebinarRef)) { await deleteBackblazeFile(uploadedWebinarRef).catch(() => { }) } toast.error(e instanceof Error ? e.message : 'Failed to upload recording') } finally { setWebinarBusy(false) } }} className="w-full py-3 rounded-xl bg-violet-600 text-white font-semibold disabled:opacity-50">{webinarBusy ? 'Uploading replay...' : 'Upload & publish replay'}</button>
           </div>
         </div>
 
         <div className="card overflow-hidden">
-          <div className="p-5 border-b border-brand-border dark:border-brand-dark-border"><h3 className="font-bold">Scheduled sessions</h3></div>
-          {liveWebinars.length === 0 ? <p className="p-6 text-sm text-brand-muted">No live sessions scheduled.</p> : <div className="divide-y divide-brand-border dark:divide-brand-dark-border">{liveWebinars.map(w => { const ongoing = new Date(w.startsAt) <= new Date() && (!w.endsAt || new Date(w.endsAt) > new Date()); return <div key={w.id} className="p-4 flex items-center justify-between gap-4"><div><div className="flex items-center gap-2"><span className="font-semibold">{w.title}</span>{ongoing && <StatusBadge status="Ongoing" />}</div><div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs"><span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 font-bold border border-violet-200 dark:border-violet-800"><Clock size={12} className="text-violet-500" />{new Date(w.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}{w.endsAt && ` to ${new Date(w.endsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`}</span><span className="text-brand-muted">·</span><span className="text-brand-muted">{w.provider}</span><span className="text-brand-muted">·</span><span className={`font-semibold ${w.access === 'free' ? 'text-emerald-600' : 'text-amber-600'}`}>{w.access === 'free' ? 'Free' : w.access === 'enrolled_free' ? `Enrolled free (₹${w.price})` : `Paid · ₹${w.price}`}</span></div></div><div className="flex items-center gap-2">{new Date(w.startsAt).getTime() > Date.now() && <button onClick={() => loadWebinarIntoForm(w)} className="p-2 text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg" title="Edit upcoming webinar"><Edit2 size={15} /></button>}<a href={w.joinUrl} target="_blank" rel="noreferrer" className="p-2 text-primary-500"><ExternalLink size={15} /></a><button onClick={async () => { try { await deleteLiveWebinar(w.id); setLiveWebinars(prev => prev.filter(x => x.id !== w.id)); toast.success('Webinar deleted') } catch (e) { toast.error(e instanceof Error ? e.message : 'Delete failed') } }} className="p-2 text-red-500"><Trash2 size={15} /></button></div></div> })}</div>}
+          <div className="p-5 border-b border-brand-border dark:border-brand-dark-border flex items-center justify-between">
+            <h3 className="font-bold">Scheduled live sessions</h3>
+            <span className="text-xs text-brand-muted">{liveWebinars.length} session{liveWebinars.length !== 1 ? 's' : ''} in database</span>
+          </div>
+          {liveWebinars.length === 0 ? (
+            <p className="p-6 text-sm text-brand-muted">No live sessions scheduled.</p>
+          ) : (
+            <div className="divide-y divide-brand-border dark:divide-brand-dark-border">
+              {liveWebinars.map(w => {
+                const timing = getWebinarTimingState(w)
+                return (
+                  <div key={w.id} className="p-4 flex items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold">{w.title}</span>
+                        {w.speakerName && (
+                          <span className="text-xs px-2 py-0.5 rounded bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 font-medium border border-violet-200 dark:border-violet-800">
+                            by {w.speakerName}
+                          </span>
+                        )}
+                        {w.isFeatured && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                            Featured Banner
+                          </span>
+                        )}
+                        {timing.isWebinarLive && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-ping" />
+                            Live Now
+                          </span>
+                        )}
+                        {timing.isRegOpen && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                            Reg: Open
+                          </span>
+                        )}
+                        {timing.isRegUpcoming && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                            Reg: Soon
+                          </span>
+                        )}
+                        {timing.isRegClosed && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-gray-100 dark:bg-white/10 text-gray-500 border border-gray-200 dark:border-white/10">
+                            Reg: Closed
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 font-bold border border-violet-200 dark:border-violet-800">
+                          <Clock size={12} className="text-violet-500" />
+                          {new Date(w.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
+                          {w.endsAt && ` to ${new Date(w.endsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`}
+                        </span>
+                        <span className="text-brand-muted">·</span>
+                        <span className="text-brand-muted">{w.provider}</span>
+                        <span className="text-brand-muted">·</span>
+                        <span className={`font-semibold ${w.access === 'free' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                          {w.access === 'free' ? 'Free' : w.access === 'enrolled_free' ? `Enrolled free (₹${w.price})` : `Paid · ₹${w.price}`}
+                        </span>
+
+                        {(() => {
+                          const regCount = paymentRequests.filter(p => p.courseId === w.id && (p.status === 'paid' || p.status === 'free')).length
+                          const pendCount = paymentRequests.filter(p => p.courseId === w.id && p.status === 'pending').length
+                          return (
+                            <div className="flex items-center gap-1.5 ml-1">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40">
+                                <Users size={11} /> {regCount} Registered
+                              </span>
+                              {pendCount > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveTab('payment-approvals')
+                                    setPaymentFilter('pending')
+                                    setSearch(w.title)
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-300 dark:border-amber-800/50 hover:bg-amber-100 transition-colors animate-pulse"
+                                  title="Pending verification - Click to view approvals"
+                                >
+                                  <Clock size={11} /> {pendCount} Pending Review
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })()}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setViewWebinarAttendees(w)}
+                        className="p-2 text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/20 rounded-lg"
+                        title="View Registered Students"
+                      >
+                        <Users size={15} />
+                      </button>
+                      <button
+                        onClick={() => loadWebinarIntoForm(w)}
+                        className="p-2 text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg"
+                        title="Edit webinar"
+                      >
+                        <Edit2 size={15} />
+                      </button>
+                      <a href={w.joinUrl} target="_blank" rel="noreferrer" className="p-2 text-primary-500" title="Open join URL">
+                        <ExternalLink size={15} />
+                      </a>
+                      <button
+                        onClick={async () => {
+                          if (!window.confirm(`Delete live webinar "${w.title}"?`)) return
+                          try {
+                            await deleteLiveWebinar(w.id)
+                            setLiveWebinars(prev => prev.filter(x => x.id !== w.id))
+                            toast.success('Webinar deleted')
+                          } catch (e) {
+                            toast.error(e instanceof Error ? e.message : 'Delete failed')
+                          }
+                        }}
+                        className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+                        title="Delete webinar"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
+
+        {/* All Webinar Registrations & Attendees (Full View & CSV Export) */}
+        {(() => {
+          const liveWebinarIds = new Set(liveWebinars.map(w => w.id))
+          const allWebinarRegistrations = paymentRequests.filter(
+            p => p.itemType === 'webinar' || liveWebinarIds.has(p.courseId) || p.itemTitle?.toLowerCase().includes('webinar')
+          )
+
+          const q = webinarRegSearch.toLowerCase().trim()
+          const filteredWebinarRegs = allWebinarRegistrations.filter(r => {
+            if (webinarRegWebinarFilter !== 'all') {
+              const matchesId = r.courseId === webinarRegWebinarFilter
+              const matchesTitle = (r.itemTitle || '').toLowerCase().includes(webinarRegWebinarFilter.toLowerCase())
+              if (!matchesId && !matchesTitle) return false
+            }
+            if (webinarRegStatusFilter === 'approved') {
+              if (r.status !== 'paid' && r.status !== 'free') return false
+            } else if (webinarRegStatusFilter === 'pending') {
+              if (r.status !== 'pending') return false
+            } else if (webinarRegStatusFilter === 'rejected') {
+              if (r.status !== 'rejected') return false
+            }
+            if (q) {
+              const fullName = `${r.firstName || ''} ${r.lastName || ''}`.toLowerCase()
+              const email = (r.email || '').toLowerCase()
+              const phone = (r.phone || '').toLowerCase()
+              const utr = (r.utrNumber || '').toLowerCase()
+              const title = (r.itemTitle || '').toLowerCase()
+              if (!fullName.includes(q) && !email.includes(q) && !phone.includes(q) && !utr.includes(q) && !title.includes(q)) {
+                return false
+              }
+            }
+            return true
+          })
+
+          const approvedCount = allWebinarRegistrations.filter(r => r.status === 'paid' || r.status === 'free').length
+          const pendingCount = allWebinarRegistrations.filter(r => r.status === 'pending').length
+          const rejectedCount = allWebinarRegistrations.filter(r => r.status === 'rejected').length
+          const totalRevenue = allWebinarRegistrations
+            .filter(r => r.status === 'paid')
+            .reduce((sum, r) => sum + (r.amount || 0), 0)
+
+          return (
+            <div className="card overflow-hidden border border-violet-200/70 dark:border-white/10 shadow-sm">
+              {/* Header */}
+              <div className="p-5 border-b border-brand-border dark:border-brand-dark-border flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-violet-50/40 via-transparent to-emerald-50/30 dark:from-violet-950/20 dark:to-emerald-950/20">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-500/20">
+                    <Users size={20} className="text-white" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-bold text-lg text-brand-text dark:text-white">
+                        Webinar Registrations & Attendees
+                      </h3>
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300 border border-violet-200 dark:border-violet-800">
+                        {allWebinarRegistrations.length} Total
+                      </span>
+                    </div>
+                    <p className="text-xs text-brand-muted mt-0.5">
+                      Search, view all registered students across webinars, and export full reports to CSV.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => exportWebinarRegistrationsCSV(filteredWebinarRegs)}
+                    disabled={filteredWebinarRegs.length === 0}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs flex items-center gap-2 shadow-md shadow-emerald-500/20 disabled:opacity-50 transition-all cursor-pointer"
+                    title="Export filtered registrations to CSV"
+                  >
+                    <Download size={14} />
+                    Export CSV ({filteredWebinarRegs.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => loadPaymentRequests()}
+                    disabled={paymentsLoading}
+                    className="p-2.5 rounded-xl border border-brand-border dark:border-brand-dark-border text-brand-muted hover:text-brand-text hover:bg-gray-50 dark:hover:bg-white/5 transition-all cursor-pointer"
+                    title="Refresh data"
+                  >
+                    <RefreshCw size={14} className={paymentsLoading ? 'animate-spin' : ''} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Stats Summary Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 bg-gray-50/50 dark:bg-white/5 border-b border-brand-border dark:border-brand-dark-border text-xs">
+                <div className="p-3 rounded-xl bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border">
+                  <span className="text-brand-muted text-[11px] block">Total Registrations</span>
+                  <span className="text-lg font-black text-brand-text dark:text-white mt-0.5 block">{allWebinarRegistrations.length}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border">
+                  <span className="text-emerald-600 dark:text-emerald-400 font-bold text-[11px] block">Approved / Free</span>
+                  <span className="text-lg font-black text-emerald-600 dark:text-emerald-400 mt-0.5 block">{approvedCount}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border">
+                  <span className="text-amber-600 dark:text-amber-400 font-bold text-[11px] block">Pending Review</span>
+                  <span className="text-lg font-black text-amber-600 dark:text-amber-400 mt-0.5 block">{pendingCount}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border">
+                  <span className="text-violet-600 dark:text-violet-400 font-bold text-[11px] block">Paid Revenue</span>
+                  <span className="text-lg font-black text-violet-600 dark:text-violet-400 mt-0.5 block">₹{totalRevenue.toLocaleString()}</span>
+                </div>
+              </div>
+
+              {/* Search & Filter Controls */}
+              <div className="p-4 border-b border-brand-border dark:border-brand-dark-border flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white dark:bg-brand-dark-card">
+                <div className="relative flex-1">
+                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brand-muted" />
+                  <input
+                    type="text"
+                    value={webinarRegSearch}
+                    onChange={(e) => setWebinarRegSearch(e.target.value)}
+                    placeholder="Search by student name, email, phone, UTR, or session..."
+                    className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-brand-border dark:border-brand-dark-border bg-gray-50 dark:bg-white/5 focus:bg-white dark:focus:bg-brand-dark-card transition-colors outline-none"
+                  />
+                  {webinarRegSearch && (
+                    <button
+                      onClick={() => setWebinarRegSearch('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-brand-muted hover:text-brand-text"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={webinarRegWebinarFilter}
+                    onChange={(e) => setWebinarRegWebinarFilter(e.target.value)}
+                    className="px-3 py-2 text-xs rounded-xl border border-brand-border dark:border-brand-dark-border bg-gray-50 dark:bg-white/5 font-medium"
+                  >
+                    <option value="all">All Webinars ({liveWebinars.length})</option>
+                    {liveWebinars.map(w => (
+                      <option key={w.id} value={w.id}>{w.title}</option>
+                    ))}
+                  </select>
+
+                  <div className="flex items-center gap-1 bg-gray-100 dark:bg-white/5 p-1 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setWebinarRegStatusFilter('all')}
+                      className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${webinarRegStatusFilter === 'all' ? 'bg-white dark:bg-brand-dark-card text-brand-text dark:text-white shadow-xs' : 'text-brand-muted hover:text-brand-text'}`}
+                    >
+                      All ({allWebinarRegistrations.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWebinarRegStatusFilter('approved')}
+                      className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${webinarRegStatusFilter === 'approved' ? 'bg-emerald-500 text-white shadow-xs' : 'text-emerald-600 hover:text-emerald-700'}`}
+                    >
+                      Approved ({approvedCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWebinarRegStatusFilter('pending')}
+                      className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${webinarRegStatusFilter === 'pending' ? 'bg-amber-500 text-white shadow-xs' : 'text-amber-600 hover:text-amber-700'}`}
+                    >
+                      Pending ({pendingCount})
+                    </button>
+                    {rejectedCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setWebinarRegStatusFilter('rejected')}
+                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${webinarRegStatusFilter === 'rejected' ? 'bg-red-500 text-white shadow-xs' : 'text-red-500 hover:text-red-600'}`}
+                      >
+                        Rejected ({rejectedCount})
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Table / List */}
+              {filteredWebinarRegs.length === 0 ? (
+                <div className="p-12 text-center text-brand-muted text-xs">
+                  <Users size={32} className="mx-auto text-gray-300 dark:text-white/20 mb-2" />
+                  {allWebinarRegistrations.length === 0
+                    ? 'No students have registered for any webinar yet.'
+                    : 'No webinar registrations match your search / filter.'}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50/80 dark:bg-white/5 border-b border-brand-border dark:border-brand-dark-border text-[11px] font-bold uppercase tracking-wider text-brand-muted">
+                        <th className="py-3 px-4">Student</th>
+                        <th className="py-3 px-4">Webinar Session</th>
+                        <th className="py-3 px-4">Amount</th>
+                        <th className="py-3 px-4">UTR / Transaction</th>
+                        <th className="py-3 px-4">Status</th>
+                        <th className="py-3 px-4">Date</th>
+                        <th className="py-3 px-4 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-brand-border dark:divide-brand-dark-border">
+                      {filteredWebinarRegs.map((reg) => {
+                        const isApproved = reg.status === 'paid' || reg.status === 'free'
+                        const isPending = reg.status === 'pending'
+
+                        return (
+                          <tr key={reg.id} className="hover:bg-gray-50/60 dark:hover:bg-white/5 transition-colors">
+                            <td className="py-3 px-4">
+                              <p className="font-bold text-brand-text dark:text-white">
+                                {reg.firstName} {reg.lastName}
+                              </p>
+                              <p className="text-[11px] text-brand-muted">{reg.email}</p>
+                              {reg.phone && <p className="text-[10px] text-brand-muted font-mono">{reg.phone}</p>}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className="font-semibold text-brand-text dark:text-white block truncate max-w-[220px]" title={reg.itemTitle}>
+                                {reg.itemTitle || `Webinar #${reg.courseId}`}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 font-semibold text-brand-text dark:text-white">
+                              {reg.amount > 0 ? `₹${reg.amount}` : <span className="text-emerald-600 font-bold">Free</span>}
+                            </td>
+                            <td className="py-3 px-4">
+                              {reg.utrNumber ? (
+                                <div className="flex items-center gap-1.5 font-mono text-[11px] text-violet-600 dark:text-violet-400">
+                                  <span>{reg.utrNumber}</span>
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(reg.utrNumber!)
+                                      toast.success('UTR copied!')
+                                    }}
+                                    className="text-brand-muted hover:text-brand-text"
+                                    title="Copy UTR"
+                                  >
+                                    <Copy size={11} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-brand-muted text-[11px]">—</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4">
+                              {isApproved ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                  ✓ Approved
+                                </span>
+                              ) : isPending ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-300 dark:border-amber-800 animate-pulse">
+                                  ⏳ Pending
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-800">
+                                  ✕ Rejected
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-brand-muted text-[11px] whitespace-nowrap">
+                              {reg.createdAt ? new Date(reg.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              {isPending ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveTab('payment-approvals')
+                                    setPaymentFilter('pending')
+                                    setSearch(reg.utrNumber || reg.email)
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg text-xs font-bold bg-[#0A0A0A] dark:bg-white text-white dark:text-black hover:opacity-90 transition-opacity cursor-pointer"
+                                >
+                                  Review
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const matchedWebinar = liveWebinars.find(w => w.id === reg.courseId || reg.itemTitle?.includes(w.title))
+                                    if (matchedWebinar) {
+                                      setViewWebinarAttendees(matchedWebinar)
+                                    } else {
+                                      toast(`Registered for: ${reg.itemTitle}`)
+                                    }
+                                  }}
+                                  className="p-1.5 rounded-lg text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950/40 cursor-pointer"
+                                  title="View Details"
+                                >
+                                  <Eye size={14} />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         <div className="card overflow-hidden">
           <div className="p-5 border-b border-brand-border dark:border-brand-dark-border"><h3 className="font-bold">Published replays</h3></div>
           {webinarRecordings.length === 0 ? <p className="p-6 text-sm text-brand-muted">No recordings yet.</p> : <div className="divide-y divide-brand-border dark:divide-brand-dark-border">{webinarRecordings.map(w => <div key={w.id} className="p-4 flex items-center justify-between gap-4"><div className="min-w-0"><p className="font-semibold truncate">{w.title}</p><p className="text-xs text-brand-muted mt-1">{w.sessionDate} · {w.duration || 'Duration not set'} · {w.access === 'free' ? 'Free' : w.access === 'enrolled_free' ? `Enrolled free · ₹${w.price}` : `Paid · ₹${w.price}`}</p></div><div className="flex items-center gap-3 shrink-0">{w.videoUrl && <a href={w.videoUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-violet-600">Watch</a>}<button onClick={async () => { if (!window.confirm(`Delete replay \"${w.title}\"? This removes the stored video and database entry.`)) return; try { setWebinarBusy(true); await deleteWebinarRecording(w); setWebinarRecordings(prev => prev.filter(x => x.id !== w.id)); toast.success('Webinar recording deleted') } catch (e) { toast.error(e instanceof Error ? e.message : 'Delete failed') } finally { setWebinarBusy(false) } }} className="p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" title="Delete replay"><Trash2 size={15} /></button></div></div>)}</div>}
         </div>
+
+        {/* Modal: View Registered Students for a Webinar */}
+        <AnimatePresence>
+          {viewWebinarAttendees && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setViewWebinarAttendees(null)}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto"
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="relative w-full max-w-2xl bg-white dark:bg-brand-dark-card rounded-3xl overflow-hidden shadow-2xl my-8 max-h-[85vh] flex flex-col"
+              >
+                <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 dark:border-brand-dark-border">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400">
+                      Webinar Registered Students
+                    </span>
+                    <h3 className="text-base font-bold text-brand-text dark:text-brand-dark-text leading-tight">
+                      {viewWebinarAttendees.title}
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {(() => {
+                      const webinarRegistrations = paymentRequests.filter(
+                        (p) => p.courseId === viewWebinarAttendees.id || p.itemTitle?.includes(viewWebinarAttendees.title)
+                      )
+                      if (webinarRegistrations.length === 0) return null
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            exportWebinarRegistrationsCSV(
+                              webinarRegistrations,
+                              `${viewWebinarAttendees.title.replace(/[^a-zA-Z0-9]/g, '_')}_Attendees.csv`
+                            )
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                          title="Download CSV for this webinar"
+                        >
+                          <Download size={13} />
+                          Export CSV ({webinarRegistrations.length})
+                        </button>
+                      )
+                    })()}
+                    <button
+                      onClick={() => setViewWebinarAttendees(null)}
+                      className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-white/10 transition-colors text-brand-muted cursor-pointer"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-6 overflow-y-auto flex-1">
+                  {(() => {
+                    const webinarRegistrations = paymentRequests.filter(
+                      (p) => p.courseId === viewWebinarAttendees.id || p.itemTitle?.includes(viewWebinarAttendees.title)
+                    )
+
+                    if (webinarRegistrations.length === 0) {
+                      return (
+                        <div className="p-8 text-center text-brand-muted text-sm">
+                          <Users size={32} className="mx-auto text-gray-300 dark:text-white/20 mb-2" />
+                          No students have registered for this webinar yet.
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between text-xs text-brand-muted pb-2 border-b border-gray-100 dark:border-white/10">
+                          <span>Total Registrations: <strong className="text-brand-text dark:text-white">{webinarRegistrations.length}</strong></span>
+                          <div className="flex gap-2">
+                            <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                              {webinarRegistrations.filter((r) => r.status === 'paid' || r.status === 'free').length} Approved
+                            </span>
+                            <span className="text-amber-600 dark:text-amber-400 font-bold">
+                              {webinarRegistrations.filter((r) => r.status === 'pending').length} Pending Review
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="divide-y divide-gray-100 dark:divide-white/10">
+                          {webinarRegistrations.map((reg) => (
+                            <div key={reg.id} className="py-3 flex items-center justify-between gap-3">
+                              <div>
+                                <p className="font-bold text-sm text-brand-text dark:text-white">
+                                  {reg.firstName} {reg.lastName}
+                                </p>
+                                <p className="text-xs text-brand-muted">{reg.email}</p>
+                                {reg.phone && <p className="text-[11px] text-brand-muted font-mono">{reg.phone}</p>}
+                                {reg.utrNumber && (
+                                  <p className="text-[11px] font-mono text-violet-600 dark:text-violet-400 mt-0.5">
+                                    UTR: {reg.utrNumber}
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {reg.status === 'paid' || reg.status === 'free' ? (
+                                  <span className="badge text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 font-bold">
+                                    ✓ Access Approved
+                                  </span>
+                                ) : reg.status === 'pending' ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="badge text-xs bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 font-bold animate-pulse">
+                                      ⏳ Pending
+                                    </span>
+                                    <button
+                                      onClick={() => {
+                                        setViewWebinarAttendees(null)
+                                        setActiveTab('payment-approvals')
+                                        setPaymentFilter('pending')
+                                        setSearch(reg.utrNumber || reg.email)
+                                      }}
+                                      className="px-2.5 py-1 rounded-lg text-xs font-bold bg-[#0A0A0A] dark:bg-white text-white dark:text-black hover:opacity-90"
+                                    >
+                                      Review & Approve
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="badge text-xs bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300 font-bold">
+                                    Rejected
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     )
   }
@@ -8100,7 +9505,7 @@ export default function AdminDashboard() {
       if (productType === 'semester_bundle') {
         fetchAllSemesterBundles()
           .then(setSemBundlesList)
-          .catch(() => {})
+          .catch(() => { })
       }
     }, [productType])
 
@@ -9124,8 +10529,8 @@ export default function AdminDashboard() {
 
       const matchesStatus =
         statusFilter === 'all' ? true :
-        statusFilter === 'active' ? b.isActive :
-        !b.isActive
+          statusFilter === 'active' ? b.isActive :
+            !b.isActive
 
       return matchesSearch && matchesStatus
     })
@@ -9309,11 +10714,10 @@ export default function AdminDashboard() {
                         <div>
                           <button
                             onClick={() => handleToggleActive(b)}
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
-                              b.isActive
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${b.isActive
                                 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 hover:bg-emerald-200'
                                 : 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400 hover:bg-gray-200'
-                            }`}
+                              }`}
                           >
                             <span className={`w-2 h-2 rounded-full ${b.isActive ? 'bg-emerald-500' : 'bg-gray-400'}`} />
                             {b.isActive ? 'Active' : 'Inactive'}
@@ -9638,11 +11042,10 @@ export default function AdminDashboard() {
                     <button
                       type="button"
                       onClick={() => setFormIsSemesterOnly(false)}
-                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                        !formIsSemesterOnly
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${!formIsSemesterOnly
                           ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-800 dark:text-emerald-200 shadow-xs'
                           : 'bg-white dark:bg-brand-dark-card border-brand-border text-brand-muted hover:border-gray-300'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-1.5 font-bold text-xs">
                         <Package size={14} />
@@ -9655,11 +11058,10 @@ export default function AdminDashboard() {
                     <button
                       type="button"
                       onClick={() => setFormIsSemesterOnly(true)}
-                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                        formIsSemesterOnly
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${formIsSemesterOnly
                           ? 'bg-violet-50 dark:bg-violet-950/40 border-violet-500 text-violet-800 dark:text-violet-200 shadow-xs'
                           : 'bg-white dark:bg-brand-dark-card border-brand-border text-brand-muted hover:border-gray-300'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-1.5 font-bold text-xs">
                         <GraduationCap size={14} />
@@ -9751,11 +11153,10 @@ export default function AdminDashboard() {
                           <button
                             key={u.id}
                             onClick={() => setActiveCurriculumUnitId(u.id)}
-                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                              activeCurriculumUnitId === u.id
+                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${activeCurriculumUnitId === u.id
                                 ? 'bg-primary-500 text-white shadow-sm'
                                 : 'bg-gray-100 dark:bg-white/5 text-brand-text dark:text-brand-dark-text hover:bg-gray-200'
-                            }`}
+                              }`}
                           >
                             <span>Unit {u.unitNumber}</span>
                             <span className="text-[10px] opacity-75">
@@ -10452,11 +11853,10 @@ export default function AdminDashboard() {
               <button
                 key={tab}
                 onClick={() => setStatusFilter(tab)}
-                className={`px-3 py-1.5 rounded-lg capitalize transition-all ${
-                  statusFilter === tab
+                className={`px-3 py-1.5 rounded-lg capitalize transition-all ${statusFilter === tab
                     ? 'bg-white dark:bg-brand-dark-card shadow-xs text-brand-text dark:text-brand-dark-text font-bold'
                     : 'text-brand-muted hover:text-brand-text dark:hover:text-white'
-                }`}
+                  }`}
               >
                 {tab}
               </button>
@@ -10562,11 +11962,10 @@ export default function AdminDashboard() {
                       <td className="px-4 py-3.5">
                         <button
                           onClick={() => handleToggleActive(b)}
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                            b.isActive
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors ${b.isActive
                               ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40'
                               : 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-400'
-                          }`}
+                            }`}
                         >
                           {b.isActive ? 'Active' : 'Inactive'}
                         </button>
@@ -10663,11 +12062,10 @@ export default function AdminDashboard() {
                                 setFormSubjectId(s.id)
                                 if (!formTitle) setFormTitle(`${s.name} Complete Notes`)
                               }}
-                              className={`w-full p-2.5 text-left text-xs transition-colors flex items-center justify-between ${
-                                formSubjectId === s.id
+                              className={`w-full p-2.5 text-left text-xs transition-colors flex items-center justify-between ${formSubjectId === s.id
                                   ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-bold'
                                   : 'hover:bg-gray-50 dark:hover:bg-white/5'
-                              }`}
+                                }`}
                             >
                               <div>
                                 <p className="font-semibold">{s.name}</p>
@@ -10892,11 +12290,10 @@ export default function AdminDashboard() {
                         <div
                           key={res.id}
                           onClick={() => toggleResourceSelect(Number(res.id))}
-                          className={`p-3 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
-                            isSelected
+                          className={`p-3 flex items-center justify-between gap-3 cursor-pointer transition-colors ${isSelected
                               ? 'bg-indigo-50/50 dark:bg-indigo-950/30'
                               : 'hover:bg-gray-50 dark:hover:bg-white/5'
-                          }`}
+                            }`}
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <input
@@ -11089,9 +12486,9 @@ export default function AdminDashboard() {
       const currentIds = new Set((b.subjects || []).map(s => s.subjectBundleId))
       setSelectedSubjectBundleIds(currentIds)
       const initialMap: Record<string, boolean> = {}
-      ;(b.subjects || []).forEach(s => {
-        initialMap[s.subjectBundleId] = Boolean(s.isSemesterOnly)
-      })
+        ; (b.subjects || []).forEach(s => {
+          initialMap[s.subjectBundleId] = Boolean(s.isSemesterOnly)
+        })
       setSelectedSubjectSemesterOnly(initialMap)
 
       setLoadingSubjectBundles(true)
@@ -11312,9 +12709,9 @@ export default function AdminDashboard() {
       const currentIds = new Set((b.subjects || []).map(s => s.subjectBundleId))
       setManageSelectedIds(currentIds)
       const initialMap: Record<string, boolean> = {}
-      ;(b.subjects || []).forEach(s => {
-        initialMap[s.subjectBundleId] = Boolean(s.isSemesterOnly)
-      })
+        ; (b.subjects || []).forEach(s => {
+          initialMap[s.subjectBundleId] = Boolean(s.isSemesterOnly)
+        })
       setManageSemesterOnlyMap(initialMap)
       try {
         const sBundles = await fetchSubjectBundlesBySemester(b.semesterId)
@@ -11438,11 +12835,10 @@ export default function AdminDashboard() {
               <button
                 key={st}
                 onClick={() => setStatusFilter(st)}
-                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-colors ${
-                  statusFilter === st
+                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-colors ${statusFilter === st
                     ? 'bg-white dark:bg-white/10 text-brand-text dark:text-white shadow-xs'
                     : 'text-brand-muted hover:text-brand-text'
-                }`}
+                  }`}
               >
                 {st}
               </button>
@@ -11476,9 +12872,8 @@ export default function AdminDashboard() {
             {filteredBundles.map((b) => (
               <div
                 key={b.id}
-                className={`rounded-3xl border transition-all overflow-hidden flex flex-col justify-between bg-white dark:bg-brand-dark-card shadow-xs hover:shadow-md ${
-                  b.isActive ? 'border-brand-border' : 'border-dashed border-gray-300 dark:border-white/10 opacity-75'
-                }`}
+                className={`rounded-3xl border transition-all overflow-hidden flex flex-col justify-between bg-white dark:bg-brand-dark-card shadow-xs hover:shadow-md ${b.isActive ? 'border-brand-border' : 'border-dashed border-gray-300 dark:border-white/10 opacity-75'
+                  }`}
               >
                 <div>
                   {/* Top card banner */}
@@ -11494,7 +12889,7 @@ export default function AdminDashboard() {
                       </div>
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-                    
+
                     {/* Top badging */}
                     <div className="absolute top-3 left-3 flex gap-2">
                       <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-black/60 text-white backdrop-blur border border-white/20">
@@ -11617,11 +13012,10 @@ export default function AdminDashboard() {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => handleToggleActive(b)}
-                      className={`text-xs font-bold px-2.5 py-1.5 rounded-lg transition-colors ${
-                        b.isActive
+                      className={`text-xs font-bold px-2.5 py-1.5 rounded-lg transition-colors ${b.isActive
                           ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-200'
                           : 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200'
-                      }`}
+                        }`}
                     >
                       {b.isActive ? 'Deactivate' : 'Activate'}
                     </button>
@@ -11798,11 +13192,10 @@ export default function AdminDashboard() {
                           return (
                             <div
                               key={sb.id}
-                              className={`p-3 rounded-xl border transition-all space-y-2.5 ${
-                                isSelected
+                              className={`p-3 rounded-xl border transition-all space-y-2.5 ${isSelected
                                   ? 'bg-violet-50/50 dark:bg-violet-950/20 border-violet-300 dark:border-violet-700/60'
                                   : 'bg-white dark:bg-brand-dark-card border-brand-border hover:border-gray-300 opacity-70'
-                              }`}
+                                }`}
                             >
                               <div
                                 onClick={() => toggleSubjectSelection(sb.id)}
@@ -11812,7 +13205,7 @@ export default function AdminDashboard() {
                                   <input
                                     type="checkbox"
                                     checked={isSelected}
-                                    onChange={() => {}} // Handled by container
+                                    onChange={() => { }} // Handled by container
                                     className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500 cursor-pointer"
                                   />
                                   <div className="min-w-0">
@@ -11843,11 +13236,10 @@ export default function AdminDashboard() {
                                         e.stopPropagation()
                                         setSelectedSubjectSemesterOnly(prev => ({ ...prev, [sb.id]: false }))
                                       }}
-                                      className={`px-2.5 py-1 rounded-md font-bold text-[10px] transition-all cursor-pointer ${
-                                        !isSemesterOnly
+                                      className={`px-2.5 py-1 rounded-md font-bold text-[10px] transition-all cursor-pointer ${!isSemesterOnly
                                           ? 'bg-emerald-500 text-white shadow-xs'
                                           : 'text-brand-muted hover:text-brand-text'
-                                      }`}
+                                        }`}
                                       title="Available both in this semester bundle and as a standalone subject bundle on /courses"
                                     >
                                       Both (Semester & Standalone)
@@ -11858,11 +13250,10 @@ export default function AdminDashboard() {
                                         e.stopPropagation()
                                         setSelectedSubjectSemesterOnly(prev => ({ ...prev, [sb.id]: true }))
                                       }}
-                                      className={`px-2.5 py-1 rounded-md font-bold text-[10px] transition-all cursor-pointer ${
-                                        isSemesterOnly
+                                      className={`px-2.5 py-1 rounded-md font-bold text-[10px] transition-all cursor-pointer ${isSemesterOnly
                                           ? 'bg-violet-600 text-white shadow-xs'
                                           : 'text-brand-muted hover:text-brand-text'
-                                      }`}
+                                        }`}
                                       title="Exclusive to Semester Bundle. Hidden from standalone subject bundles catalog."
                                     >
                                       Only in Semester Bundle
@@ -12113,11 +13504,10 @@ export default function AdminDashboard() {
                       return (
                         <div
                           key={sb.id}
-                          className={`p-3 rounded-xl border transition-all space-y-2.5 ${
-                            isChecked
+                          className={`p-3 rounded-xl border transition-all space-y-2.5 ${isChecked
                               ? 'bg-violet-50/50 dark:bg-violet-950/20 border-violet-300 dark:border-violet-700/60'
                               : 'bg-white dark:bg-brand-dark-card border-brand-border opacity-70'
-                          }`}
+                            }`}
                         >
                           <div
                             onClick={() => {
@@ -12134,7 +13524,7 @@ export default function AdminDashboard() {
                               <input
                                 type="checkbox"
                                 checked={isChecked}
-                                onChange={() => {}}
+                                onChange={() => { }}
                                 className="w-4 h-4 rounded text-violet-600 cursor-pointer"
                               />
                               <div>
@@ -12164,11 +13554,10 @@ export default function AdminDashboard() {
                                     e.stopPropagation()
                                     setManageSemesterOnlyMap(prev => ({ ...prev, [sb.id]: false }))
                                   }}
-                                  className={`px-2.5 py-1 rounded-md font-bold text-[10px] transition-all cursor-pointer ${
-                                    !isSemesterOnly
+                                  className={`px-2.5 py-1 rounded-md font-bold text-[10px] transition-all cursor-pointer ${!isSemesterOnly
                                       ? 'bg-emerald-500 text-white shadow-xs'
                                       : 'text-brand-muted hover:text-brand-text'
-                                  }`}
+                                    }`}
                                   title="Available both in this semester bundle and as a standalone subject bundle on /courses"
                                 >
                                   Both (Semester & Standalone)
@@ -12179,11 +13568,10 @@ export default function AdminDashboard() {
                                     e.stopPropagation()
                                     setManageSemesterOnlyMap(prev => ({ ...prev, [sb.id]: true }))
                                   }}
-                                  className={`px-2.5 py-1 rounded-md font-bold text-[10px] transition-all cursor-pointer ${
-                                    isSemesterOnly
+                                  className={`px-2.5 py-1 rounded-md font-bold text-[10px] transition-all cursor-pointer ${isSemesterOnly
                                       ? 'bg-violet-600 text-white shadow-xs'
                                       : 'text-brand-muted hover:text-brand-text'
-                                  }`}
+                                    }`}
                                   title="Exclusive to Semester Bundle. Hidden from standalone subject bundles catalog."
                                 >
                                   Only in Semester Bundle
@@ -12423,6 +13811,126 @@ export default function AdminDashboard() {
                     {!hasEndTime && <p className="text-xs text-brand-muted mt-2 ml-7">Leave this off if you want to end the webinar manually.</p>}
                   </div>
                   {hasEndTime && webinarTimeField('End time', endDate, setEndDate, endHour, setEndHour, endMinute, setEndMinute, endPeriod, setEndPeriod, true)}
+
+                  {/* 3-Time Registration Window */}
+                  {renderRegistrationFields()}
+                </div>
+
+                {/* Speaker & Banner Info */}
+                <div className="pt-3 border-t border-brand-border dark:border-brand-dark-border space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400 flex items-center gap-1.5">
+                      <Sparkles size={14} /> Speaker & Profile Details
+                    </p>
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={liveIsFeatured}
+                        onChange={e => setLiveIsFeatured(e.target.checked)}
+                        className="h-4 w-4 rounded accent-violet-600 cursor-pointer"
+                      />
+                      <span className="text-xs font-semibold text-brand-text dark:text-white">
+                        Feature as Main Banner
+                      </span>
+                    </label>
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <Field label="Speaker Name">
+                      <input
+                        value={liveSpeakerName}
+                        onChange={e => setLiveSpeakerName(e.target.value)}
+                        className={inputCls}
+                        placeholder="e.g. Dr. Anubhav Bajpai"
+                      />
+                    </Field>
+                    <Field label="Badge Label">
+                      <input
+                        value={liveSpeakerBadge}
+                        onChange={e => setLiveSpeakerBadge(e.target.value)}
+                        className={inputCls}
+                        placeholder="Featured Speaker"
+                      />
+                    </Field>
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <Field label="Speaker Photo URL">
+                      <input
+                        value={liveSpeakerPhotoUrl}
+                        onChange={e => setLiveSpeakerPhotoUrl(e.target.value)}
+                        className={inputCls}
+                        placeholder="https://... image URL"
+                      />
+                    </Field>
+                    <Field label="Or Upload New Photo">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={e => setLiveSpeakerPhotoFile(e.target.files?.[0] || null)}
+                        className={inputCls}
+                      />
+                    </Field>
+                  </div>
+
+                  <Field label="Speaker Bio (separate paragraphs with blank line)">
+                    <textarea
+                      value={liveBioText}
+                      onChange={e => setLiveBioText(e.target.value)}
+                      className={inputCls + ' resize-none'}
+                      rows={3}
+                      placeholder="Speaker bio, achievements..."
+                    />
+                  </Field>
+
+                  <Field label="Expertise Tags (comma-separated)">
+                    <input
+                      value={liveTagsText}
+                      onChange={e => setLiveTagsText(e.target.value)}
+                      className={inputCls}
+                      placeholder="AI, Machine Learning, Data Science"
+                    />
+                  </Field>
+
+                  {/* Highlights in modal */}
+                  <div className="rounded-xl border border-brand-border dark:border-brand-dark-border p-3 bg-gray-50/50 dark:bg-white/5 space-y-2">
+                    <p className="text-[11px] font-bold text-brand-text dark:text-white flex items-center gap-1">
+                      <Trophy size={13} className="text-amber-500" /> Key Highlights (up to 3)
+                    </p>
+                    {[0, 1, 2].map(idx => {
+                      const hl = liveHighlights[idx] || { title: '', subtitle: '' }
+                      return (
+                        <div key={idx} className="grid grid-cols-2 gap-2">
+                          <input
+                            value={hl.title}
+                            onChange={e => {
+                              const val = e.target.value
+                              setLiveHighlights(prev => {
+                                const next = [...prev]
+                                next[idx] = { ...(next[idx] || { title: '', subtitle: '' }), title: val }
+                                return next
+                              })
+                            }}
+                            placeholder={`Title #${idx + 1}`}
+                            className="px-2.5 py-1 text-xs rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card"
+                          />
+                          <input
+                            value={hl.subtitle}
+                            onChange={e => {
+                              const val = e.target.value
+                              setLiveHighlights(prev => {
+                                const next = [...prev]
+                                next[idx] = { ...(next[idx] || { title: '', subtitle: '' }), subtitle: val }
+                                return next
+                              })
+                            }}
+                            placeholder={`Subtitle #${idx + 1}`}
+                            className="px-2.5 py-1 text-xs rounded-lg border border-brand-border dark:border-brand-dark-border bg-white dark:bg-brand-dark-card text-brand-muted"
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
 
                 {/* Video card — same upload function (file picker, audio check, duration
@@ -12503,11 +14011,51 @@ export default function AdminDashboard() {
                   if (!liveTitle.trim() || !liveJoinUrl.trim() || !startValue) { toast.error('Fill all required webinar fields'); return }
                   if (hasEndTime && !endValue) { toast.error('Complete the optional end time or turn it off'); return }
                   if (hasEndTime && new Date(endValue).getTime() <= new Date(startValue).getTime()) { toast.error('End time must be after the start time'); return }
+
+                  // 3-Time Registration Logic
+                  const regStartValue = hasRegStartTime ? buildWebinarDateTime(regStartDate, regStartHour, regStartMinute, regStartPeriod) : null
+                  let regEndValue: string | null = null
+                  if (regEndType === 'webinar_end') {
+                    regEndValue = endValue ? new Date(endValue).toISOString() : null
+                  } else if (regEndType === 'webinar_start') {
+                    regEndValue = new Date(startValue).toISOString()
+                  } else if (regEndType === 'custom') {
+                    const customEnd = buildWebinarDateTime(regEndDate, regEndHour, regEndMinute, regEndPeriod)
+                    regEndValue = customEnd ? new Date(customEnd).toISOString() : null
+                  }
+
                   try {
                     setWebinarBusy(true)
-                    const updated = await updateLiveWebinar(editingWebinarId, { title: liveTitle.trim(), description: liveDescription, provider: liveProvider, joinUrl: liveJoinUrl.trim(), startsAt: new Date(startValue).toISOString(), endsAt: endValue ? new Date(endValue).toISOString() : null, access: liveAccess, price: liveAccess === 'free' ? 0 : Math.max(0, Number(livePrice) || 0) })
+                    let finalPhotoUrl = liveSpeakerPhotoUrl.trim()
+                    if (liveSpeakerPhotoFile) {
+                      finalPhotoUrl = await uploadSpeakerPhoto(liveSpeakerPhotoFile)
+                    }
+
+                    const bioArray = liveBioText.split('\n\n').map(s => s.trim()).filter(Boolean)
+                    const tagsArray = liveTagsText.split(',').map(s => s.trim()).filter(Boolean)
+                    const highlightsArray = liveHighlights.filter(h => h.title.trim() || h.subtitle.trim())
+
+                    const updated = await updateLiveWebinar(editingWebinarId, {
+                      title: liveTitle.trim(),
+                      description: liveDescription,
+                      provider: liveProvider,
+                      joinUrl: liveJoinUrl.trim(),
+                      startsAt: new Date(startValue).toISOString(),
+                      endsAt: endValue ? new Date(endValue).toISOString() : null,
+                      access: liveAccess,
+                      price: liveAccess === 'free' ? 0 : Math.max(0, Number(livePrice) || 0),
+                      speakerName: liveSpeakerName.trim() || undefined,
+                      speakerBadge: liveSpeakerBadge.trim() || undefined,
+                      speakerPhotoUrl: finalPhotoUrl || undefined,
+                      speakerBio: bioArray.length ? bioArray : undefined,
+                      tags: tagsArray.length ? tagsArray : undefined,
+                      highlights: highlightsArray.length ? highlightsArray : undefined,
+                      isFeatured: liveIsFeatured,
+                      registrationStartsAt: regStartValue ? new Date(regStartValue).toISOString() : null,
+                      registrationEndsAt: regEndValue,
+                    })
                     setLiveWebinars(prev => prev.map(w => w.id === updated.id ? updated : w))
-                    toast.success('Webinar updated successfully')
+                    toast.success('Webinar updated successfully in live_webinars table')
                     resetWebinarForm()
                   } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to update webinar') } finally { setWebinarBusy(false) }
                 }} className="flex-1 py-3 rounded-xl bg-primary-500 text-white text-sm font-semibold hover:bg-primary-600 disabled:opacity-50">Save changes</button>

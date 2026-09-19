@@ -8,20 +8,80 @@ import {
   ChevronLeft,
   ChevronRight,
   BookOpen,
-  PlayCircle
+  PlayCircle,
+  FileText,
+  Package,
+  Layers
 } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { fetchPublishedSiteCourses } from '../lib/courseService'
+import { fetchPublishedResources, type Resource } from '../lib/resourceService'
+import { fetchPublishedSubjectBundles } from '../lib/subjectBundleService'
+import { fetchPublishedSemesterBundles } from '../lib/semesterBundleService'
+import { fetchPublishedResourceBundles } from '../lib/resourceBundleService'
 import { useContentStore, type Course } from '../store/contentStore'
 
-const STORAGE_DISMISS_KEY = 'skills021_new_courses_popup_dismissed_session'
-const MAX_COURSES = 5
-const AUTO_ROTATE_MS = 3000 // Automatically rotates every 3 seconds
+const STORAGE_DISMISS_KEY = 'skills021_latest_updates_popup_dismissed_v3'
+const MAX_ITEMS = 5
+const AUTO_ROTATE_MS = 3500 // Automatically rotates every 3.5 seconds
 
-const getInitialCourses = (): Course[] => {
+export type FeaturedItemKind =
+  | 'subject_bundle'
+  | 'semester_bundle'
+  | 'course_bundle'
+  | 'resource_bundle'
+  | 'course'
+  | 'resource'
+
+export interface FeaturedItem {
+  id: string
+  kind: FeaturedItemKind
+  title: string
+  description?: string
+  thumbnail?: string
+  price: number | 'FREE'
+  isFree: boolean
+  tag: string
+  badgeTitle: string
+  badgeColorClass: string
+  badgeDotColorClass: string
+  levelOrType: string
+  metaInfo?: string
+  rating?: number
+  reviews?: number
+  createdAt: string
+  targetUrl: string
+  subjectId?: number
+}
+
+function extractYouTubeThumbnail(url?: string | null): string | null {
+  if (!url) return null
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/)
+  return match ? `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg` : null
+}
+
+const getFallbackItems = (): FeaturedItem[] => {
   try {
     const storeCourses = useContentStore.getState().courses.filter((c) => c.status === 'Published')
-    return storeCourses.slice(0, MAX_COURSES)
+    return storeCourses.slice(0, MAX_ITEMS).map((c) => ({
+      id: String(c.id),
+      kind: 'course' as const,
+      title: c.title,
+      description: c.description,
+      thumbnail: c.thumbnail,
+      price: (c.price === 'FREE' || c.price === 0) ? 'FREE' : c.price,
+      isFree: c.price === 'FREE' || c.price === 0,
+      tag: c.subcategory || c.group || 'Course',
+      badgeTitle: 'Newly Added Course',
+      badgeColorClass: 'text-blue-700 dark:text-blue-300',
+      badgeDotColorClass: 'bg-blue-600 dark:bg-blue-400',
+      levelOrType: c.level || 'Course',
+      metaInfo: c.duration || (c.lectures ? `${c.lectures} lectures` : undefined),
+      rating: c.rating || 4.9,
+      reviews: c.reviews || 240,
+      createdAt: c.createdAt || '',
+      targetUrl: '/courses?tab=courses',
+    }))
   } catch {
     return []
   }
@@ -31,21 +91,21 @@ export default function NewCoursePopup() {
   const location = useLocation()
   const navigate = useNavigate()
 
-  const [coursesList, setCoursesList] = useState<Course[]>(getInitialCourses)
+  const [itemsList, setItemsList] = useState<FeaturedItem[]>(getFallbackItems)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isOpen, setIsOpen] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false
     return (
-      location.pathname === '/' &&
-      sessionStorage.getItem(STORAGE_DISMISS_KEY) !== '1' &&
-      getInitialCourses().length > 0
+      (location.pathname === '/' || location.pathname === '/courses') &&
+      sessionStorage.getItem(STORAGE_DISMISS_KEY) !== '1'
     )
   })
   const [isHovered, setIsHovered] = useState(false)
+  const [imgErrors, setImgErrors] = useState<Record<string, boolean>>({})
   const rotateRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
-    if (location.pathname !== '/') {
+    if (location.pathname !== '/' && location.pathname !== '/courses') {
       setIsOpen(false)
       return
     }
@@ -58,60 +118,321 @@ export default function NewCoursePopup() {
 
     let cancelled = false
 
-    const syncLatestCourses = async () => {
+    const syncLatestItems = async () => {
       try {
-        let publishedCourses: Course[] = []
-        try {
-          publishedCourses = await fetchPublishedSiteCourses()
-        } catch {
-          // Fallback handled below
+        const [
+          semBundlesRes,
+          subBundlesRes,
+          coursesRes,
+          resourcesRes,
+          resBundlesRes,
+        ] = await Promise.allSettled([
+          fetchPublishedSemesterBundles(),
+          fetchPublishedSubjectBundles(),
+          fetchPublishedSiteCourses(),
+          fetchPublishedResources(),
+          fetchPublishedResourceBundles(),
+        ])
+
+        const semBundles =
+          semBundlesRes.status === 'fulfilled' && Array.isArray(semBundlesRes.value) ? semBundlesRes.value : []
+        const subBundles =
+          subBundlesRes.status === 'fulfilled' && Array.isArray(subBundlesRes.value) ? subBundlesRes.value : []
+        const publishedCourses: Course[] =
+          coursesRes.status === 'fulfilled' && Array.isArray(coursesRes.value) ? coursesRes.value : []
+        const publishedResources: Resource[] =
+          resourcesRes.status === 'fulfilled' && Array.isArray(resourcesRes.value) ? resourcesRes.value : []
+        const resourceBundles =
+          resBundlesRes.status === 'fulfilled' && Array.isArray(resBundlesRes.value) ? resBundlesRes.value : []
+
+        // Map subjectId -> latest lecture/course upload timestamp & thumbnail
+        // When an admin uploads a lecture or notes inside a bundle, the bundle is elevated to latest activity!
+        const subjectLatestMeta = new Map<number, { date: string; thumb?: string }>()
+        for (const c of publishedCourses) {
+          if (c.subjectId) {
+            const sid = Number(c.subjectId)
+            const cur = subjectLatestMeta.get(sid) || { date: '' }
+            const cDate = c.createdAt || ''
+            if (!cur.date || (cDate && new Date(cDate) > new Date(cur.date))) {
+              cur.date = cDate
+            }
+            const thumb = c.thumbnail || extractYouTubeThumbnail(c.videoUrl)
+            if (thumb && !cur.thumb) {
+              cur.thumb = thumb
+            }
+            subjectLatestMeta.set(sid, cur)
+          }
+        }
+        for (const r of publishedResources) {
+          if (r.subjectId) {
+            const sid = Number(r.subjectId)
+            const cur = subjectLatestMeta.get(sid) || { date: '' }
+            const rDate = r.createdAt || ''
+            if (!cur.date || (rDate && new Date(rDate) > new Date(cur.date))) {
+              cur.date = rDate
+            }
+            if (r.thumbnail && !cur.thumb) {
+              cur.thumb = r.thumbnail
+            }
+            subjectLatestMeta.set(sid, cur)
+          }
         }
 
-        if (!publishedCourses || publishedCourses.length === 0) {
-          publishedCourses = useContentStore.getState().courses.filter((c) => c.status === 'Published')
+        const candidateItems: FeaturedItem[] = []
+
+        // 1. Semester Bundles
+        for (const sb of semBundles) {
+          const rawPrice = sb.sixMonthPrice || sb.lifetimePrice || 0
+          candidateItems.push({
+            id: `sem_bundle_${sb.id}`,
+            kind: 'semester_bundle',
+            title: sb.title,
+            description: sb.description || 'Comprehensive semester package with full syllabus coverage, lectures, and resources.',
+            thumbnail: sb.thumbnailUrl,
+            price: rawPrice === 0 ? 'FREE' : rawPrice,
+            isFree: rawPrice === 0,
+            tag: sb.branchName ? `${sb.branchName} • Sem ${sb.semesterNumber}` : (sb.semesterNumber ? `Semester ${sb.semesterNumber}` : 'Semester Bundle'),
+            badgeTitle: 'Newly Added Semester Bundle',
+            badgeColorClass: 'text-purple-700 dark:text-purple-300',
+            badgeDotColorClass: 'bg-purple-600 dark:bg-purple-400',
+            levelOrType: 'Semester Bundle',
+            metaInfo: `Semester ${sb.semesterNumber || ''}`,
+            rating: 4.9,
+            reviews: 180,
+            createdAt: sb.createdAt || '',
+            targetUrl: '/courses?tab=semester-bundles',
+          })
         }
 
-        if (cancelled || !publishedCourses || publishedCourses.length === 0) return
+        // 2. Subject Bundles (Shows the Bundle itself, NOT courses inside the bundle!)
+        for (const b of subBundles) {
+          const rawPrice = b.sixMonthPrice || b.lifetimePrice || 0
+          const meta = subjectLatestMeta.get(Number(b.subjectId))
+          const effectiveDate =
+            meta?.date && (!b.createdAt || new Date(meta.date) > new Date(b.createdAt))
+              ? meta.date
+              : b.createdAt || ''
+          const thumb = b.thumbnailUrl || meta?.thumb || undefined
+          const bundleTitle = b.subjectName
+            ? `${b.subjectName} Bundle`
+            : (b.description || 'Subject Bundle')
 
-        const recent = publishedCourses.slice(0, MAX_COURSES)
-        setCoursesList(recent)
-        setIsOpen(true)
+          candidateItems.push({
+            id: `sub_bundle_${b.id}`,
+            kind: 'subject_bundle',
+            title: bundleTitle,
+            description: b.description || 'Complete subject study bundle with structured lectures, syllabus units, and revision material.',
+            thumbnail: thumb,
+            price: rawPrice === 0 ? 'FREE' : rawPrice,
+            isFree: rawPrice === 0,
+            tag: b.branchName || (b.semesterNumber ? `Semester ${b.semesterNumber}` : 'Subject Bundle'),
+            badgeTitle: 'Newly Added Subject Bundle',
+            badgeColorClass: 'text-blue-700 dark:text-blue-300',
+            badgeDotColorClass: 'bg-blue-600 dark:bg-blue-400',
+            levelOrType: 'Subject Bundle',
+            metaInfo: b.subjectCode || 'All Units & Lectures',
+            rating: b.rating || 4.8,
+            reviews: b.reviews || 95,
+            createdAt: effectiveDate,
+            targetUrl: `/resources/bundles/${b.subjectId}`,
+            subjectId: b.subjectId,
+          })
+        }
+
+        // 3. Course Combo Packs / Course Bundles
+        const bundledIds = new Set<string>()
+        publishedCourses.forEach((c) => {
+          const isBundle = c.isCourseBundle || (c.tags || []).includes('__is_course_bundle')
+          if (isBundle && c.bundledCourseIds?.length) {
+            c.bundledCourseIds.forEach((id) => {
+              bundledIds.add(String(id).replace(/^course_/, ''))
+              bundledIds.add(String(id))
+            })
+          }
+        })
+
+        for (const c of publishedCourses) {
+          const isBundle = c.isCourseBundle || (c.tags || []).includes('__is_course_bundle')
+          if (isBundle) {
+            const isFree = c.price === 'FREE' || c.price === 0
+            candidateItems.push({
+              id: `combo_bundle_${c.id}`,
+              kind: 'course_bundle',
+              title: c.title,
+              description: c.description || 'All-in-one comprehensive course pack covering multiple subject domains.',
+              thumbnail: c.thumbnail || extractYouTubeThumbnail(c.videoUrl) || undefined,
+              price: isFree ? 'FREE' : c.price,
+              isFree,
+              tag: c.subcategory || 'Combo Pack',
+              badgeTitle: 'Newly Added Combo Bundle',
+              badgeColorClass: 'text-indigo-700 dark:text-indigo-300',
+              badgeDotColorClass: 'bg-indigo-600 dark:bg-indigo-400',
+              levelOrType: 'Combo Pack',
+              metaInfo: c.duration || `${c.bundledCourseIds?.length || 2}+ Courses Included`,
+              rating: c.rating || 4.9,
+              reviews: c.reviews || 160,
+              createdAt: c.createdAt || '',
+              targetUrl: '/courses?tab=courses',
+            })
+          }
+        }
+
+        // 4. Standalone Courses (ONLY courses that are NOT inside a bundle!)
+        for (const c of publishedCourses) {
+          const isUnderBundle =
+            c.isBundleOnly ||
+            (c.tags || []).includes('__bundle_only') ||
+            bundledIds.has(String(c.id).replace(/^course_/, '')) ||
+            bundledIds.has(String(c.id))
+          const isBundle = c.isCourseBundle || (c.tags || []).includes('__is_course_bundle')
+
+          // Skip courses inside a bundle as requested: "that show the bundales not courses inside the bundal"
+          if (isUnderBundle || isBundle) continue
+
+          const isFree = c.price === 'FREE' || c.price === 0 || (!c.price && c.price !== undefined)
+          candidateItems.push({
+            id: `course_${c.id}`,
+            kind: 'course',
+            title: c.title,
+            description: c.description,
+            thumbnail: c.thumbnail || extractYouTubeThumbnail(c.videoUrl) || undefined,
+            price: isFree ? 'FREE' : c.price,
+            isFree,
+            tag: c.subcategory || c.group || 'Course',
+            badgeTitle: 'Newly Added Course',
+            badgeColorClass: 'text-sky-700 dark:text-sky-300',
+            badgeDotColorClass: 'bg-sky-600 dark:bg-sky-400',
+            levelOrType: c.level || 'Course',
+            metaInfo: c.duration || (c.lectures ? `${c.lectures} lectures` : undefined),
+            rating: c.rating || 4.9,
+            reviews: c.reviews || 120,
+            createdAt: c.createdAt || '',
+            targetUrl: '/courses?tab=courses',
+          })
+        }
+
+        // 5. Standalone Resources (ONLY resources that are NOT inside a bundle!)
+        for (const r of publishedResources) {
+          if (r.isBundleOnly) continue // Skip resources inside bundles
+
+          const isFree = !r.isPremium || !r.price || r.price === 0
+          candidateItems.push({
+            id: `resource_${r.id}`,
+            kind: 'resource',
+            title: r.title,
+            description: r.description,
+            thumbnail: r.thumbnail || undefined,
+            price: isFree ? 'FREE' : (r.price || 'FREE'),
+            isFree,
+            tag: r.subject || r.course || 'Study Material',
+            badgeTitle: 'Newly Added Resource',
+            badgeColorClass: 'text-emerald-700 dark:text-emerald-300',
+            badgeDotColorClass: 'bg-emerald-600 dark:bg-emerald-400',
+            levelOrType: r.type || 'Notes',
+            metaInfo: r.type ? `${r.type}` : (r.downloads ? `${r.downloads} downloads` : 'Study Resource'),
+            rating: 4.8,
+            reviews: r.downloads ? r.downloads * 2 + 10 : 85,
+            createdAt: r.createdAt || '',
+            targetUrl: '/resources',
+          })
+        }
+
+        // 6. Resource Bundles
+        for (const rb of resourceBundles) {
+          const rawPrice = rb.sixMonthPrice || rb.lifetimePrice || 0
+          candidateItems.push({
+            id: `res_bundle_${rb.id}`,
+            kind: 'resource_bundle',
+            title: rb.title,
+            description: rb.description || 'Curated notes, PYQs, and revision resource bundle.',
+            thumbnail: rb.items?.find(it => it.thumbnailUrl)?.thumbnailUrl || '',
+            price: rawPrice === 0 ? 'FREE' : rawPrice,
+            isFree: rawPrice === 0,
+            tag: rb.subjectName ? `${rb.subjectName} Notes` : 'Resource Bundle',
+            badgeTitle: 'Newly Added Resource Bundle',
+            badgeColorClass: 'text-teal-700 dark:text-teal-300',
+            badgeDotColorClass: 'bg-teal-600 dark:bg-teal-400',
+            levelOrType: 'Resource Bundle',
+            metaInfo: `${rb.itemCount || 'Complete'} Included Notes`,
+            rating: 4.8,
+            reviews: 65,
+            createdAt: rb.createdAt || '',
+            targetUrl: `/resources/bundles/${rb.subjectId}?from=resources`,
+            subjectId: rb.subjectId,
+          })
+        }
+
+        if (candidateItems.length > 0) {
+          // Sort descending by latest upload / activity timestamp
+          candidateItems.sort((a, b) => {
+            const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+            const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+            return timeB - timeA
+          })
+          if (!cancelled) {
+            setItemsList(candidateItems.slice(0, MAX_ITEMS))
+            setCurrentIndex(0)
+            setIsOpen(true)
+          }
+        } else {
+          const fallback = getFallbackItems()
+          if (!cancelled && fallback.length > 0) {
+            setItemsList(fallback)
+            setIsOpen(true)
+          }
+        }
       } catch (err) {
         console.warn('NewCoursePopup sync error:', err)
       }
     }
 
-    syncLatestCourses()
+    syncLatestItems()
 
     return () => {
       cancelled = true
     }
   }, [location.pathname])
 
-  // Automatically cycle courses every 3 seconds, pausing when user hovers
+  // Automatically cycle items every 3.5 seconds, pausing when user hovers
   useEffect(() => {
-    if (!isOpen || isHovered || coursesList.length <= 1) {
+    if (!isOpen || isHovered || itemsList.length <= 1) {
       if (rotateRef.current) clearInterval(rotateRef.current)
       return
     }
 
     rotateRef.current = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % coursesList.length)
+      setCurrentIndex((prev) => (prev + 1) % itemsList.length)
     }, AUTO_ROTATE_MS)
 
     return () => {
       if (rotateRef.current) clearInterval(rotateRef.current)
     }
-  }, [isOpen, isHovered, coursesList.length])
+  }, [isOpen, isHovered, itemsList.length])
+
+  // Keyboard navigation
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') {
+        setCurrentIndex((prev) => (prev + 1) % itemsList.length)
+      } else if (e.key === 'ArrowLeft') {
+        setCurrentIndex((prev) => (prev - 1 + itemsList.length) % itemsList.length)
+      } else if (e.key === 'Escape') {
+        handleDismiss()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, itemsList.length])
 
   const handleNext = (e?: React.MouseEvent) => {
     e?.stopPropagation()
-    setCurrentIndex((prev) => (prev + 1) % coursesList.length)
+    setCurrentIndex((prev) => (prev + 1) % itemsList.length)
   }
 
   const handlePrev = (e?: React.MouseEvent) => {
     e?.stopPropagation()
-    setCurrentIndex((prev) => (prev - 1 + coursesList.length) % coursesList.length)
+    setCurrentIndex((prev) => (prev - 1 + itemsList.length) % itemsList.length)
   }
 
   const handleDismiss = () => {
@@ -119,18 +440,24 @@ export default function NewCoursePopup() {
     setIsOpen(false)
   }
 
-  const handleExplore = (course: Course) => {
+  const handleExplore = (item: FeaturedItem) => {
     sessionStorage.setItem(STORAGE_DISMISS_KEY, '1')
     setIsOpen(false)
-    navigate('/courses', { state: { highlightCourseId: course.id } })
+    navigate(item.targetUrl)
   }
 
-  if (coursesList.length === 0) return null
+  if (itemsList.length === 0) return null
 
-  const currentCourse = coursesList[currentIndex] || coursesList[0]
-  if (!currentCourse) return null
+  const currentItem = itemsList[currentIndex] || itemsList[0]
+  if (!currentItem) return null
 
-  const isFree = currentCourse.price === 'FREE' || currentCourse.price === 0
+  const isBundleKind =
+    currentItem.kind === 'subject_bundle' ||
+    currentItem.kind === 'semester_bundle' ||
+    currentItem.kind === 'course_bundle' ||
+    currentItem.kind === 'resource_bundle'
+
+  const hasImage = Boolean(currentItem.thumbnail && !imgErrors[currentItem.id])
 
   return (
     <AnimatePresence>
@@ -169,85 +496,92 @@ export default function NewCoursePopup() {
             </button>
 
             <div className="p-6 sm:p-7">
-              {/* Clean, Non-Colorful Header */}
+              {/* Header with Kind indicator and counter */}
               <div className="flex items-center justify-between pb-4 border-b border-neutral-100 dark:border-neutral-800/80 pr-10">
                 <div className="flex items-center gap-2.5">
-                  <span className="h-2 w-2 rounded-full bg-blue-600 dark:bg-blue-400" />
+                  <span className={`h-2 w-2 rounded-full ${currentItem.badgeDotColorClass}`} />
                   <span className="text-xs font-semibold tracking-wider uppercase text-neutral-700 dark:text-neutral-300">
-                    Newly Added Course
+                    {currentItem.badgeTitle}
                   </span>
-                  {coursesList.length > 1 && (
+                  {itemsList.length > 1 && (
                     <span className="text-xs text-neutral-400 dark:text-neutral-500 font-medium">
-                      ({currentIndex + 1} of {coursesList.length})
+                      ({currentIndex + 1} of {itemsList.length})
                     </span>
                   )}
                 </div>
               </div>
 
-              {/* Main Course Showcase */}
+              {/* Main Content Showcase */}
               <div className="mt-5 grid grid-cols-1 sm:grid-cols-12 gap-5 items-center">
                 {/* Visual Preview */}
                 <div className="sm:col-span-5 relative group overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 aspect-[16/11]">
                   <AnimatePresence mode="wait">
                     <motion.div
-                      key={currentCourse.id}
+                      key={currentItem.id}
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.25 }}
-                      onClick={() => handleExplore(currentCourse)}
+                      onClick={() => handleExplore(currentItem)}
                       className="h-full w-full cursor-pointer relative"
                     >
-                      {currentCourse.thumbnail ? (
+                      {hasImage ? (
                         <img
-                          src={currentCourse.thumbnail}
-                          alt={currentCourse.title}
-                          className="h-full w-full object-cover"
+                          src={currentItem.thumbnail}
+                          alt={currentItem.title}
+                          onError={() => setImgErrors((prev) => ({ ...prev, [currentItem.id]: true }))}
+                          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                         />
                       ) : (
-                        <div className="flex h-full w-full flex-col items-center justify-center p-4 text-center text-neutral-500 dark:text-neutral-400">
-                          <BookOpen size={36} className="mb-1 opacity-70" />
-                          <span className="text-xs font-semibold uppercase tracking-wider">
-                            {currentCourse.subcategory}
+                        <div className="flex h-full w-full flex-col items-center justify-center p-4 text-center text-neutral-500 dark:text-neutral-400 bg-gradient-to-br from-neutral-50 to-neutral-200 dark:from-neutral-900 dark:to-neutral-800">
+                          {isBundleKind ? (
+                            <Package size={38} className="mb-1.5 opacity-80 text-purple-500" />
+                          ) : currentItem.kind === 'course' ? (
+                            <BookOpen size={36} className="mb-1.5 opacity-80 text-blue-500" />
+                          ) : (
+                            <FileText size={36} className="mb-1.5 opacity-80 text-emerald-500" />
+                          )}
+                          <span className="text-xs font-semibold uppercase tracking-wider line-clamp-1">
+                            {currentItem.tag}
                           </span>
                         </div>
                       )}
 
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent pointer-events-none" />
 
-                      {/* Play hover effect */}
+                      {/* Hover action indicator */}
                       <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                         <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-neutral-900 shadow-md">
-                          <PlayCircle size={26} />
+                          {isBundleKind ? <Layers size={22} /> : currentItem.kind === 'course' ? <PlayCircle size={26} /> : <FileText size={24} />}
                         </span>
                       </div>
 
-                      {/* Level & Price Tags */}
+                      {/* Level/Type & Price Tags */}
                       <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none">
-                        <span className="rounded-md bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm">
-                          {currentCourse.level}
+                        <span className="rounded-md bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm max-w-[55%] truncate">
+                          {currentItem.levelOrType}
                         </span>
                         <span
                           className={`rounded-md px-2 py-0.5 text-[11px] font-bold backdrop-blur-sm ${
-                            isFree
+                            currentItem.isFree
                               ? 'bg-emerald-600 text-white'
                               : 'bg-white text-neutral-900 shadow-sm'
                           }`}
                         >
-                          {isFree ? 'FREE' : `₹${currentCourse.price}`}
+                          {currentItem.isFree ? 'FREE' : `₹${currentItem.price}`}
                         </span>
                       </div>
                     </motion.div>
                   </AnimatePresence>
 
                   {/* Left & Right Arrow Controls on Preview Banner */}
-                  {coursesList.length > 1 && (
+                  {itemsList.length > 1 && (
                     <>
                       <button
                         type="button"
                         onClick={handlePrev}
-                        aria-label="Previous course"
-                        title="Previous course"
+                        aria-label="Previous item"
+                        title="Previous"
                         className="absolute left-2 top-1/2 -translate-y-1/2 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/80 transition-colors shadow"
                       >
                         <ChevronLeft size={16} />
@@ -255,8 +589,8 @@ export default function NewCoursePopup() {
                       <button
                         type="button"
                         onClick={handleNext}
-                        aria-label="Next course"
-                        title="Next course"
+                        aria-label="Next item"
+                        title="Next"
                         className="absolute right-2 top-1/2 -translate-y-1/2 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/80 transition-colors shadow"
                       >
                         <ChevronRight size={16} />
@@ -265,61 +599,69 @@ export default function NewCoursePopup() {
                   )}
                 </div>
 
-                {/* Course Details */}
+                {/* Details Section */}
                 <div className="sm:col-span-7 flex flex-col justify-between">
                   <AnimatePresence mode="wait">
                     <motion.div
-                      key={currentCourse.id}
+                      key={currentItem.id}
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -6 }}
                       transition={{ duration: 0.2 }}
                     >
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="rounded-md bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 text-[11px] font-medium text-neutral-600 dark:text-neutral-300">
-                          {currentCourse.subcategory}
+                          {currentItem.tag}
                         </span>
-                        {currentCourse.duration && (
+                        {currentItem.metaInfo && (
                           <span className="inline-flex items-center gap-1 text-[11px] text-neutral-400 dark:text-neutral-500">
                             <Clock size={11} />
-                            {currentCourse.duration}
+                            {currentItem.metaInfo}
                           </span>
                         )}
                       </div>
 
                       <h3
                         id="course-popup-title"
-                        onClick={() => handleExplore(currentCourse)}
+                        onClick={() => handleExplore(currentItem)}
                         className="mt-2 text-lg sm:text-xl font-bold tracking-tight text-neutral-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer line-clamp-2"
                       >
-                        {currentCourse.title}
+                        {currentItem.title}
                       </h3>
 
                       <p className="mt-2 text-xs sm:text-sm leading-relaxed text-neutral-500 dark:text-neutral-400 line-clamp-2">
-                        {currentCourse.description ||
-                          'Comprehensive structured curriculum designed to build practical, real-world skills.'}
+                        {currentItem.description ||
+                          (isBundleKind
+                            ? 'Complete comprehensive bundle with curriculum lectures, notes, and study material.'
+                            : 'High quality content designed to build practical skills and exam mastery.')}
                       </p>
 
                       <div className="mt-3 flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
                         <Star size={13} className="fill-amber-400 text-amber-400" />
                         <span className="font-semibold text-neutral-700 dark:text-neutral-200">
-                          {currentCourse.rating || 4.9}
+                          {currentItem.rating || 4.8}
                         </span>
                         <span className="text-neutral-400">
-                          ({currentCourse.reviews || 240}+ reviews)
+                          ({currentItem.reviews || 120}+ reviews)
                         </span>
                       </div>
                     </motion.div>
                   </AnimatePresence>
 
-                  {/* Clean CTAs */}
+                  {/* CTAs */}
                   <div className="mt-5 flex items-center gap-3">
                     <button
                       type="button"
-                      onClick={() => handleExplore(currentCourse)}
+                      onClick={() => handleExplore(currentItem)}
                       className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 px-5 py-2.5 text-xs sm:text-sm font-semibold transition-all hover:bg-neutral-800 dark:hover:bg-neutral-100 shadow-sm"
                     >
-                      <span>Explore Course</span>
+                      <span>
+                        {isBundleKind
+                          ? 'Explore Bundle'
+                          : currentItem.kind === 'course'
+                          ? 'Explore Course'
+                          : 'View Resource'}
+                      </span>
                       <ArrowRight size={14} />
                     </button>
 
@@ -334,14 +676,14 @@ export default function NewCoursePopup() {
                 </div>
               </div>
 
-              {/* Minimal Stepper Dots Only — No quote / text */}
-              {coursesList.length > 1 && (
+              {/* Minimal Stepper Dots */}
+              {itemsList.length > 1 && (
                 <div className="mt-5 flex items-center justify-center gap-1.5 pt-3 border-t border-neutral-100 dark:border-neutral-800/80">
-                  {coursesList.map((_, i) => (
+                  {itemsList.map((_, i) => (
                     <button
                       key={i}
                       type="button"
-                      aria-label={`Go to course ${i + 1}`}
+                      aria-label={`Go to slide ${i + 1}`}
                       onClick={() => setCurrentIndex(i)}
                       className={`h-1.5 rounded-full transition-all duration-200 ${
                         i === currentIndex

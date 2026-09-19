@@ -111,6 +111,8 @@ export interface SemesterBundleAccess {
   purchaseId?: string
   bundleId?: string
   semesterId?: number
+  amount?: number
+  utrNumber?: string
 }
 
 export interface SubmitSemesterBundlePaymentInput {

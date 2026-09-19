@@ -34,6 +34,7 @@ import MobileBottomNav from './components/MobileBottomNav'
 import WebinarVisitPopup from './components/WebinarVisitPopup'
 import NewCoursePopup from './components/NewCoursePopup'
 import CookieBanner from './components/CookieBanner'
+import PWAInstallPrompt from './components/PWAInstallPrompt'
 import { initGlobalHaptics } from './lib/haptics'
 import { getCookie } from './lib/cookieService'
 
@@ -145,7 +146,7 @@ export default function App() {
           joinedDate: profile?.created_at
             ? new Date(profile.created_at).toISOString().split('T')[0]
             : new Date(u.created_at).toISOString().split('T')[0],
-          enrolledCourses: enrollments.map(e => e.courseId),
+          enrolledCourses: enrollments.filter(e => e.status === 'paid' || e.status === 'free').map(e => e.courseId),
           age: profile?.age ?? u.user_metadata?.age,
           branch: profile?.branch ?? u.user_metadata?.branch ?? '',
           currentSemester: profile?.current_semester ?? u.user_metadata?.current_semester,
@@ -218,6 +219,7 @@ export default function App() {
       <WebinarVisitPopup />
       <NewCoursePopup />
       <CookieBanner />
+      <PWAInstallPrompt />
       <CustomToaster />
     </BrowserRouter>
   )

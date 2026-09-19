@@ -236,7 +236,7 @@ export const useAuthStore = create<AuthState>()(
             joinedDate: profile?.created_at
               ? new Date(profile.created_at).toISOString().split('T')[0]
               : new Date(u.created_at).toISOString().split('T')[0],
-            enrolledCourses: enrollments.map(e => e.courseId),
+            enrolledCourses: enrollments.filter(e => e.status === 'paid' || e.status === 'free').map(e => e.courseId),
             age: profile?.age ?? u.user_metadata?.age,
             branch: profile?.branch ?? u.user_metadata?.branch ?? '',
             currentSemester: profile?.current_semester ?? u.user_metadata?.current_semester,
@@ -305,7 +305,7 @@ export const useAuthStore = create<AuthState>()(
               joinedDate: profile?.created_at
                 ? new Date(profile.created_at).toISOString().split('T')[0]
                 : new Date(u.created_at).toISOString().split('T')[0],
-              enrolledCourses: enrollments.map(e => e.courseId),
+              enrolledCourses: enrollments.filter(e => e.status === 'paid' || e.status === 'free').map(e => e.courseId),
               age: profile?.age ?? u.user_metadata?.age,
               branch: profile?.branch ?? u.user_metadata?.branch ?? '',
               currentSemester: profile?.current_semester ?? u.user_metadata?.current_semester,
@@ -507,7 +507,7 @@ export const useAuthStore = create<AuthState>()(
                 role: profile.role || current.role,
                 avatarUrl: profile.avatar_url || current.avatarUrl || '',
                 isPremium: Boolean(profile.is_premium ?? current.isPremium ?? false),
-                enrolledCourses: enrollments.map(e => e.courseId),
+                enrolledCourses: enrollments.filter(e => e.status === 'paid' || e.status === 'free').map(e => e.courseId),
                 age: profile.age ?? current.age,
                 branch: profile.branch ?? current.branch,
                 currentSemester: profile.current_semester ?? current.currentSemester,

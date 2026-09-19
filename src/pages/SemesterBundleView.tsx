@@ -802,7 +802,35 @@ export default function SemesterBundleView() {
                 </div>
               </div>
             ) : (
-              <div className="rounded-3xl border border-brand-border bg-white dark:bg-brand-dark-card p-6 shadow-xl space-y-6">
+              <div className="rounded-3xl border border-brand-border bg-white dark:bg-brand-dark-card p-6 shadow-xl space-y-6 relative overflow-hidden">
+
+                {/* ── Early Bird Offer Banner (Semesters 1, 3 & 5 only) ── */}
+                {[1, 3, 5].includes(bundle.semesterNumber ?? -1) && selectedPlan === 'six_month' && (
+                  <div className="relative -mx-6 -mt-6 mb-0 px-5 py-3.5 bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 overflow-hidden">
+                    {/* Subtle shimmer stripe */}
+                    <div className="absolute inset-0 bg-[linear-gradient(105deg,transparent_40%,rgba(255,255,255,0.18)_50%,transparent_60%)] animate-[shimmer_2.5s_linear_infinite]" />
+                    <div className="relative flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg leading-none">🐣</span>
+                        <div>
+                          <p className="text-[11px] font-black uppercase tracking-widest text-white/90">Early Bird Offer</p>
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="text-xl font-black text-white">₹799</span>
+                            <span className="text-xs text-white/70 line-through">₹999</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="flex items-center gap-1 text-[10px] font-black text-white/90 bg-white/20 backdrop-blur-sm px-2 py-1 rounded-lg border border-white/30">
+                          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                          Limited Time
+                        </span>
+                        <p className="text-[10px] text-white/80 mt-1 font-semibold">Use code → ₹699</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 
                 {/* Plan Switcher */}
                 {bundle.sixMonthEnabled && bundle.lifetimeEnabled ? (
@@ -856,23 +884,37 @@ export default function SemesterBundleView() {
 
                 {/* Price & Savings Display */}
                 <div className="p-4 rounded-2xl bg-gray-50 dark:bg-white/5 border border-brand-border space-y-2">
-                  <div className="flex items-baseline justify-between">
-                    <div>
-                      <span className="text-3xl font-black text-brand-text dark:text-white">
-                        ₹{pricing.finalAmount}
-                      </span>
-                      {benchmarkPrice > pricing.finalAmount && (
-                        <span className="ml-2 text-sm line-through text-brand-muted">
-                          ₹{benchmarkPrice}
-                        </span>
-                      )}
-                    </div>
-                    {savingsPercent > 0 && (
-                      <span className="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                        Save {savingsPercent}%
-                      </span>
-                    )}
-                  </div>
+                  {(() => {
+                    const isEarlyBird = [1, 3, 5].includes(bundle.semesterNumber ?? -1) && selectedPlan === 'six_month'
+                    const earlyBirdPrice = appliedCoupon ? 699 : 799
+                    const displayPrice = isEarlyBird ? earlyBirdPrice : pricing.finalAmount
+                    const strikePrice = isEarlyBird ? pricing.finalAmount : (benchmarkPrice > pricing.finalAmount ? benchmarkPrice : null)
+                    const saveAmt = isEarlyBird
+                      ? pricing.finalAmount - earlyBirdPrice
+                      : savingsAmount
+                    const savePct = isEarlyBird && pricing.finalAmount > 0
+                      ? Math.round(((pricing.finalAmount - earlyBirdPrice) / pricing.finalAmount) * 100)
+                      : savingsPercent
+                    return (
+                      <div className="flex items-baseline justify-between">
+                        <div>
+                          <span className="text-3xl font-black text-brand-text dark:text-white">
+                            ₹{displayPrice}
+                          </span>
+                          {strikePrice && (
+                            <span className="ml-2 text-sm line-through text-brand-muted">
+                              ₹{strikePrice}
+                            </span>
+                          )}
+                        </div>
+                        {savePct > 0 && (
+                          <span className="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                            Save {savePct}%
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })()}
 
                   <p className="text-xs text-brand-muted">
                     {selectedPlan === 'lifetime' ? 'Unlimited lifetime access with updates' : 'Full access for 6 months'}
@@ -926,23 +968,50 @@ export default function SemesterBundleView() {
                       <AlertCircle size={11} /> {couponError}
                     </p>
                   )}
+
+                  {/* Early Bird coupon nudge for Sem 1, 3, 5 */}
+                  {[1, 3, 5].includes(bundle.semesterNumber ?? -1) && selectedPlan === 'six_month' && !appliedCoupon && (
+                    <div className="mt-2 flex items-center gap-2 p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40">
+                      <BadgePercent size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                      <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 leading-snug">
+                        🎉 Early Bird Price: <strong>₹799</strong> — Apply coupon to get it at just <strong className="text-amber-600 dark:text-amber-400">₹699</strong>!
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* CTA Button */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!user) {
-                      toast.error('Please sign in or register to purchase')
-                      navigate('/login')
-                      return
-                    }
-                    setShowCheckoutModal(true)
-                  }}
-                  className="w-full py-3.5 px-6 rounded-2xl bg-[#0A0A0A] hover:bg-gray-800 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 font-bold text-sm flex items-center justify-center gap-2 shadow-md transition-all hover:-translate-y-0.5"
-                >
-                  <GraduationCap size={18} /> Enroll in Entire Semester (₹{pricing.finalAmount})
-                </button>
+                {access.isPending ? (
+                  <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 text-center">
+                    <span className="block text-xs font-bold text-amber-700 dark:text-amber-300">
+                      ⏳ Payment Pending Approval
+                    </span>
+                    <span className="block text-[11px] text-amber-600/90 dark:text-amber-400/80 mt-0.5">
+                      Your verification proof is under admin review. Access will activate shortly.
+                    </span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!user) {
+                        toast.error('Please sign in or register to purchase')
+                        navigate('/login')
+                        return
+                      }
+                      setShowCheckoutModal(true)
+                    }}
+                    className="w-full py-3.5 px-6 rounded-2xl bg-[#0A0A0A] hover:bg-gray-800 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 font-bold text-sm flex items-center justify-center gap-2 shadow-md transition-all hover:-translate-y-0.5"
+                  >
+                    <GraduationCap size={18} /> Enroll in Entire Semester (₹{
+                      [1, 3, 5].includes(bundle.semesterNumber ?? -1) && selectedPlan === 'six_month'
+                        ? appliedCoupon
+                          ? 699
+                          : 799
+                        : pricing.finalAmount
+                    })
+                  </button>
+                )}
 
                 {/* Trust Badges */}
                 <div className="space-y-2 pt-2 border-t border-brand-border text-xs text-brand-muted">

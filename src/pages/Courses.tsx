@@ -1585,7 +1585,7 @@ export default function Courses() {
                 <div className="pt-2 border-t border-brand-border space-y-1.5 text-[11px]">
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-brand-text dark:text-white">Semesters 1, 3 & 5:</span>
-                    <span className="font-black text-violet-600 dark:text-violet-400">₹8.33 / day</span>
+                    <span className="font-black text-violet-600 dark:text-violet-400">₹4.44 / day</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-emerald-600 dark:text-emerald-400">Complete 4-Year Pass:</span>

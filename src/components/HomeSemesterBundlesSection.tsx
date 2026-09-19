@@ -10,6 +10,7 @@ import {
   Layers,
   Zap,
   Star,
+  BadgePercent,
 } from 'lucide-react'
 import { fetchPublishedSemesterBundles } from '../lib/semesterBundleService'
 import type { SemesterBundle } from '../lib/semesterBundleTypes'
@@ -221,9 +222,12 @@ export default function HomeSemesterBundlesSection() {
       {/* ── Dynamic Semester Cards Grid ── */}
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 lg:gap-8">
         {displayBundles.map((bundle, index) => {
+          const isEarlyBird = [1, 3, 5].includes(bundle.semesterNumber ?? -1)
           const rawPrice = bundle.sixMonthPrice || (bundle.semesterNumber === 8 ? 699 : 1499)
+          // Early bird cards show ₹799 instead of the DB list price
+          const displayPrice = isEarlyBird ? 799 : rawPrice
           const isFourYear = bundle.title?.toLowerCase().includes('4-year')
-          const rates = calculateSemesterRates(rawPrice, isFourYear)
+          const rates = calculateSemesterRates(displayPrice, isFourYear)
 
           return (
             <motion.div
@@ -232,82 +236,118 @@ export default function HomeSemesterBundlesSection() {
               animate={inView ? { opacity: 1, y: 0 } : {}}
               transition={{ delay: 0.15 + index * 0.08, duration: 0.6 }}
               whileHover={{ y: -6 }}
-              className="glass group relative flex h-full flex-col justify-between overflow-hidden rounded-3xl p-6 transition-all duration-300 hover:shadow-[0_20px_50px_-20px_rgba(139,92,246,0.35)]"
+              className="glass group relative flex h-full flex-col justify-between overflow-hidden rounded-3xl transition-all duration-300 hover:shadow-[0_20px_50px_-20px_rgba(139,92,246,0.35)]"
             >
-              {/* Accent corner glow */}
-              <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-gradient-to-br from-violet-500/10 to-indigo-500/10 blur-2xl transition-transform group-hover:scale-125" />
-
-              <div>
-                {/* Header Badge */}
-                <div className="flex items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-xl bg-violet-100 px-3 py-1 text-xs font-black text-violet-800 dark:bg-violet-950/70 dark:text-violet-200">
-                    <GraduationCap size={14} />
-                    Semester {bundle.semesterNumber ?? 'Curriculum'}
-                  </span>
-                  <span className="flex items-center gap-1 text-xs font-bold text-amber-500">
-                    <Star size={13} className="fill-amber-400 text-amber-400" />
-                    {bundle.rating ?? 4.9}
-                  </span>
-                </div>
-
-                {/* Title */}
-                <h3 className="mt-4 text-lg font-bold leading-snug text-brand-text dark:text-white group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors line-clamp-2">
-                  {bundle.title}
-                </h3>
-                <p className="mt-2 text-xs leading-relaxed text-brand-muted dark:text-brand-dark-muted line-clamp-2">
-                  {bundle.description ||
-                    `All-in-one semester curriculum covering video lectures, handwritten notes, and solved question papers.`}
-                </p>
-
-                {/* Highlights */}
-                <div className="mt-4 space-y-1.5 border-t border-black/5 pt-4 dark:border-white/10 text-xs text-brand-text dark:text-brand-dark-text">
-                  <div className="flex items-center gap-2">
-                    <BookOpen size={13} className="text-violet-500 shrink-0" />
-                    <span>All core theory & lab subjects</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Layers size={13} className="text-indigo-500 shrink-0" />
-                    <span>Unit-wise solved university PYQs</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Zap size={13} className="text-amber-500 shrink-0" />
-                    <span>Complete 6-month exam prep curriculum</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Rs Section (Dynamic daily & monthly rates calculated automatically) ── */}
-              <div className="mt-6 border-t border-black/5 pt-4 dark:border-white/10">
-                <div className="flex items-end justify-between">
-                  <div>
-                    <span className="block text-[10px] font-bold uppercase tracking-wider text-brand-muted">
-                      Semester {bundle.semesterNumber} Daily Rate
-                    </span>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-2xl font-black text-violet-600 dark:text-violet-400">
-                        ₹{rates.daily}
-                      </span>
-                      <span className="text-xs font-semibold text-brand-muted">/ day</span>
+              {/* ── Early Bird Banner (Sem 1, 3, 5 only) ── */}
+              {isEarlyBird && (
+                <div className="relative overflow-hidden px-5 py-3 bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 rounded-t-3xl">
+                  <div className="absolute inset-0 bg-[linear-gradient(105deg,transparent_40%,rgba(255,255,255,0.18)_50%,transparent_60%)] animate-shimmer bg-[length:200%_100%]" />
+                  <div className="relative flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-base leading-none">🐣</span>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-white/90">Early Bird Offer</p>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-lg font-black text-white">₹799</span>
+                          <span className="text-[11px] text-white/70 line-through">₹{rawPrice}</span>
+                        </div>
+                      </div>
                     </div>
-                    <span className="text-[10px] text-brand-muted block mt-0.5">
-                      (₹{rates.monthly}/mo · ₹{rawPrice} full semester)
+                    <div className="text-right shrink-0">
+                      <span className="flex items-center gap-1 text-[9px] font-black text-white/90 bg-white/20 px-1.5 py-0.5 rounded-md border border-white/30">
+                        <span className="w-1 h-1 rounded-full bg-white animate-pulse" />
+                        Limited
+                      </span>
+                      <p className="text-[9px] text-white/80 mt-0.5 font-semibold">Code → ₹699</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Card body */}
+              <div className="p-6 flex flex-col flex-1 justify-between">
+                {/* Accent corner glow */}
+                <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-gradient-to-br from-violet-500/10 to-indigo-500/10 blur-2xl transition-transform group-hover:scale-125" />
+
+                <div>
+                  {/* Header Badge */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-xl bg-violet-100 px-3 py-1 text-xs font-black text-violet-800 dark:bg-violet-950/70 dark:text-violet-200">
+                      <GraduationCap size={14} />
+                      Semester {bundle.semesterNumber ?? 'Curriculum'}
+                    </span>
+                    <span className="flex items-center gap-1 text-xs font-bold text-amber-500">
+                      <Star size={13} className="fill-amber-400 text-amber-400" />
+                      {bundle.rating ?? 4.9}
                     </span>
                   </div>
 
-                  <div className="text-right">
-                    <span className="inline-block rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
-                      Best Value
-                    </span>
+                  {/* Title */}
+                  <h3 className="mt-4 text-lg font-bold leading-snug text-brand-text dark:text-white group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors line-clamp-2">
+                    {bundle.title}
+                  </h3>
+                  <p className="mt-2 text-xs leading-relaxed text-brand-muted dark:text-brand-dark-muted line-clamp-2">
+                    {bundle.description ||
+                      `All-in-one semester curriculum covering video lectures, handwritten notes, and solved question papers.`}
+                  </p>
+
+                  {/* Highlights */}
+                  <div className="mt-4 space-y-1.5 border-t border-black/5 pt-4 dark:border-white/10 text-xs text-brand-text dark:text-brand-dark-text">
+                    <div className="flex items-center gap-2">
+                      <BookOpen size={13} className="text-violet-500 shrink-0" />
+                      <span>All core theory & lab subjects</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Layers size={13} className="text-indigo-500 shrink-0" />
+                      <span>Unit-wise solved university PYQs</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Zap size={13} className="text-amber-500 shrink-0" />
+                      <span>Complete 6-month exam prep curriculum</span>
+                    </div>
                   </div>
                 </div>
 
-                {/* Direct link: Go inside to see the real price of the bundle */}
-                <Link
-                  to={`/courses/semester-bundles/${bundle.id}`}
-                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#0A0A0A] py-2.5 px-4 text-xs font-bold text-white shadow-sm transition-all hover:bg-violet-600 hover:shadow-md dark:bg-white dark:text-black dark:hover:bg-violet-500 dark:hover:text-white"
-                >
-                  View Bundle & Real Price <ArrowRight size={14} />
-                </Link>
+                {/* ── Price Section ── */}
+                <div className="mt-6 border-t border-black/5 pt-4 dark:border-white/10">
+                  <div className="flex items-end justify-between">
+                    <div>
+                      <span className="block text-[10px] font-bold uppercase tracking-wider text-brand-muted">
+                        {isEarlyBird ? 'Early Bird Daily Rate' : `Semester ${bundle.semesterNumber} Daily Rate`}
+                      </span>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-2xl font-black text-violet-600 dark:text-violet-400">
+                          ₹{rates.daily}
+                        </span>
+                        <span className="text-xs font-semibold text-brand-muted">/ day</span>
+                      </div>
+                      <span className="text-[10px] text-brand-muted block mt-0.5">
+                        {isEarlyBird
+                          ? `₹799 full semester · Use coupon for ₹699`
+                          : `(₹${rates.monthly}/mo · ₹${rawPrice} full semester)`}
+                      </span>
+                    </div>
+
+                    <div className="text-right">
+                      {isEarlyBird ? (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+                          <BadgePercent size={10} /> Save {Math.round(((rawPrice - 799) / rawPrice) * 100)}%
+                        </span>
+                      ) : (
+                        <span className="inline-block rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                          Best Value
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <Link
+                    to={`/courses/semester-bundles/${bundle.id}`}
+                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#0A0A0A] py-2.5 px-4 text-xs font-bold text-white shadow-sm transition-all hover:bg-violet-600 hover:shadow-md dark:bg-white dark:text-black dark:hover:bg-violet-500 dark:hover:text-white"
+                  >
+                    {isEarlyBird ? <>Grab Early Bird Offer <ArrowRight size={14} /></> : <>View Bundle & Real Price <ArrowRight size={14} /></>}
+                  </Link>
+                </div>
               </div>
             </motion.div>
           )

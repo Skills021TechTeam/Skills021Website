@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Star, Clock, BookOpen, Play, Users } from 'lucide-react'
+import { Star, Clock, BookOpen, Play, Users, MessageCircle } from 'lucide-react'
 import { Course } from '../data/courses'
 import toast from 'react-hot-toast'
 
@@ -123,6 +123,17 @@ export default function CourseCard({ course, index = 0 }: CourseCardProps) {
                 title="Watch on YouTube"
               >
                 <Play size={14} className="text-brand-muted dark:text-brand-dark-muted" />
+              </a>
+            )}
+            {course.whatsappGroupUrl && (
+              <a
+                href={course.whatsappGroupUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-8 h-8 rounded-lg bg-[#25D366]/15 text-[#25D366] hover:bg-[#25D366] hover:text-white flex items-center justify-center transition-colors"
+                title="Join Course WhatsApp Group"
+              >
+                <MessageCircle size={15} />
               </a>
             )}
             <motion.button

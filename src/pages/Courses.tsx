@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
-import { BookOpen, Clock, Users, Star, Search, Play, SlidersHorizontal, ChevronDown, X, Loader2, Lock, CheckCircle2, Sparkles, GraduationCap, Radio, Video, ExternalLink, CalendarDays, MonitorPlay, Trophy, TrendingUp, Zap, ArrowRight, BadgePercent, Package, FileText } from 'lucide-react'
+import { BookOpen, Clock, Users, Star, Search, Play, SlidersHorizontal, ChevronDown, X, Loader2, Lock, CheckCircle2, Sparkles, GraduationCap, Radio, Video, ExternalLink, CalendarDays, MonitorPlay, Trophy, TrendingUp, Zap, ArrowRight, BadgePercent, Package, FileText, MessageCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Course, CourseGroup, CourseSubcategory } from '../store/contentStore'
 import { fetchPublishedSiteCourses } from '../lib/courseService'
@@ -50,7 +50,7 @@ const SUBCATEGORIES: Record<CourseGroup, CourseSubcategory[]> = {
   'Foundation Programs': ['Class 1-5', 'Class 6-8', 'Class 9-10', 'Class 11-12'],
   'Competitive Exams': ['JEE Preparation', 'NEET Preparation', 'CUET Preparation', 'Olympiads', 'NTSE'],
   'College & Tech Courses': [
-    'DSA', 'IPU Courses', 'AKTU Courses', 'Web Development', 'App Development', 'Flutter Development',
+    'Certificate', 'DSA', 'IPU Courses', 'AKTU Courses', 'Web Development', 'App Development', 'Flutter Development',
     'AI & Machine Learning', 'Data Science', 'Cyber Security', 'Cloud Computing',
     'Aptitude Preparation', 'Interview Preparation',
   ],
@@ -678,6 +678,14 @@ function CourseCard({
             </div>
           )}
 
+          {/* WhatsApp Group Badge if configured */}
+          {course.whatsappGroupUrl && (
+            <div className="mb-3 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5 rounded-md border border-emerald-200/60 dark:border-emerald-800/40 w-fit">
+              <MessageCircle size={11} className="text-[#25D366]" />
+              <span>WhatsApp Group Included</span>
+            </div>
+          )}
+
           {/* Stats */}
           <div className="flex items-center gap-3 text-xs text-brand-muted dark:text-brand-dark-muted mb-4">
             <span className="flex items-center gap-1"><Star size={11} className="text-amber-400 fill-amber-400" />{course.rating}</span>
@@ -736,12 +744,27 @@ function CourseCard({
                   <Package size={12} /> Courses
                 </button>
                 {canWatch ? (
-                  <button
-                    onClick={() => onViewBundleDetails?.(course)}
-                    className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors shadow-xs"
-                  >
-                    <CheckCircle2 size={12} /> Access
-                  </button>
+                  <div className="flex items-center gap-1">
+                    {course.whatsappGroupUrl && (
+                      <a
+                        href={course.whatsappGroupUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="p-2 rounded-xl bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366] hover:text-white border border-[#25D366]/30 transition-all shadow-xs"
+                        title="Join WhatsApp Group"
+                        aria-label="Join WhatsApp Group"
+                      >
+                        <MessageCircle size={13} />
+                      </a>
+                    )}
+                    <button
+                      onClick={() => onViewBundleDetails?.(course)}
+                      className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors shadow-xs"
+                    >
+                      <CheckCircle2 size={12} /> Access
+                    </button>
+                  </div>
                 ) : isPending ? (
                   <button
                     onClick={() => toast('Your payment proof with UPI UTR is currently being verified by the Admin. Access will unlock once approved.', { icon: '⏳' })}
@@ -759,12 +782,27 @@ function CourseCard({
                 )}
               </div>
             ) : canWatch ? (
-              <button
-                onClick={() => onPlay(course)}
-                className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-primary-500 rounded-xl hover:bg-primary-600 transition-colors shadow-xs"
-              >
-                <Play size={11} /> Watch Lectures
-              </button>
+              <div className="flex items-center gap-1.5">
+                {course.whatsappGroupUrl && (
+                  <a
+                    href={course.whatsappGroupUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    className="p-2 rounded-xl bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366] hover:text-white border border-[#25D366]/30 transition-all shadow-xs"
+                    title="Join Course WhatsApp Group"
+                    aria-label="Join Course WhatsApp Group"
+                  >
+                    <MessageCircle size={14} />
+                  </a>
+                )}
+                <button
+                  onClick={() => onPlay(course)}
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-primary-500 rounded-xl hover:bg-primary-600 transition-colors shadow-xs"
+                >
+                  <Play size={11} /> Watch Lectures
+                </button>
+              </div>
             ) : isPending ? (
               <button
                 onClick={() => toast('Your payment proof with UPI UTR is currently being verified by the Admin. Access will unlock once approved.', { icon: '⏳' })}
@@ -985,6 +1023,19 @@ function BundleDetailModal({
                     <span className="text-xs font-semibold text-brand-muted hidden sm:inline">
                       ₹{cc.price}
                     </span>
+                  )}
+                  {(cc.whatsappGroupUrl || bundle.whatsappGroupUrl) && (
+                    <a
+                      href={cc.whatsappGroupUrl || bundle.whatsappGroupUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      title="Join WhatsApp Group for updates & announcements"
+                      aria-label="Join WhatsApp Group"
+                      className="w-8 h-8 rounded-xl bg-[#25D366]/10 hover:bg-[#25D366] text-[#25D366] hover:text-white dark:bg-[#25D366]/20 dark:text-emerald-400 dark:hover:bg-[#25D366] dark:hover:text-white flex items-center justify-center transition-all border border-[#25D366]/30 shadow-xs group/wa"
+                    >
+                      <MessageCircle size={15} className="transition-transform group-hover/wa:scale-110" />
+                    </a>
                   )}
                   {isUnlocked ? (
                     <button
@@ -1609,7 +1660,11 @@ export default function Courses() {
       if (courseTypeFilter === 'bundle' && !c.isCourseBundle) return false
       if (!hierarchyActive) {
         if (activeSub) {
-          if (c.subcategory?.trim().toLowerCase() !== activeSub.trim().toLowerCase()) return false
+          const subMatches =
+            c.subcategory?.trim().toLowerCase() === activeSub.trim().toLowerCase() ||
+            (activeSub.trim().toLowerCase() === 'certificate' && c.subcategory?.trim().toLowerCase() === 'certificate courses') ||
+            (activeSub.trim().toLowerCase() === 'certificate courses' && c.subcategory?.trim().toLowerCase() === 'certificate')
+          if (!subMatches) return false
         } else {
           if (c.group?.trim().toLowerCase() !== activeGroup.trim().toLowerCase()) return false
         }
@@ -2711,7 +2766,11 @@ export default function Courses() {
                       All Categories ({published.filter(c => c.group === activeGroup).length})
                     </button>
                     {ALL_SUBCATEGORIES.map(({ label: sub, group }) => {
-                      const cnt = published.filter(c => c.subcategory === sub).length
+                      const cnt = published.filter(c =>
+                        c.subcategory === sub ||
+                        (sub === 'Certificate' && c.subcategory === 'Certificate Courses') ||
+                        (sub === 'Certificate Courses' && c.subcategory === 'Certificate')
+                      ).length
                       return (
                         <button
                           key={sub}
@@ -2942,7 +3001,11 @@ export default function Courses() {
                         All Categories ({published.filter(c => c.group === activeGroup).length})
                       </button>
                       {ALL_SUBCATEGORIES.map(({ label: sub, group }) => {
-                        const cnt = published.filter(c => c.subcategory === sub).length
+                        const cnt = published.filter(c =>
+                          c.subcategory === sub ||
+                          (sub === 'Certificate' && c.subcategory === 'Certificate Courses') ||
+                          (sub === 'Certificate Courses' && c.subcategory === 'Certificate')
+                        ).length
                         return (
                           <button
                             key={sub}

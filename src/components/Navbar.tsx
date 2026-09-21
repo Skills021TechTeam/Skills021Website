@@ -42,6 +42,7 @@ const NAV_ITEMS = [
           title: 'College & Tech',
           icon: Code2,
           items: [
+            { name: 'Certificate Courses', path: '/courses?group=College+%26+Tech+Courses&sub=Certificate' },
             { name: 'DSA', path: '/courses?group=College+%26+Tech+Courses&sub=DSA' },
             { name: 'IPU Courses', path: '/courses?group=College+%26+Tech+Courses&sub=IPU+Courses' },
             { name: 'Web Development', path: '/courses?group=College+%26+Tech+Courses&sub=Web+Development' },

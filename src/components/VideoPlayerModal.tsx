@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Send, Trash2, Loader2, ListVideo, MessageSquare,
-  Star, Lock, FileText, Download, ExternalLink, ChevronDown, Play
+  Star, Lock, FileText, Download, ExternalLink, ChevronDown, Play, MessageCircle
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Course, Resource } from '../store/contentStore'
@@ -320,13 +320,28 @@ export default function VideoPlayerModal({ course, userId, userName, isAdmin, ca
                   <div className="lg:col-span-2 p-4 sm:p-6 flex flex-col space-y-6">
                     {/* Header: Title, Instructor, Tags */}
                     <div className={`${activeMobileTab !== 'overview' ? 'hidden lg:block' : 'block'}`}>
-                      <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                        <span className="px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 border border-primary-500/20">
-                          {course.subcategory || 'Online Lecture'}
-                        </span>
-                        <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-gray-100 dark:bg-white/10 text-brand-muted dark:text-brand-dark-muted">
-                          {course.level || 'All Levels'}
-                        </span>
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 border border-primary-500/20">
+                            {course.subcategory || 'Online Lecture'}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-gray-100 dark:bg-white/10 text-brand-muted dark:text-brand-dark-muted">
+                            {course.level || 'All Levels'}
+                          </span>
+                        </div>
+                        {course.whatsappGroupUrl && (
+                          <a
+                            href={course.whatsappGroupUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] border border-[#25D366]/30 transition-all shadow-xs shrink-0"
+                            title="Join Course WhatsApp Group"
+                          >
+                            <MessageCircle size={13} />
+                            <span>Join WhatsApp</span>
+                            <ExternalLink size={10} className="opacity-70" />
+                          </a>
+                        )}
                       </div>
                       <h2 className="text-lg sm:text-xl font-bold text-brand-text dark:text-brand-dark-text leading-snug">
                         {course.title}
@@ -335,6 +350,36 @@ export default function VideoPlayerModal({ course, userId, userName, isAdmin, ca
                         Instructor: <span className="font-semibold text-brand-text dark:text-brand-dark-text">{course.instructor || 'Skills021 Faculty'}</span>
                       </p>
                     </div>
+
+                    {/* WhatsApp Group Community Card */}
+                    {course.whatsappGroupUrl && (
+                      <div className={`p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-teal-500/10 border border-emerald-500/20 dark:border-emerald-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${activeMobileTab !== 'overview' ? 'hidden lg:flex' : 'flex'}`}>
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-[#25D366] text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/20">
+                            <MessageCircle size={20} />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-brand-text dark:text-brand-dark-text flex items-center gap-2">
+                              Course WhatsApp Group
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300">Official</span>
+                            </h4>
+                            <p className="text-xs text-brand-muted dark:text-brand-dark-muted mt-0.5">
+                              Join for upcoming video alerts, schedule announcements, companion notes, and discussions.
+                            </p>
+                          </div>
+                        </div>
+                        <a
+                          href={course.whatsappGroupUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-4 py-2 bg-[#25D366] hover:bg-[#20bd5a] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-md shadow-emerald-500/20 shrink-0 self-stretch sm:self-auto justify-center"
+                        >
+                          <MessageCircle size={14} />
+                          <span>Join Group</span>
+                          <ExternalLink size={12} />
+                        </a>
+                      </div>
+                    )}
 
                     {/* About this course description (Overview Tab on mobile, Always on desktop) */}
                     {course.description && (

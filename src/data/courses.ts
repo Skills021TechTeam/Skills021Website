@@ -17,6 +17,7 @@ export interface Course {
   enrolled: number
   gradientFrom: string
   gradientTo: string
+  whatsappGroupUrl?: string
 }
 
 export const courses: Course[] = [

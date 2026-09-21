@@ -10,6 +10,7 @@ export type CourseSubcategory =
   | 'AI & Machine Learning' | 'Data Science' | 'Cyber Security' | 'Cloud Computing'
   | 'Aptitude Preparation' | 'Interview Preparation'
   | 'IPU Courses' | 'AKTU Courses'
+  | 'Certificate' | 'Certificate Courses'
 
 export interface CourseModule {
   id: string
@@ -67,6 +68,8 @@ export interface Course {
   isCourseBundle?: boolean
   // Array of course IDs included inside this Course Bundle.
   bundledCourseIds?: string[]
+  // Optional WhatsApp group link for students to join for updates & upcoming videos
+  whatsappGroupUrl?: string
 }
 
 // ─── Resource Types ─────────────────────────────────────────────────────────

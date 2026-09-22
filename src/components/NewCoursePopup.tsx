@@ -11,7 +11,8 @@ import {
   PlayCircle,
   FileText,
   Package,
-  Layers
+  Layers,
+  BadgePercent,
 } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { fetchPublishedSiteCourses } from '../lib/courseService'
@@ -457,6 +458,21 @@ export default function NewCoursePopup() {
     currentItem.kind === 'course_bundle' ||
     currentItem.kind === 'resource_bundle'
 
+  // Early Bird offer: semester bundles for semesters 1, 3 & 5
+  // Check metaInfo ("Semester 5"), tag, or title for the semester number
+  const semesterNum = (() => {
+    if (currentItem.kind !== 'semester_bundle') return 0
+    const fromMeta = parseInt((currentItem.metaInfo || '').replace(/[^\d]/g, '')) || 0
+    if (fromMeta) return fromMeta
+    const fromTag  = parseInt((currentItem.tag  || '').replace(/[^\d]/g, '')) || 0
+    if (fromTag) return fromTag
+    const m = (currentItem.title || '').match(/semester\s*(\d)/i)
+    return m ? parseInt(m[1]) : 0
+  })()
+  const isEarlyBirdSemBundle = currentItem.kind === 'semester_bundle' && [1, 3, 5].includes(semesterNum)
+  // ₹799/180 days ≈ ₹4.44 per day
+  const earlyBirdDailyRate = (799 / 180).toFixed(2)
+
   const hasImage = Boolean(currentItem.thumbnail && !imgErrors[currentItem.id])
 
   return (
@@ -561,15 +577,28 @@ export default function NewCoursePopup() {
                         <span className="rounded-md bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm max-w-[55%] truncate">
                           {currentItem.levelOrType}
                         </span>
-                        <span
-                          className={`rounded-md px-2 py-0.5 text-[11px] font-bold backdrop-blur-sm ${
-                            currentItem.isFree
-                              ? 'bg-emerald-600 text-white'
-                              : 'bg-white text-neutral-900 shadow-sm'
-                          }`}
-                        >
-                          {currentItem.isFree ? 'FREE' : `₹${currentItem.price}`}
-                        </span>
+                        {isEarlyBirdSemBundle ? (
+                          <div className="flex flex-col items-end bg-gradient-to-r from-amber-500 to-rose-500 px-2 py-1 rounded-md">
+                            <div className="flex items-baseline gap-0.5">
+                              <span className="text-[15px] font-black text-white leading-none">₹{earlyBirdDailyRate}</span>
+                              <span className="text-[9px] text-white/90 font-bold">/day</span>
+                            </div>
+                            <div className="flex items-baseline gap-1">
+                              <span className="text-[10px] font-bold text-white/90">₹799</span>
+                              <span className="text-[9px] text-white/60 line-through">₹{currentItem.price}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <span
+                            className={`rounded-md px-2 py-0.5 text-[11px] font-bold backdrop-blur-sm ${
+                              currentItem.isFree
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-white text-neutral-900 shadow-sm'
+                            }`}
+                          >
+                            {currentItem.isFree ? 'FREE' : `₹${currentItem.price}`}
+                          </span>
+                        )}
                       </div>
                     </motion.div>
                   </AnimatePresence>
@@ -645,6 +674,31 @@ export default function NewCoursePopup() {
                           ({currentItem.reviews || 120}+ reviews)
                         </span>
                       </div>
+
+                      {/* Early Bird Offer card for Sem 1, 3, 5 */}
+                      {isEarlyBirdSemBundle && (
+                        <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border border-amber-200 dark:border-amber-800/50">
+                          <span className="text-base leading-none">🐣</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-400">Early Bird Offer</p>
+                            <div className="flex items-baseline gap-1.5">
+                              <span className="text-xl font-black text-amber-600 dark:text-amber-400">₹{earlyBirdDailyRate}</span>
+                              <span className="text-xs font-bold text-amber-700 dark:text-amber-300">/day</span>
+                            </div>
+                            <div className="flex items-baseline gap-1">
+                              <span className="text-[11px] font-bold text-neutral-600 dark:text-neutral-300">₹799 full semester</span>
+                              <span className="text-[10px] line-through text-neutral-400">₹{currentItem.price}</span>
+                              <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">Save {Math.round(((Number(currentItem.price) - 799) / Number(currentItem.price)) * 100)}%</span>
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <span className="flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                              <BadgePercent size={11} /> Use coupon
+                            </span>
+                            <p className="text-[10px] font-black text-rose-600 dark:text-rose-400">→ ₹699</p>
+                          </div>
+                        </div>
+                      )}
                     </motion.div>
                   </AnimatePresence>
 

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Loader2, CheckCircle2, QrCode, Copy, Check,
   UploadCloud, AlertCircle, Phone, GraduationCap, Sparkles, Clock,
-  Tag, ChevronRight, BadgePercent, XCircle, FileText, Video
+  Tag, ChevronRight, BadgePercent, XCircle, FileText, Video, MessageCircle
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Course, Resource } from '../store/contentStore'
@@ -861,6 +861,29 @@ export default function EnrollModal({
                     : 'Once the Skills021 team verifies your payment details, your access will be activated immediately!'}
                 </p>
 
+                {course?.whatsappGroupUrl && (
+                  <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 text-left space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-[#25D366] text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <MessageCircle size={15} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-brand-text dark:text-brand-dark-text">Join Course WhatsApp Community</p>
+                        <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted">Stay updated on new video alerts and study announcements.</p>
+                      </div>
+                    </div>
+                    <a
+                      href={course.whatsappGroupUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-2 bg-[#25D366] hover:bg-[#20bd5a] text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                    >
+                      <MessageCircle size={14} />
+                      <span>Join WhatsApp Group</span>
+                    </a>
+                  </div>
+                )}
+
                 <button
                   onClick={onClose}
                   className="w-full py-3 bg-[#0A0A0A] dark:bg-white text-white dark:text-black font-bold text-sm rounded-xl hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
@@ -886,6 +909,30 @@ export default function EnrollModal({
                       : `You now have full free access to ${title}.`}
                   </p>
                 </div>
+
+                {course?.whatsappGroupUrl && (
+                  <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 text-left space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-[#25D366] text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <MessageCircle size={15} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-brand-text dark:text-brand-dark-text">Join Course WhatsApp Community</p>
+                        <p className="text-[11px] text-brand-muted dark:text-brand-dark-muted">Get upcoming video alerts, announcements, and notes.</p>
+                      </div>
+                    </div>
+                    <a
+                      href={course.whatsappGroupUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-2 bg-[#25D366] hover:bg-[#20bd5a] text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                    >
+                      <MessageCircle size={14} />
+                      <span>Join WhatsApp Group</span>
+                    </a>
+                  </div>
+                )}
+
                 <button
                   onClick={onClose}
                   className="w-full py-3 bg-primary-500 text-white font-bold text-sm rounded-xl hover:bg-primary-600 transition-colors"

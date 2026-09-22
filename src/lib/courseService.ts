@@ -167,8 +167,20 @@ const extractBundledCourseIds = (tags: string[] | null | undefined, colIds?: str
   return raw.split(',').map(s => s.trim()).filter(Boolean)
 }
 
+// Internal tag prefix for optional WhatsApp group link
+const WHATSAPP_GROUP_PREFIX = '__whatsapp:'
+const encodeWhatsAppGroupTag = (url: string) => `${WHATSAPP_GROUP_PREFIX}${url.trim()}`
+const isWhatsAppGroupTag = (t: string) => t.startsWith(WHATSAPP_GROUP_PREFIX)
+const extractWhatsAppGroupUrl = (tags: string[] | null | undefined, colUrl?: string | null): string | undefined => {
+  if (colUrl?.trim()) return colUrl.trim()
+  const tag = (tags ?? []).find(isWhatsAppGroupTag)
+  if (!tag) return undefined
+  const raw = tag.slice(WHATSAPP_GROUP_PREFIX.length).trim()
+  return raw || undefined
+}
+
 const stripInternalTags = (tags: string[] | null | undefined) =>
-  (tags ?? []).filter(t => !isNotesTag(t) && !isBundleOnlyTag(t) && !isCourseBundleTag(t) && !isBundledCoursesTag(t))
+  (tags ?? []).filter(t => !isNotesTag(t) && !isBundleOnlyTag(t) && !isCourseBundleTag(t) && !isBundledCoursesTag(t) && !isWhatsAppGroupTag(t))
 
 // ─── DB Row Shape (public.site_courses) ─────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -199,6 +211,7 @@ interface SiteCourseRow {
   is_bundle_only?: boolean | null
   is_course_bundle?: boolean | null
   bundled_course_ids?: string[] | null
+  whatsapp_group_url?: string | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   subjects?: any
 }
@@ -207,7 +220,7 @@ const COURSE_SELECT = `
   id, title, description, course_group, subcategory, instructor, duration,
   lectures, level, rating, reviews, is_free, price, tags, thumbnail_url,
   video_url, status, enrolled, gradient_from, gradient_to, created_at, updated_at,
-  subject_id, is_bundle_only,
+  subject_id, is_bundle_only, whatsapp_group_url,
   subjects (
     id, name, code,
     semesters (
@@ -325,6 +338,7 @@ function mapRowToCourse(row: SiteCourseRow): Course {
     isBundleOnly: Boolean(row.is_bundle_only || (row.tags ?? []).includes(BUNDLE_ONLY_TAG)),
     isCourseBundle: Boolean(row.is_course_bundle || (row.tags ?? []).includes(COURSE_BUNDLE_TAG)),
     bundledCourseIds: extractBundledCourseIds(row.tags, row.bundled_course_ids),
+    whatsappGroupUrl: extractWhatsAppGroupUrl(row.tags, row.whatsapp_group_url),
     college:          clg?.name ?? undefined,
     academicCourse:   crs?.name ?? undefined,
     branch:           br?.name ?? undefined,
@@ -397,6 +411,8 @@ export interface CreateSiteCourseInput {
   isCourseBundle?: boolean
   // Array of course IDs bundled inside
   bundledCourseIds?: string[]
+  // Optional WhatsApp group link for students to join for updates & upcoming videos
+  whatsappGroupUrl?: string
   // Optional unit/module title for auto-mapping to subject bundle curriculum
   unitTitle?: string
 }
@@ -411,6 +427,7 @@ export async function createSiteCourse(input: CreateSiteCourseInput): Promise<Co
     ...(input.notesSubject?.trim() ? [encodeNotesTag(input.notesSubject.trim())] : []),
     ...(isBundle ? [BUNDLE_ONLY_TAG] : []),
     ...(isCourseBundle ? [COURSE_BUNDLE_TAG, encodeBundledCoursesTag(bundledCourseIds)] : []),
+    ...(input.whatsappGroupUrl?.trim() ? [encodeWhatsAppGroupTag(input.whatsappGroupUrl.trim())] : []),
   ]
 
   const basePayload = {
@@ -434,6 +451,7 @@ export async function createSiteCourse(input: CreateSiteCourseInput): Promise<Co
     gradient_from: input.gradientFrom ?? '#6C63FF',
     gradient_to: input.gradientTo ?? '#00BFA6',
     is_bundle_only: isBundle,
+    whatsapp_group_url: input.whatsappGroupUrl?.trim() || null,
   }
 
   const fullPayload = {
@@ -449,9 +467,9 @@ export async function createSiteCourse(input: CreateSiteCourseInput): Promise<Co
 
   let subjectLinkFailed = false
 
-  // 1. If is_bundle_only or course_bundle column is missing from DB, retry with safe payload
-  if (error && /is_bundle_only|is_course_bundle|bundled_course_ids/i.test(error.message)) {
-    const { is_bundle_only: _drop, ...payloadWithoutBundle } = fullPayload
+  // 1. If is_bundle_only, course_bundle, or whatsapp_group_url column is missing from DB, retry with safe payload
+  if (error && /is_bundle_only|is_course_bundle|bundled_course_ids|whatsapp_group_url/i.test(error.message)) {
+    const { is_bundle_only: _drop, whatsapp_group_url: _dropWa, ...payloadWithoutBundle } = fullPayload
     ;({ data, error } = await supabase
       .from('site_courses')
       .insert(payloadWithoutBundle)
@@ -461,7 +479,7 @@ export async function createSiteCourse(input: CreateSiteCourseInput): Promise<Co
 
   // 2. If subjects join relationship is unresolvable in PostgREST schema cache, retry without join
   if (error && isCourseSchemaIssue(error.message) && !/subject_id.*does not exist/i.test(error.message)) {
-    const { is_bundle_only: _drop, ...payloadWithoutBundle } = fullPayload
+    const { is_bundle_only: _drop, whatsapp_group_url: _dropWa, ...payloadWithoutBundle } = fullPayload
     ;({ data, error } = await supabase
       .from('site_courses')
       .insert(payloadWithoutBundle)
@@ -473,7 +491,7 @@ export async function createSiteCourse(input: CreateSiteCourseInput): Promise<Co
   if (error && isCourseSchemaIssue(error.message)) {
     console.warn('[courseService] Creating course without subject_id — run migration to enable it:', error.message)
     subjectLinkFailed = !!input.subjectId
-    const { is_bundle_only: _dropBundle, subject_id: _dropSubj, ...legacyPayload } = fullPayload
+    const { is_bundle_only: _dropBundle, whatsapp_group_url: _dropWa, subject_id: _dropSubj, ...legacyPayload } = fullPayload
     ;({ data, error } = await supabase
       .from('site_courses')
       .insert(legacyPayload)
@@ -525,6 +543,7 @@ export interface UpdateSiteCourseInput {
   isBundleOnly?: boolean
   isCourseBundle?: boolean
   bundledCourseIds?: string[]
+  whatsappGroupUrl?: string
   unitTitle?: string
 }
 
@@ -561,7 +580,11 @@ export async function updateSiteCourse(id: string, input: UpdateSiteCourseInput)
     }
   }
 
-  if (input.tags !== undefined || input.notesSubject !== undefined || input.isBundleOnly !== undefined || input.isCourseBundle !== undefined || input.bundledCourseIds !== undefined) {
+  if (input.whatsappGroupUrl !== undefined) {
+    payload.whatsapp_group_url = input.whatsappGroupUrl?.trim() || null
+  }
+
+  if (input.tags !== undefined || input.notesSubject !== undefined || input.isBundleOnly !== undefined || input.isCourseBundle !== undefined || input.bundledCourseIds !== undefined || input.whatsappGroupUrl !== undefined) {
     const rawTags = stripInternalTags(input.tags ?? [])
     if (input.notesSubject?.trim()) rawTags.push(encodeNotesTag(input.notesSubject.trim()))
     if (input.isBundleOnly) rawTags.push(BUNDLE_ONLY_TAG)
@@ -570,6 +593,9 @@ export async function updateSiteCourse(id: string, input: UpdateSiteCourseInput)
       if (input.bundledCourseIds && input.bundledCourseIds.length > 0) {
         rawTags.push(encodeBundledCoursesTag(input.bundledCourseIds))
       }
+    }
+    if (input.whatsappGroupUrl !== undefined && input.whatsappGroupUrl.trim()) {
+      rawTags.push(encodeWhatsAppGroupTag(input.whatsappGroupUrl.trim()))
     }
     payload.tags = rawTags
   }
@@ -588,9 +614,9 @@ export async function updateSiteCourse(id: string, input: UpdateSiteCourseInput)
 
   let subjectLinkFailed = false
 
-  // 1. If is_bundle_only or course bundle columns missing from DB, retry keeping subject_id
-  if (error && /is_bundle_only|is_course_bundle|bundled_course_ids/i.test(error.message)) {
-    const { is_bundle_only: _drop, is_course_bundle: _drop2, bundled_course_ids: _drop3, ...payloadWithoutBundle } = payload
+  // 1. If is_bundle_only, course bundle, or whatsapp_group_url columns missing from DB, retry keeping subject_id
+  if (error && /is_bundle_only|is_course_bundle|bundled_course_ids|whatsapp_group_url/i.test(error.message)) {
+    const { is_bundle_only: _drop, is_course_bundle: _drop2, bundled_course_ids: _drop3, whatsapp_group_url: _dropWa, ...payloadWithoutBundle } = payload
     ;({ data, error } = await supabase
       .from('site_courses')
       .update(payloadWithoutBundle)
@@ -601,7 +627,7 @@ export async function updateSiteCourse(id: string, input: UpdateSiteCourseInput)
 
   // 2. If subjects join relationship unresolvable in PostgREST schema cache, retry without join
   if (error && isCourseSchemaIssue(error.message) && !/subject_id.*does not exist/i.test(error.message)) {
-    const { is_bundle_only: _drop, ...payloadWithoutBundle } = payload
+    const { is_bundle_only: _drop, whatsapp_group_url: _dropWa, ...payloadWithoutBundle } = payload
     ;({ data, error } = await supabase
       .from('site_courses')
       .update(payloadWithoutBundle)
@@ -614,7 +640,7 @@ export async function updateSiteCourse(id: string, input: UpdateSiteCourseInput)
   if (error && isCourseSchemaIssue(error.message)) {
     console.warn('[courseService] Updating course without subject_id:', error.message)
     subjectLinkFailed = 'subject_id' in payload && !!payload.subject_id
-    const { subject_id: _dropSubj, is_bundle_only: _dropBundle, ...payloadFallback } = payload
+    const { subject_id: _dropSubj, is_bundle_only: _dropBundle, whatsapp_group_url: _dropWa, ...payloadFallback } = payload
     ;({ data, error } = await supabase
       .from('site_courses')
       .update(payloadFallback)

@@ -6,7 +6,7 @@ import {
   Clock, CheckCircle, TrendingUp, Play, Save,
   User, Phone, School, Lock, AlertCircle, CreditCard, ShieldCheck, Loader2, Sparkles, Copy, Camera, Image as ImageIcon, LogOut,
   GraduationCap, Calendar, BookMarked, FileText, ChevronDown, ChevronUp, BarChart3, Target,
-  Smartphone, Volume2, Download, ArrowRight, CheckCircle2, Layers, Package, ExternalLink, Video
+  Smartphone, Volume2, Download, ArrowRight, CheckCircle2, Layers, Package, ExternalLink, Video, MessageCircle
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import LogoutConfirmModal from '../components/LogoutConfirmModal'
@@ -790,12 +790,26 @@ export default function UserDashboard() {
                           <Play size={12} /> Study Subject
                         </Link>
                       ) : (
-                        <button
-                          onClick={() => setActivePlayCourse(course)}
-                          className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-primary-500 text-white text-xs font-semibold rounded-xl hover:bg-primary-600 transition-colors flex-shrink-0"
-                        >
-                          <Play size={12} /> Watch Video
-                        </button>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          {course.whatsappGroupUrl && (
+                            <a
+                              href={course.whatsappGroupUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2.5 bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366] hover:text-white rounded-xl transition-colors border border-[#25D366]/30"
+                              title="Join Course WhatsApp Group"
+                              aria-label="Join Course WhatsApp Group"
+                            >
+                              <MessageCircle size={14} />
+                            </a>
+                          )}
+                          <button
+                            onClick={() => setActivePlayCourse(course)}
+                            className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-primary-500 text-white text-xs font-semibold rounded-xl hover:bg-primary-600 transition-colors"
+                          >
+                            <Play size={12} /> Watch Video
+                          </button>
+                        </div>
                       )}
                     </div>
                   ))}
@@ -1056,12 +1070,27 @@ export default function UserDashboard() {
                                   className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-brand-dark-card border border-gray-100 dark:border-brand-dark-border text-xs gap-2"
                                 >
                                   <span className="font-medium truncate max-w-[200px] sm:max-w-xs">{cc.title}</span>
-                                  <button
-                                    onClick={() => setActivePlayCourse(cc)}
-                                    className="flex items-center gap-1 px-2.5 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-[10px] font-bold transition-colors flex-shrink-0"
-                                  >
-                                    <Play size={10} /> Watch
-                                  </button>
+                                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    {(cc.whatsappGroupUrl || course.whatsappGroupUrl) && (
+                                      <a
+                                        href={cc.whatsappGroupUrl || course.whatsappGroupUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        title="Join WhatsApp Group for updates"
+                                        aria-label="Join WhatsApp Group"
+                                        className="w-6 h-6 rounded-lg bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366] hover:text-white dark:bg-[#25D366]/20 dark:text-emerald-400 dark:hover:bg-[#25D366] dark:hover:text-white flex items-center justify-center transition-colors border border-[#25D366]/30 shadow-xs"
+                                      >
+                                        <MessageCircle size={12} />
+                                      </a>
+                                    )}
+                                    <button
+                                      onClick={() => setActivePlayCourse(cc)}
+                                      className="flex items-center gap-1 px-2.5 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-[10px] font-bold transition-colors flex-shrink-0"
+                                    >
+                                      <Play size={10} /> Watch
+                                    </button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -1100,12 +1129,26 @@ export default function UserDashboard() {
                             )}
                           </div>
                         ) : (
-                          <button
-                            onClick={() => setActivePlayCourse(course)}
-                            className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary-500 text-white text-xs font-bold rounded-xl hover:bg-primary-600 transition-colors"
-                          >
-                            <Play size={13} /> Watch Course Video
-                          </button>
+                          <div className="flex items-center gap-2">
+                            {course.whatsappGroupUrl && (
+                              <a
+                                href={course.whatsappGroupUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2.5 bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366] hover:text-white rounded-xl transition-colors border border-[#25D366]/30 shrink-0"
+                                title="Join Course WhatsApp Group"
+                                aria-label="Join Course WhatsApp Group"
+                              >
+                                <MessageCircle size={15} />
+                              </a>
+                            )}
+                            <button
+                              onClick={() => setActivePlayCourse(course)}
+                              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-primary-500 text-white text-xs font-bold rounded-xl hover:bg-primary-600 transition-colors"
+                            >
+                              <Play size={13} /> Watch Course Video
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>

@@ -9,7 +9,7 @@ import {
   CreditCard, DollarSign, ExternalLink, RefreshCw, ChevronRight, Copy, ShieldAlert,
   QrCode, UploadCloud, Sparkles, GraduationCap, Calendar, CalendarDays, UserCheck, Award,
   Package, Layers, PlayCircle, FolderPlus,
-  Upload, Image as ImageIcon, AlertCircle
+  Upload, Image as ImageIcon, AlertCircle, MessageCircle
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import LogoutConfirmModal from '../components/LogoutConfirmModal'
@@ -2861,6 +2861,17 @@ export default function AdminDashboard() {
                               <span className="badge bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-[10px] w-fit inline-flex items-center gap-1 font-semibold">
                                 <Video size={10} /> In Bundle: {parentCourseBundle.title}
                               </span>
+                            )}
+                            {c.whatsappGroupUrl && (
+                              <a
+                                href={c.whatsappGroupUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="badge bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 text-[10px] w-fit inline-flex items-center gap-1 font-semibold hover:underline"
+                                title={c.whatsappGroupUrl}
+                              >
+                                <MessageCircle size={10} /> WhatsApp Group
+                              </a>
                             )}
                           </div>
                         </td>
@@ -7138,6 +7149,7 @@ export default function AdminDashboard() {
             isBundleOnly: isUnderBundle,
             isCourseBundle: isComboBundle,
             bundledCourseIds: isComboBundle ? (editItem.bundledCourseIds || []) : [],
+            whatsappGroupUrl: editItem.whatsappGroupUrl?.trim() || '',
           }
 
           let savedCourseId: string
@@ -7452,7 +7464,7 @@ export default function AdminDashboard() {
                 </Field>
                 <Field label="Subcategory">
                   <select value={editItem.subcategory || 'DSA'} onChange={e => setEditItem((p: any) => ({ ...p, subcategory: e.target.value }))} className={inputCls}>
-                    {['DSA', 'IPU Courses', 'AKTU Courses', 'Web Development', 'App Development', 'Flutter Development', 'AI & Machine Learning', 'Data Science', 'Cyber Security', 'Cloud Computing', 'Interview Preparation', 'Aptitude Preparation', 'JEE Preparation', 'NEET Preparation', 'CUET Preparation', 'Olympiads', 'NTSE', 'Class 1-5', 'Class 6-8', 'Class 9-10', 'Class 11-12'].map(s => <option key={s}>{s}</option>)}
+                    {['Certificate', 'DSA', 'IPU Courses', 'AKTU Courses', 'Web Development', 'App Development', 'Flutter Development', 'AI & Machine Learning', 'Data Science', 'Cyber Security', 'Cloud Computing', 'Interview Preparation', 'Aptitude Preparation', 'JEE Preparation', 'NEET Preparation', 'CUET Preparation', 'Olympiads', 'NTSE', 'Class 1-5', 'Class 6-8', 'Class 9-10', 'Class 11-12'].map(s => <option key={s}>{s}</option>)}
                   </select>
                 </Field>
                 <Field label="Level">
@@ -7790,6 +7802,22 @@ export default function AdminDashboard() {
                 {courseThumbUploadStatus === 'success' && <p className="text-xs text-green-600 font-semibold">✔ Thumbnail uploaded successfully!</p>}
                 {courseThumbUploadStatus === 'error' && <p className="text-xs text-red-600 font-semibold">❌ Thumbnail upload failed.</p>}
               </div>
+
+              <Field label="WhatsApp Group Link (optional)">
+                <div className="relative">
+                  <MessageCircle size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-500" />
+                  <input
+                    type="url"
+                    value={editItem.whatsappGroupUrl || ''}
+                    onChange={e => setEditItem((p: any) => ({ ...p, whatsappGroupUrl: e.target.value }))}
+                    className={inputCls + ' pl-9'}
+                    placeholder="https://chat.whatsapp.com/..."
+                  />
+                </div>
+                <p className="text-[10px] text-brand-muted mt-1">
+                  Optional WhatsApp group invite link for students to join for updates, upcoming video alerts, and study discussions.
+                </p>
+              </Field>
 
               <Field label="Description"><textarea value={editItem.description || ''} onChange={e => setEditItem((p: any) => ({ ...p, description: e.target.value }))} rows={3} className={inputCls + ' resize-none'} placeholder="Course description" /></Field>
             </div>

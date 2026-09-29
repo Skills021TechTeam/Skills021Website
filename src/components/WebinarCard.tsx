@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import {
   Clock, CheckCircle2, Video, ExternalLink, CalendarDays,
   GraduationCap, BookOpen, Trophy, Zap, Star, Users, Radio,
-  ChevronDown, ChevronUp, MapPin, Sparkles, FlaskConical, BadgeCheck, Award,
+  ChevronDown, ChevronUp, MapPin, Sparkles, FlaskConical, BadgeCheck, Award, Share2,
 } from 'lucide-react'
+import toast from 'react-hot-toast'
 import type {
   LiveWebinar,
   WebinarSpeaker,
@@ -212,6 +213,33 @@ export function WebinarCard({
   previewMode = false,
 }: WebinarCardProps) {
 
+  async function handleShare() {
+    const shareUrl = new URL(window.location.href)
+    shareUrl.searchParams.set('tab', 'webinars')
+    shareUrl.hash = `webinar-${webinar.id}`
+    const shareData = {
+      title: webinar.title,
+      text: webinar.shortDescription || `Join this webinar: ${webinar.title}`,
+      url: shareUrl.toString(),
+    }
+
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData)
+        return
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') return
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareData.url)
+      toast.success('Webinar link copied!')
+    } catch {
+      toast.error('Could not share this webinar link.')
+    }
+  }
+
   // ── Build consolidated, deduplicated speakers list ─────────────────────────
   // Priority: webinar.speakers[] (new multi-speaker schema)
   // Fallback:  legacy speakerName / speakerBio / etc. fields
@@ -350,7 +378,7 @@ export function WebinarCard({
   // ─── COMPACT card ────────────────────────────────────────────────────────────
   if (compact) {
     return (
-      <div className="rounded-3xl border border-violet-100 dark:border-white/10 bg-white dark:bg-brand-dark-card p-5 shadow-sm flex flex-col justify-between gap-4">
+      <div id={`webinar-${webinar.id}`} className="rounded-3xl border border-violet-100 dark:border-white/10 bg-white dark:bg-brand-dark-card p-5 shadow-sm flex flex-col justify-between gap-4">
         <div>
           <div className="flex items-start justify-between gap-2 mb-3">
             <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border ${statusBadge.cls}`}>
@@ -396,6 +424,9 @@ export function WebinarCard({
         <div className="pt-3 border-t border-gray-100 dark:border-white/10">
           {renderCta()}
           {renderSubtext()}
+          <button type="button" onClick={handleShare} aria-label={`Share ${webinar.title}`} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 dark:border-white/10 px-4 py-2.5 text-sm font-bold text-brand-text dark:text-white transition-colors hover:bg-gray-100 dark:hover:bg-white/10">
+            <Share2 size={15} /> Share webinar
+          </button>
         </div>
       </div>
     )
@@ -403,7 +434,7 @@ export function WebinarCard({
 
   // ─── FULL PREMIUM CARD ───────────────────────────────────────────────────────
   return (
-    <div className="rounded-[28px] border border-violet-100 dark:border-white/10 bg-white dark:bg-brand-dark-card overflow-hidden shadow-sm">
+    <div id={`webinar-${webinar.id}`} className="rounded-[28px] border border-violet-100 dark:border-white/10 bg-white dark:bg-brand-dark-card overflow-hidden shadow-sm">
       <div className="flex flex-col lg:flex-row">
 
         {/* LEFT: Speaker image panel — renders ALL speakers, NEVER duplicated in center */}
@@ -529,6 +560,9 @@ export function WebinarCard({
           {/* CTA */}
           {renderCta()}
           {renderSubtext()}
+          <button type="button" onClick={handleShare} aria-label={`Share ${webinar.title}`} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 dark:border-white/10 px-4 py-2.5 text-sm font-bold text-brand-text dark:text-white transition-colors hover:bg-gray-100 dark:hover:bg-white/10">
+            <Share2 size={15} /> Share webinar
+          </button>
         </div>
 
       </div>

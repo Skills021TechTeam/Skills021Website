@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Clock, CheckCircle2, Video, ExternalLink, CalendarDays,
   GraduationCap, BookOpen, Trophy, Zap, Star, Users, Radio,
@@ -32,10 +32,11 @@ function HighlightIcon({ icon, size = 16 }: { icon?: string; size?: number }) {
 }
 
 // ─── Speaker bio block (NO image – images are rendered in the image panel) ───
-function SpeakerInfoBlock({ speaker }: { speaker: WebinarSpeaker }) {
-  const [expanded, setExpanded] = useState(false)
+function SpeakerInfoBlock({ speaker, expandedByDefault = false }: { speaker: WebinarSpeaker; expandedByDefault?: boolean }) {
+  const [expanded, setExpanded] = useState(expandedByDefault)
   const hasBio = speaker.bio && speaker.bio.length > 0
   const hasShortBio = Boolean(speaker.shortBio)
+  const visibleBadge = speaker.badge && !['featured speaker', 'also speaking'].includes(speaker.badge.trim().toLowerCase())
 
   return (
     <div className="min-w-0">
@@ -44,7 +45,7 @@ function SpeakerInfoBlock({ speaker }: { speaker: WebinarSpeaker }) {
         <span className="font-bold text-sm text-brand-text dark:text-white">
           {speaker.name}
         </span>
-        {speaker.badge && (
+        {visibleBadge && (
           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800">
             {speaker.badge}
           </span>
@@ -79,7 +80,7 @@ function SpeakerInfoBlock({ speaker }: { speaker: WebinarSpeaker }) {
       {/* Bio */}
       {(hasShortBio || hasBio) && (
         <div className="mt-3 text-sm leading-relaxed text-brand-muted dark:text-brand-dark-muted space-y-2">
-          {!expanded && hasShortBio && <p>{speaker.shortBio}</p>}
+          {hasShortBio && (!expanded || !hasBio) && <p>{speaker.shortBio}</p>}
           {expanded && hasBio && speaker.bio.map((para, i) => <p key={i}>{para}</p>)}
           {hasBio && (
             <button
@@ -106,123 +107,78 @@ function SpeakerInfoBlock({ speaker }: { speaker: WebinarSpeaker }) {
   )
 }
 
-// ─── Speaker image slot ───────────────────────────────────────────────────────
-function SpeakerImageSlot({ speaker }: { speaker: WebinarSpeaker }) {
+function SpeakerCarousel({ speakers, title }: { speakers: WebinarSpeaker[]; title: string }) {
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [reducedMotion, setReducedMotion] = useState(false)
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const updatePreference = () => setReducedMotion(mediaQuery.matches)
+    updatePreference()
+    mediaQuery.addEventListener('change', updatePreference)
+    return () => mediaQuery.removeEventListener('change', updatePreference)
+  }, [])
+
+  useEffect(() => {
+    if (speakers.length < 2 || reducedMotion) return
+    const intervalId = window.setInterval(() => {
+      setActiveIndex(index => (index + 1) % speakers.length)
+    }, 4000)
+    return () => window.clearInterval(intervalId)
+  }, [reducedMotion, speakers.length])
+
+  useEffect(() => {
+    setActiveIndex(index => Math.min(index, Math.max(0, speakers.length - 1)))
+  }, [speakers.length])
+
   return (
-    <div className="relative flex-1 min-h-0 overflow-hidden bg-gray-100 dark:bg-black/20">
-      {speaker.photoUrl ? (
-        <img
-          src={speaker.photoUrl}
-          alt={speaker.name}
-          className="absolute inset-0 h-full w-full object-cover object-top"
-          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-        />
+    <div className="absolute inset-0 h-full w-full overflow-hidden bg-gray-100 dark:bg-black/20" role="region" aria-label="Webinar speakers" aria-roledescription="carousel">
+      {speakers.length === 0 ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-600 p-8 text-center text-white">
+          <Sparkles size={48} className="mb-4 text-white/80" />
+          <p className="text-xl font-black leading-snug">{title}</p>
+          <span className="mt-2 rounded-full bg-white/15 px-4 py-1.5 text-sm text-white/80">Live Webinar</span>
+        </div>
       ) : (
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-4 bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-600 text-white text-center">
-          <Sparkles size={36} className="text-white/80 mb-2" />
-          <p className="font-black text-base leading-snug">{speaker.name}</p>
-          {speaker.badge && (
-            <span className="text-xs text-white/80 mt-1 px-3 py-1 rounded-full bg-white/15 backdrop-blur-sm">
-              {speaker.badge}
-            </span>
-          )}
-        </div>
-      )}
-      {/* Name overlay at bottom */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3 pt-6">
-        <p className="text-white font-bold text-sm leading-tight">{speaker.name}</p>
-        {speaker.designation && (
-          <p className="text-white/70 text-[11px] leading-tight">{speaker.designation}</p>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ─── Speaker image panel — adapts to speaker count ───────────────────────────
-function SpeakerImagePanel({ speakers, title }: { speakers: WebinarSpeaker[]; title: string }) {
-  if (speakers.length === 0) {
-    // No speakers: gradient placeholder with webinar title
-    return (
-      <div className="absolute inset-0 h-full w-full overflow-hidden bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-600">
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-white text-center">
-          <Sparkles size={48} className="text-white/80 mb-4" />
-          <p className="font-black text-xl leading-snug">{title}</p>
-          <span className="text-sm text-white/80 mt-2 px-4 py-1.5 rounded-full bg-white/15 backdrop-blur-sm">
-            Live Webinar
-          </span>
-        </div>
-      </div>
-    )
-  }
-
-  if (speakers.length === 1) {
-    // Single speaker: one large image
-    return (
-      <div className="absolute inset-0 h-full w-full overflow-hidden bg-gray-100 dark:bg-black/20">
-        {speakers[0].photoUrl ? (
-          <img
-            src={speakers[0].photoUrl}
-            alt={speakers[0].name}
-            className="absolute inset-0 h-full w-full object-cover object-top"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-          />
-        ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-600 text-white text-center">
-            <Sparkles size={42} className="text-white/80 mb-3" />
-            <p className="font-black text-lg leading-snug">{speakers[0].name}</p>
-            {speakers[0].badge && (
-              <span className="text-xs text-white/80 mt-1 px-3 py-1 rounded-full bg-white/15 backdrop-blur-sm">
-                {speakers[0].badge}
-              </span>
-            )}
+        <>
+          <div
+            className="flex h-full w-full"
+            style={{
+              transform: `translateX(-${activeIndex * 100}%)`,
+              transition: reducedMotion || speakers.length === 1 ? 'none' : 'transform 700ms ease-in-out',
+            }}
+          >
+            {speakers.map((speaker, index) => (
+              <div key={`${speaker.name}-${index}`} className="relative h-full min-w-full overflow-hidden" role="group" aria-roledescription="slide" aria-label={`${index + 1} of ${speakers.length}`} aria-hidden={index !== activeIndex}>
+                {speaker.photoUrl ? (
+                  <img
+                    src={speaker.photoUrl}
+                    alt={speaker.name}
+                    className="absolute inset-0 h-full w-full object-cover object-top"
+                    onError={e => { e.currentTarget.style.visibility = 'hidden' }}
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-600 p-6 text-center text-white">
+                    <Sparkles size={42} className="mb-3 text-white/80" />
+                    <p className="text-lg font-black leading-snug">{speaker.name}</p>
+                  </div>
+                )}
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3 pt-6" aria-hidden="true">
+                  <p className="text-sm font-bold leading-tight text-white">{speaker.name}</p>
+                  {speaker.designation && <p className="text-[11px] leading-tight text-white/70">{speaker.designation}</p>}
+                </div>
+              </div>
+            ))}
           </div>
-        )}
-      </div>
-    )
-  }
-
-  if (speakers.length === 2) {
-    // Two speakers: equal side-by-side vertical split
-    return (
-      <div className="absolute inset-0 h-full w-full overflow-hidden flex flex-row">
-        {speakers.map((sp, i) => (
-          <SpeakerImageSlot key={i} speaker={sp} />
-        ))}
-      </div>
-    )
-  }
-
-  if (speakers.length === 3) {
-    // Three speakers: top-left large + right column two stacked
-    return (
-      <div className="absolute inset-0 h-full w-full overflow-hidden flex flex-col lg:flex-row">
-        <div className="flex-1 relative overflow-hidden bg-gray-100 dark:bg-black/20 min-h-44">
-          <SpeakerImageSlot speaker={speakers[0]} />
-        </div>
-        <div className="flex-1 flex flex-col">
-          {speakers.slice(1).map((sp, i) => (
-            <div key={i} className="flex-1 relative overflow-hidden bg-gray-100 dark:bg-black/20 min-h-24">
-              <SpeakerImageSlot speaker={sp} />
+          {speakers.length > 1 && (
+            <div className="absolute bottom-3 right-3 flex gap-1.5" aria-hidden="true">
+              {speakers.map((speaker, index) => (
+                <span key={`${speaker.name}-indicator-${index}`} className={`h-1.5 w-1.5 rounded-full ${index === activeIndex ? 'bg-white' : 'bg-white/45'}`} />
+              ))}
             </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
-  // 4+ speakers: 2-column grid
-  const cols = speakers.length <= 4 ? 2 : Math.ceil(Math.sqrt(speakers.length))
-  return (
-    <div
-      className="absolute inset-0 h-full w-full overflow-hidden"
-      style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)` }}
-    >
-      {speakers.map((sp, i) => (
-        <div key={i} className="relative overflow-hidden bg-gray-100 dark:bg-black/20 min-h-36">
-          <SpeakerImageSlot speaker={sp} />
-        </div>
-      ))}
+          )}
+        </>
+      )}
     </div>
   )
 }
@@ -287,7 +243,7 @@ export function WebinarCard({
   const statusBadge = timing.isWebinarLive
     ? { text: `LIVE NOW · ${webinar.provider}`, cls: 'bg-red-600 text-white border-red-500 shadow-md shadow-red-500/25' }
     : timing.isWebinarUpcoming
-    ? { text: `Starts in: ${timing.remainingTimeWebinarStr} · ${webinar.provider}`, cls: 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800' }
+    ? { text: `UPCOMING · ${webinar.provider.toUpperCase()}`, cls: 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800' }
     : { text: `SESSION ENDED · ${webinar.provider}`, cls: 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-white/10' }
 
   // ─── CTA Button ─────────────────────────────────────────────────────────────
@@ -354,7 +310,7 @@ export function WebinarCard({
         <CalendarDays size={16} />
         {isEffectivelyFree
           ? (isEnrolledPass ? 'Register (Free with Enrolled Course)' : 'Register for Webinar (Free)')
-          : `Register & Pay (₹${webinar.price})`}
+          : `Pay ₹${webinar.price} & Join Webinar`}
       </button>
     )
   }
@@ -418,10 +374,7 @@ export function WebinarCard({
           {allSpeakers.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-2">
               {allSpeakers.map((sp, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  {sp.photoUrl && (
-                    <img src={sp.photoUrl} alt={sp.name} className="w-8 h-8 rounded-full object-cover object-top border border-white/20" onError={e => { (e.currentTarget as HTMLImageElement).style.display='none' }} />
-                  )}
+                <div key={`${sp.name}-${i}`}>
                   <span className="text-sm font-bold text-brand-text dark:text-white">{sp.name}</span>
                 </div>
               ))}
@@ -449,18 +402,13 @@ export function WebinarCard({
   }
 
   // ─── FULL PREMIUM CARD ───────────────────────────────────────────────────────
-  // Speaker image panel width adapts to speaker count
-  const imagePanelClass = allSpeakers.length >= 2
-    ? 'lg:w-[560px] xl:w-[640px]'
-    : 'lg:w-72 xl:w-80'
-
   return (
     <div className="rounded-[28px] border border-violet-100 dark:border-white/10 bg-white dark:bg-brand-dark-card overflow-hidden shadow-sm">
       <div className="flex flex-col lg:flex-row">
 
         {/* LEFT: Speaker image panel — renders ALL speakers, NEVER duplicated in center */}
-        <div className={`relative min-h-72 lg:min-h-0 shrink-0 overflow-hidden ${imagePanelClass}`}>
-          <SpeakerImagePanel speakers={allSpeakers} title={webinar.title} />
+        <div className="relative min-h-72 shrink-0 overflow-hidden lg:min-h-0 lg:w-[360px] xl:w-[420px]">
+          <SpeakerCarousel speakers={allSpeakers} title={webinar.title} />
         </div>
 
         {/* CENTER: Main content — speaker INFO only (no images) */}
@@ -487,12 +435,12 @@ export function WebinarCard({
               </span>
             )}
             <span className="ml-auto text-xs font-bold text-brand-muted">
-              {isFree ? 'Free Access' : isEnrolledPass ? `Free (Enrolled Pass) · ₹${webinar.price}` : `₹${webinar.price}`}
+              {isFree && webinar.price <= 0 ? 'Free Access' : isEnrolledPass ? `Free (Enrolled Pass) · ₹${webinar.price}` : `₹${webinar.price}`}
             </span>
           </div>
 
           {/* Title */}
-          <h3 className="text-2xl sm:text-3xl font-black text-brand-text dark:text-white mb-1 leading-tight">
+          <h3 className="text-2xl sm:text-3xl font-black uppercase text-brand-text dark:text-white mb-1 leading-tight">
             {webinar.title}
           </h3>
 
@@ -501,7 +449,7 @@ export function WebinarCard({
             <p className="text-sm font-bold text-violet-600 dark:text-violet-400 mb-5">
               {allSpeakers.length === 1
                 ? `Session Speaker: ${allSpeakers[0].name}`
-                : `Speakers: ${allSpeakers.map(s => s.name).join(' · ')}`}
+                : `Session Speakers: ${allSpeakers.map(s => s.name).join(' & ')}`}
             </p>
           )}
 
@@ -513,20 +461,14 @@ export function WebinarCard({
           )}
 
           {allSpeakers.length >= 2 && (
-            <div className="mb-5">
-              <p className="text-xs font-bold uppercase tracking-wider text-brand-muted mb-4">Session Speakers</p>
-              <div className={`grid gap-6 ${allSpeakers.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-2 lg:grid-cols-3'}`}>
-                {allSpeakers.map((sp, i) => (
-                  <div key={i} className="border border-gray-100 dark:border-white/10 rounded-2xl p-4 bg-gray-50/50 dark:bg-black/10">
-                    <SpeakerInfoBlock speaker={sp} />
-                  </div>
-                ))}
-              </div>
+            <div className="mb-5 space-y-5">
+              {allSpeakers.map((sp, i) => (
+                <SpeakerInfoBlock key={`${sp.name}-${i}`} speaker={sp} expandedByDefault />
+              ))}
             </div>
           )}
 
-          {/* Fallback description when no speakers at all */}
-          {allSpeakers.length === 0 && webinar.description && (
+          {webinar.description && (
             <div className="text-sm leading-relaxed text-brand-muted dark:text-brand-dark-muted mb-5">
               <p>{webinar.description}</p>
             </div>
@@ -536,7 +478,7 @@ export function WebinarCard({
           {webinar.tags && webinar.tags.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-2">
               {webinar.tags.map(tag => (
-                <span key={tag} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 text-brand-text dark:text-brand-dark-text">
+                <span key={tag} className="px-3 py-1.5 rounded-full text-xs font-semibold bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 text-brand-text dark:text-brand-dark-text">
                   {tag}
                 </span>
               ))}
@@ -574,7 +516,7 @@ export function WebinarCard({
           <div className="space-y-2 mb-5 text-xs">
             <div className="flex items-center gap-2 font-semibold text-brand-muted">
               <CalendarDays size={13} className="text-violet-500 shrink-0" />
-              {new Date(webinar.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
+              Session on {new Date(webinar.startsAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
             </div>
             {webinar.endsAt && (
               <div className="flex items-center gap-2 font-semibold text-brand-muted">

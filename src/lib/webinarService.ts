@@ -47,7 +47,6 @@ function mapRow(row: WebinarRecordingRow): WebinarRecording {
   }
 }
 
-// ─── List past webinar recordings (newest first) ────────────────────────────
 export async function getWebinarRecordings(resolveVideo = true): Promise<WebinarRecording[]> {
   const { data, error } = await supabase
     .from('webinar_recordings')
@@ -63,7 +62,6 @@ export async function getWebinarRecordings(resolveVideo = true): Promise<Webinar
   })))
 }
 
-// ─── Save a new webinar recording's metadata row ────────────────────────────
 export async function createWebinarRecording(input: {
   title: string
   description?: string
@@ -94,32 +92,23 @@ export async function createWebinarRecording(input: {
   return mapRow(data as unknown as WebinarRecordingRow)
 }
 
-// ─── Storage: upload the actual video file to Backblaze B2 ─────────────────
-// Saved at: webinars/<sessionDate>/<fileName>
 export async function uploadWebinarVideo(file: File, sessionDate: string, onProgress?: (percent: number) => void): Promise<string> {
   const safeName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '-')
   const path = `webinars/${sessionDate}/${Date.now()}-${safeName}`
   return uploadToBackblaze(file, path, onProgress)
 }
 
-// ─── Storage: delete a saved webinar video by its public URL ───────────────
 export async function deleteWebinarVideo(fileUrl: string): Promise<void> {
   if (isBackblazeRef(fileUrl)) {
     await deleteBackblazeFile(fileUrl)
     return
   }
-
   const storageMatch = fileUrl.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)/)
   if (!storageMatch) return
-
   const [, bucket, path] = storageMatch
-
   const { error } = await supabase.storage.from(bucket).remove([path])
-  if (error) {
-    console.error(`Failed to delete webinar video from Storage: ${error.message}`)
-  }
+  if (error) console.error(`Failed to delete webinar video from Storage: ${error.message}`)
 }
-
 
 export async function resolveWebinarRecordingVideo(recording: WebinarRecording): Promise<string | null> {
   if (!recording.videoUrl) return null
@@ -128,9 +117,6 @@ export async function resolveWebinarRecordingVideo(recording: WebinarRecording):
 }
 
 export async function deleteWebinarRecording(recording: WebinarRecording): Promise<void> {
-  // Fetch the canonical stored reference from the DB. getWebinarRecordings()
-  // intentionally resolves b2:// refs into short-lived signed URLs for playback,
-  // so the URL held by the UI is not suitable for deletion.
   const { data: row, error: fetchError } = await supabase
     .from('webinar_recordings')
     .select('video_url')
@@ -156,16 +142,32 @@ export async function deleteWebinarRecording(recording: WebinarRecording): Promi
 }
 
 
-export type WebinarProvider = 'Google Meet' | 'Zoom'
+export type WebinarProvider = 'Google Meet' | 'Zoom' | 'Other'
 
 export interface SpeakerHighlight {
+  icon?: string
   title: string
   subtitle: string
+}
+
+export interface WebinarSpeaker {
+  name: string
+  photoUrl: string
+  designation: string
+  organization: string
+  badge: string
+  shortBio: string
+  bio: string[]
+  experience: string
+  education: string
+  researchInfo: string
+  expertiseTags: string[]
 }
 
 export interface LiveWebinar {
   id: string
   title: string
+  shortDescription: string
   description: string
   provider: WebinarProvider
   joinUrl: string
@@ -174,11 +176,11 @@ export interface LiveWebinar {
   access: WebinarAccess
   price: number
   createdAt: string
-  // Speaker & Registration details stored directly in live_webinars table
   speakerName?: string
   speakerBadge?: string
   speakerPhotoUrl?: string
   speakerBio?: string[]
+  speakers?: WebinarSpeaker[]
   tags?: string[]
   highlights?: SpeakerHighlight[]
   isFeatured?: boolean
@@ -200,10 +202,12 @@ interface LiveWebinarRow {
 }
 
 export function encodeWebinarDescription(description: string, extra?: {
+  shortDescription?: string
   speakerName?: string
   speakerBadge?: string
   speakerPhotoUrl?: string
   speakerBio?: string[]
+  speakers?: WebinarSpeaker[]
   tags?: string[]
   highlights?: SpeakerHighlight[]
   isFeatured?: boolean
@@ -220,10 +224,12 @@ export function encodeWebinarDescription(description: string, extra?: {
 export function parseWebinarDescription(rawDescription: string): {
   cleanDescription: string
   speakerMeta: {
+    shortDescription?: string
     speakerName?: string
     speakerBadge?: string
     speakerPhotoUrl?: string
     speakerBio?: string[]
+    speakers?: WebinarSpeaker[]
     tags?: string[]
     highlights?: SpeakerHighlight[]
     isFeatured?: boolean
@@ -235,9 +241,7 @@ export function parseWebinarDescription(rawDescription: string): {
   const match = (rawDescription || '').match(/<!--SPEAKER:([\s\S]*?)-->/)
   let speakerMeta: any = {}
   if (match) {
-    try {
-      speakerMeta = JSON.parse(match[1])
-    } catch {}
+    try { speakerMeta = JSON.parse(match[1]) } catch {}
   }
   return { cleanDescription: clean, speakerMeta }
 }
@@ -247,6 +251,7 @@ function mapLiveRow(row: LiveWebinarRow): LiveWebinar {
   return {
     id: row.id,
     title: row.title,
+    shortDescription: speakerMeta.shortDescription || '',
     description: cleanDescription,
     provider: row.provider,
     joinUrl: row.join_url,
@@ -259,6 +264,7 @@ function mapLiveRow(row: LiveWebinarRow): LiveWebinar {
     speakerBadge: speakerMeta.speakerBadge || '',
     speakerPhotoUrl: speakerMeta.speakerPhotoUrl || '',
     speakerBio: Array.isArray(speakerMeta.speakerBio) ? speakerMeta.speakerBio : [],
+    speakers: Array.isArray(speakerMeta.speakers) ? speakerMeta.speakers : [],
     tags: Array.isArray(speakerMeta.tags) ? speakerMeta.tags : [],
     highlights: Array.isArray(speakerMeta.highlights) ? speakerMeta.highlights : [],
     isFeatured: Boolean(speakerMeta.isFeatured),
@@ -279,6 +285,7 @@ export async function getLiveWebinars(): Promise<LiveWebinar[]> {
 
 export interface CreateLiveWebinarInput {
   title: string
+  shortDescription?: string
   description: string
   provider: WebinarProvider
   joinUrl: string
@@ -290,6 +297,7 @@ export interface CreateLiveWebinarInput {
   speakerBadge?: string
   speakerPhotoUrl?: string
   speakerBio?: string[]
+  speakers?: WebinarSpeaker[]
   tags?: string[]
   highlights?: SpeakerHighlight[]
   isFeatured?: boolean
@@ -304,7 +312,6 @@ export function formatRemainingTime(ms: number): string {
   const hours = Math.floor((totalSeconds % 86400) / 3600)
   const minutes = Math.floor((totalSeconds % 3600) / 60)
   const seconds = totalSeconds % 60
-
   const parts: string[] = []
   if (days > 0) parts.push(`${days}d`)
   if (hours > 0 || days > 0) parts.push(`${hours}h`)
@@ -332,43 +339,27 @@ export interface WebinarTimingState {
 
 export function getWebinarTimingState(webinar: LiveWebinar, nowMs = Date.now()): WebinarTimingState {
   const webinarStartMs = new Date(webinar.startsAt).getTime()
-  // Default session duration is 2 hours if no endsAt provided
   const webinarEndMs = webinar.endsAt
     ? new Date(webinar.endsAt).getTime()
     : webinarStartMs + 2 * 60 * 60 * 1000
-
-  // Registration start defaults to created_at or beginning of time if not specified
   const regStartMs = webinar.registrationStartsAt
     ? new Date(webinar.registrationStartsAt).getTime()
     : (webinar.createdAt ? new Date(webinar.createdAt).getTime() : 0)
-
-  // Registration end defaults to webinarEndMs (or webinarStartMs) if not specified
   const regEndMs = webinar.registrationEndsAt
     ? new Date(webinar.registrationEndsAt).getTime()
     : webinarEndMs
-
   const isWebinarLive = nowMs >= webinarStartMs && nowMs < webinarEndMs
   const isWebinarEnded = nowMs >= webinarEndMs
   const isWebinarUpcoming = nowMs < webinarStartMs
-
   const isRegUpcoming = nowMs < regStartMs
   const isRegOpen = nowMs >= regStartMs && nowMs < regEndMs && !isWebinarEnded
   const isRegClosed = nowMs >= regEndMs || isWebinarEnded
-
   const remainingTimeWebinarMs = Math.max(0, webinarStartMs - nowMs)
   const remainingTimeRegMs = Math.max(0, regEndMs - nowMs)
-
   return {
-    webinarStartMs,
-    webinarEndMs,
-    regStartMs,
-    regEndMs,
-    isWebinarUpcoming,
-    isWebinarLive,
-    isWebinarEnded,
-    isRegUpcoming,
-    isRegOpen,
-    isRegClosed,
+    webinarStartMs, webinarEndMs, regStartMs, regEndMs,
+    isWebinarUpcoming, isWebinarLive, isWebinarEnded,
+    isRegUpcoming, isRegOpen, isRegClosed,
     remainingTimeWebinarMs,
     remainingTimeWebinarStr: formatRemainingTime(remainingTimeWebinarMs),
     remainingTimeRegMs,
@@ -378,17 +369,18 @@ export function getWebinarTimingState(webinar: LiveWebinar, nowMs = Date.now()):
 
 export async function createLiveWebinar(input: CreateLiveWebinarInput): Promise<LiveWebinar> {
   const fullDescription = encodeWebinarDescription(input.description, {
+    shortDescription: input.shortDescription,
     speakerName: input.speakerName,
     speakerBadge: input.speakerBadge,
     speakerPhotoUrl: input.speakerPhotoUrl,
     speakerBio: input.speakerBio,
+    speakers: input.speakers,
     tags: input.tags,
     highlights: input.highlights,
     isFeatured: input.isFeatured,
     registrationStartsAt: input.registrationStartsAt,
     registrationEndsAt: input.registrationEndsAt,
   })
-
   const { data, error } = await supabase
     .from('live_webinars')
     .insert({
@@ -403,35 +395,29 @@ export async function createLiveWebinar(input: CreateLiveWebinarInput): Promise<
     })
     .select()
     .single()
-
   if (error) throw new Error(`Failed to create live webinar: ${error.message}`)
   return mapLiveRow(data as unknown as LiveWebinarRow)
 }
 
 export async function updateLiveWebinar(id: string, input: Partial<CreateLiveWebinarInput>): Promise<LiveWebinar> {
-  // Fetch existing row to preserve description if needed
   const { data: existing, error: fetchErr } = await supabase
-    .from('live_webinars')
-    .select('*')
-    .eq('id', id)
-    .single()
-
+    .from('live_webinars').select('*').eq('id', id).single()
   if (fetchErr) throw new Error(`Webinar not found: ${fetchErr.message}`)
   const existingMapped = mapLiveRow(existing as unknown as LiveWebinarRow)
-
   const mergedDesc = input.description !== undefined ? input.description : existingMapped.description
   const fullDescription = encodeWebinarDescription(mergedDesc, {
+    shortDescription: input.shortDescription !== undefined ? input.shortDescription : existingMapped.shortDescription,
     speakerName: input.speakerName !== undefined ? input.speakerName : existingMapped.speakerName,
     speakerBadge: input.speakerBadge !== undefined ? input.speakerBadge : existingMapped.speakerBadge,
     speakerPhotoUrl: input.speakerPhotoUrl !== undefined ? input.speakerPhotoUrl : existingMapped.speakerPhotoUrl,
     speakerBio: input.speakerBio !== undefined ? input.speakerBio : existingMapped.speakerBio,
+    speakers: input.speakers !== undefined ? input.speakers : existingMapped.speakers,
     tags: input.tags !== undefined ? input.tags : existingMapped.tags,
     highlights: input.highlights !== undefined ? input.highlights : existingMapped.highlights,
     isFeatured: input.isFeatured !== undefined ? input.isFeatured : existingMapped.isFeatured,
     registrationStartsAt: input.registrationStartsAt !== undefined ? input.registrationStartsAt : existingMapped.registrationStartsAt,
     registrationEndsAt: input.registrationEndsAt !== undefined ? input.registrationEndsAt : existingMapped.registrationEndsAt,
   })
-
   const { data, error } = await supabase
     .from('live_webinars')
     .update({
@@ -444,10 +430,7 @@ export async function updateLiveWebinar(id: string, input: Partial<CreateLiveWeb
       access_type: input.access !== undefined ? input.access : existingMapped.access,
       price: input.price !== undefined ? Math.max(0, Number(input.price)) : existingMapped.price,
     })
-    .eq('id', id)
-    .select()
-    .single()
-
+    .eq('id', id).select().single()
   if (error) throw new Error(`Failed to update live webinar: ${error.message}`)
   return mapLiveRow(data as unknown as LiveWebinarRow)
 }
@@ -463,17 +446,14 @@ export async function uploadSpeakerPhoto(file: File): Promise<string> {
   const { error } = await supabase.storage
     .from('course-thumbnails')
     .upload(path, file, { cacheControl: '3600', upsert: true })
-
   if (error) {
     const b2Ref = await uploadToBackblaze(file, path)
     return getBackblazeVideoUrl(b2Ref)
   }
-
   const { data } = supabase.storage.from('course-thumbnails').getPublicUrl(path)
   return data.publicUrl
 }
 
-// Backward compatibility type definitions
 export type FeaturedSpeakerSettings = Partial<LiveWebinar> & {
   isEnabled?: boolean
   hasSavedConfig?: boolean
@@ -508,4 +488,3 @@ export async function getFeaturedSpeakerSettings(): Promise<FeaturedSpeakerSetti
 export async function updateFeaturedSpeakerSettings(_input: any): Promise<any> {
   return {}
 }
-

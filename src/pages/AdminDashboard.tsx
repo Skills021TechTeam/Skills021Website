@@ -295,6 +295,7 @@ import {
   type WebinarProvider,
   type WebinarAccess,
   type SpeakerHighlight,
+  type WebinarSpeaker,
 } from '../lib/webinarService'
 import { getBackblazeVideoUrl } from '../lib/backblazeService'
 import {
@@ -1599,11 +1600,16 @@ export default function AdminDashboard() {
   const [liveSpeakerPhotoUploading, setLiveSpeakerPhotoUploading] = useState(false)
   const [liveBioText, setLiveBioText] = useState('')
   const [liveTagsText, setLiveTagsText] = useState('')
-  const [liveHighlights, setLiveHighlights] = useState<SpeakerHighlight[]>([
-    { title: '', subtitle: '' },
-    { title: '', subtitle: '' },
-    { title: '', subtitle: '' },
-  ])
+
+  const [liveShortDescription, setLiveShortDescription] = useState('')
+  const [liveSpeakers, setLiveSpeakers] = useState<{
+    id: string, name: string, photoUrl: string, photoFile: File | null,
+    designation: string, organization: string, badge: string,
+    shortBio: string, bioText: string, experience: string,
+    education: string, researchInfo: string, expertiseTagsText: string
+  }[]>([])
+  const [liveHighlights, setLiveHighlights] = useState<{ icon: string, title: string, subtitle: string }[]>([])
+
   const [liveIsFeatured, setLiveIsFeatured] = useState(true)
 
   // Webinar Registrations Filter & CSV Export State
@@ -8324,12 +8330,32 @@ export default function AdminDashboard() {
     setLiveSpeakerPhotoFile(null)
     setLiveBioText((webinar.speakerBio || []).join('\n\n'))
     setLiveTagsText((webinar.tags || []).join(', '))
-    setLiveHighlights(webinar.highlights && webinar.highlights.length > 0 ? webinar.highlights : [
-      { title: '', subtitle: '' },
-      { title: '', subtitle: '' },
-      { title: '', subtitle: '' }
+    setLiveShortDescription(webinar.shortDescription || '')
+    
+    // Convert legacy or new speakers array into UI state
+    let initialSpeakers: any[] = [];
+    if (webinar.speakers && webinar.speakers.length > 0) {
+      initialSpeakers = webinar.speakers.map(sp => ({
+        id: crypto.randomUUID(), name: sp.name || '', photoUrl: sp.photoUrl || '', photoFile: null,
+        designation: sp.designation || '', organization: sp.organization || '', badge: sp.badge || '',
+        shortBio: sp.shortBio || '', bioText: (sp.bio || []).join('\n\n'), experience: sp.experience || '',
+        education: sp.education || '', researchInfo: sp.researchInfo || '', expertiseTagsText: (sp.expertiseTags || []).join(', ')
+      }));
+    } else if (webinar.speakerName) {
+      initialSpeakers = [{
+        id: crypto.randomUUID(), name: webinar.speakerName, photoUrl: webinar.speakerPhotoUrl || '', photoFile: null,
+        designation: '', organization: '', badge: webinar.speakerBadge || '', shortBio: '', bioText: (webinar.speakerBio || []).join('\n\n'),
+        experience: '', education: '', researchInfo: '', expertiseTagsText: ''
+      }];
+    }
+    setLiveSpeakers(initialSpeakers)
+    setLiveHighlights(webinar.highlights && webinar.highlights.length > 0
+      ? webinar.highlights.map(function(h) { return { icon: h.icon || 'star', title: h.title, subtitle: h.subtitle }; })
+      : [
+        { icon: 'star', title: '', subtitle: '' },
+        { icon: 'star', title: '', subtitle: '' },
+        { icon: 'star', title: '', subtitle: '' }
     ])
-    setLiveIsFeatured(webinar.isFeatured ?? true)
     setStartDate(`${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`)
     setStartHour(String(startHour12))
     setStartMinute(String(start.getMinutes()).padStart(2, '0'))
@@ -8401,9 +8427,9 @@ export default function AdminDashboard() {
     setLiveBioText('')
     setLiveTagsText('')
     setLiveHighlights([
-      { title: '', subtitle: '' },
-      { title: '', subtitle: '' },
-      { title: '', subtitle: '' }
+      { icon: '✨', title: '', subtitle: '' },
+      { icon: '✨', title: '', subtitle: '' },
+      { icon: '✨', title: '', subtitle: '' }
     ])
     setLiveIsFeatured(true)
     setStartDate(''); setStartHour(''); setStartMinute('00'); setStartPeriod('AM')
@@ -8763,7 +8789,7 @@ export default function AdminDashboard() {
                 </h4>
 
                 {[0, 1, 2].map(idx => {
-                  const hl = liveHighlights[idx] || { title: '', subtitle: '' }
+                  const hl = liveHighlights[idx] || { icon: '✨', title: '', subtitle: '' }
                   return (
                     <div key={idx} className="p-2.5 rounded-xl bg-gray-50/80 dark:bg-white/5 border border-brand-border/60 dark:border-brand-dark-border/60 space-y-1">
                       <div className="text-[10px] font-bold text-violet-600 dark:text-violet-400">
@@ -8776,7 +8802,7 @@ export default function AdminDashboard() {
                             const val = e.target.value
                             setLiveHighlights(prev => {
                               const next = [...prev]
-                              next[idx] = { ...(next[idx] || { title: '', subtitle: '' }), title: val }
+                              next[idx] = { ...(next[idx] || { icon: '✨', title: '', subtitle: '' }), title: val }
                               return next
                             })
                           }}
@@ -8789,7 +8815,7 @@ export default function AdminDashboard() {
                             const val = e.target.value
                             setLiveHighlights(prev => {
                               const next = [...prev]
-                              next[idx] = { ...(next[idx] || { title: '', subtitle: '' }), subtitle: val }
+                              next[idx] = { ...(next[idx] || { icon: '✨', title: '', subtitle: '' }), subtitle: val }
                               return next
                             })
                           }}
@@ -8835,37 +8861,46 @@ export default function AdminDashboard() {
 
                   try {
                     setWebinarBusy(true)
-                    let finalPhotoUrl = liveSpeakerPhotoUrl.trim()
-                    if (liveSpeakerPhotoFile) {
-                      setLiveSpeakerPhotoUploading(true)
-                      finalPhotoUrl = await uploadSpeakerPhoto(liveSpeakerPhotoFile)
-                      setLiveSpeakerPhotoUploading(false)
+                    
+                    const mappedAdditionalSpeakers = []
+                    for (const sp of liveSpeakers) {
+                      let pUrl = sp.photoUrl
+                      if (sp.photoFile) {
+                        try { pUrl = await uploadSpeakerPhoto(sp.photoFile) } catch(e) { console.error(e) }
+                      }
+                      mappedAdditionalSpeakers.push({
+                        name: (sp.name || '').trim(),
+                        photoUrl: pUrl,
+                        designation: (sp.designation || '').trim(),
+                        organization: (sp.organization || '').trim(),
+                        badge: (sp.badge || '').trim(),
+                        shortBio: (sp.shortBio || '').trim(),
+                        bio: (sp.bioText || '').split('\n\n').map(s=>s.trim()).filter(Boolean),
+                        experience: (sp.experience || '').trim(),
+                        education: (sp.education || '').trim(),
+                        researchInfo: (sp.researchInfo || '').trim(),
+                        expertiseTags: (sp.expertiseTagsText || '').split(',').map(s=>s.trim()).filter(Boolean)
+                      })
                     }
-
-                    const bioArray = liveBioText.split('\n\n').map(s => s.trim()).filter(Boolean)
-                    const tagsArray = liveTagsText.split(',').map(s => s.trim()).filter(Boolean)
-                    const highlightsArray = liveHighlights.filter(h => h.title.trim() || h.subtitle.trim())
 
                     const payload = {
                       title: liveTitle.trim(),
                       description: liveDescription.trim(),
+                      shortDescription: liveShortDescription.trim(),
                       provider: liveProvider,
                       joinUrl: liveJoinUrl.trim(),
                       startsAt: new Date(startValue).toISOString(),
                       endsAt: endValue ? new Date(endValue).toISOString() : null,
                       access: liveAccess,
                       price: liveAccess === 'free' ? 0 : Math.max(0, Number(livePrice) || 0),
-                      speakerName: liveSpeakerName.trim() || undefined,
-                      speakerBadge: liveSpeakerBadge.trim() || undefined,
-                      speakerPhotoUrl: finalPhotoUrl || undefined,
-                      speakerBio: bioArray.length ? bioArray : undefined,
-                      tags: tagsArray.length ? tagsArray : undefined,
-                      highlights: highlightsArray.length ? highlightsArray : undefined,
+                      speakers: mappedAdditionalSpeakers,
+                      tags: liveTagsText.split(',').map(s => s.trim()).filter(Boolean),
+                      highlights: liveHighlights.filter(h => h.title.trim() || h.subtitle.trim()),
                       isFeatured: liveIsFeatured,
                       registrationStartsAt: regStartValue ? new Date(regStartValue).toISOString() : null,
                       registrationEndsAt: regEndValue,
                     }
-
+                    
                     const created = await createLiveWebinar(payload)
                     setLiveWebinars(prev => [...prev, created])
                     toast.success('Live webinar scheduled and saved to live_webinars table!')
@@ -13926,7 +13961,7 @@ export default function AdminDashboard() {
                       <Trophy size={13} className="text-amber-500" /> Key Highlights (up to 3)
                     </p>
                     {[0, 1, 2].map(idx => {
-                      const hl = liveHighlights[idx] || { title: '', subtitle: '' }
+                      const hl = liveHighlights[idx] || { icon: '✨', title: '', subtitle: '' }
                       return (
                         <div key={idx} className="grid grid-cols-2 gap-2">
                           <input
@@ -13935,7 +13970,7 @@ export default function AdminDashboard() {
                               const val = e.target.value
                               setLiveHighlights(prev => {
                                 const next = [...prev]
-                                next[idx] = { ...(next[idx] || { title: '', subtitle: '' }), title: val }
+                                next[idx] = { ...(next[idx] || { icon: '✨', title: '', subtitle: '' }), title: val }
                                 return next
                               })
                             }}
@@ -13948,7 +13983,7 @@ export default function AdminDashboard() {
                               const val = e.target.value
                               setLiveHighlights(prev => {
                                 const next = [...prev]
-                                next[idx] = { ...(next[idx] || { title: '', subtitle: '' }), subtitle: val }
+                                next[idx] = { ...(next[idx] || { icon: '✨', title: '', subtitle: '' }), subtitle: val }
                                 return next
                               })
                             }}
@@ -14054,34 +14089,48 @@ export default function AdminDashboard() {
 
                   try {
                     setWebinarBusy(true)
-                    let finalPhotoUrl = liveSpeakerPhotoUrl.trim()
-                    if (liveSpeakerPhotoFile) {
-                      finalPhotoUrl = await uploadSpeakerPhoto(liveSpeakerPhotoFile)
+                    
+                    const mappedAdditionalSpeakers = []
+                    for (const sp of liveSpeakers) {
+                      let pUrl = sp.photoUrl
+                      if (sp.photoFile) {
+                        try { pUrl = await uploadSpeakerPhoto(sp.photoFile) } catch(e) { console.error(e) }
+                      }
+                      mappedAdditionalSpeakers.push({
+                        name: (sp.name || '').trim(),
+                        photoUrl: pUrl,
+                        designation: (sp.designation || '').trim(),
+                        organization: (sp.organization || '').trim(),
+                        badge: (sp.badge || '').trim(),
+                        shortBio: (sp.shortBio || '').trim(),
+                        bio: (sp.bioText || '').split('\n\n').map(s=>s.trim()).filter(Boolean),
+                        experience: (sp.experience || '').trim(),
+                        education: (sp.education || '').trim(),
+                        researchInfo: (sp.researchInfo || '').trim(),
+                        expertiseTags: (sp.expertiseTagsText || '').split(',').map(s=>s.trim()).filter(Boolean)
+                      })
                     }
 
-                    const bioArray = liveBioText.split('\n\n').map(s => s.trim()).filter(Boolean)
-                    const tagsArray = liveTagsText.split(',').map(s => s.trim()).filter(Boolean)
-                    const highlightsArray = liveHighlights.filter(h => h.title.trim() || h.subtitle.trim())
-
-                    const updated = await updateLiveWebinar(editingWebinarId, {
+                    const payload = {
                       title: liveTitle.trim(),
-                      description: liveDescription,
+                      description: liveDescription.trim(),
+                      shortDescription: liveShortDescription.trim(),
                       provider: liveProvider,
                       joinUrl: liveJoinUrl.trim(),
                       startsAt: new Date(startValue).toISOString(),
                       endsAt: endValue ? new Date(endValue).toISOString() : null,
                       access: liveAccess,
                       price: liveAccess === 'free' ? 0 : Math.max(0, Number(livePrice) || 0),
-                      speakerName: liveSpeakerName.trim() || undefined,
-                      speakerBadge: liveSpeakerBadge.trim() || undefined,
-                      speakerPhotoUrl: finalPhotoUrl || undefined,
-                      speakerBio: bioArray.length ? bioArray : undefined,
-                      tags: tagsArray.length ? tagsArray : undefined,
-                      highlights: highlightsArray.length ? highlightsArray : undefined,
+                      speakers: mappedAdditionalSpeakers,
+                      tags: liveTagsText.split(',').map(s => s.trim()).filter(Boolean),
+                      highlights: liveHighlights.filter(h => h.title.trim() || h.subtitle.trim()),
                       isFeatured: liveIsFeatured,
                       registrationStartsAt: regStartValue ? new Date(regStartValue).toISOString() : null,
                       registrationEndsAt: regEndValue,
-                    })
+                    }
+                    
+                    const updated = await updateLiveWebinar(editingWebinarId, payload)
+
                     setLiveWebinars(prev => prev.map(w => w.id === updated.id ? updated : w))
                     toast.success('Webinar updated successfully in live_webinars table')
                     resetWebinarForm()

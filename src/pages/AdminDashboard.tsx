@@ -8438,6 +8438,150 @@ export default function AdminDashboard() {
     setRegEndType('webinar_end'); setRegEndDate(''); setRegEndHour(''); setRegEndMinute('00'); setRegEndPeriod('AM')
     setWebinarEditVideoFile(null); setWebinarEditVideoUploadStatus('idle'); setWebinarEditVideoUploadProgress(0)
     setWebinarEditVideoAudioCheck(null); setWebinarEditVideoDurationSeconds(null)
+    setLiveSpeakers([])
+  }
+
+  const updateLiveSpeaker = (index: number, updates: Partial<(typeof liveSpeakers)[number]>) => {
+    setLiveSpeakers(current => current.map((speaker, speakerIndex) =>
+      speakerIndex === index ? { ...speaker, ...updates } : speaker
+    ))
+  }
+
+  const addLiveSpeaker = () => {
+    setLiveSpeakers(current => [...current, {
+      id: crypto.randomUUID(), name: '', photoUrl: '', photoFile: null,
+      designation: '', organization: '', badge: '', shortBio: '', bioText: '',
+      experience: '', education: '', researchInfo: '', expertiseTagsText: '',
+    }])
+  }
+
+  const renderLiveSpeakerFields = () => (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-bold text-brand-text dark:text-white">Session Speakers ({liveSpeakers.length})</p>
+        <button
+          type="button"
+          onClick={addLiveSpeaker}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 transition hover:bg-violet-100 dark:bg-violet-950/40 dark:text-violet-300 dark:hover:bg-violet-950/70"
+        >
+          <Plus size={14} /> Add speaker
+        </button>
+      </div>
+
+      {liveSpeakers.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-brand-border p-4 text-center text-xs text-brand-muted dark:border-brand-dark-border">
+          No speakers added yet.
+        </p>
+      ) : liveSpeakers.map((speaker, index) => (
+        <section key={speaker.id} className="space-y-3 rounded-xl border border-brand-border p-3 dark:border-brand-dark-border">
+          <div className="flex items-center justify-between gap-3">
+            <h4 className="text-xs font-bold uppercase text-violet-600 dark:text-violet-400">Speaker {index + 1}</h4>
+            <button
+              type="button"
+              onClick={() => setLiveSpeakers(current => current.filter((_, speakerIndex) => speakerIndex !== index))}
+              aria-label={`Remove speaker ${index + 1}`}
+              title="Remove speaker"
+              className="rounded-md p-1.5 text-brand-muted transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label="Name *">
+              <input value={speaker.name} onChange={e => updateLiveSpeaker(index, { name: e.target.value })} className={inputCls} placeholder="Speaker name" />
+            </Field>
+            <Field label="Role / Designation">
+              <input value={speaker.designation} onChange={e => updateLiveSpeaker(index, { designation: e.target.value })} className={inputCls} placeholder="Role or designation" />
+            </Field>
+            <Field label="Organization">
+              <input value={speaker.organization} onChange={e => updateLiveSpeaker(index, { organization: e.target.value })} className={inputCls} placeholder="College or organization" />
+            </Field>
+            <Field label="Badge">
+              <input value={speaker.badge} onChange={e => updateLiveSpeaker(index, { badge: e.target.value })} className={inputCls} placeholder="Optional badge" />
+            </Field>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label="Photo URL">
+              <input value={speaker.photoUrl} onChange={e => updateLiveSpeaker(index, { photoUrl: e.target.value })} className={inputCls} placeholder="https://..." />
+            </Field>
+            <Field label="Or upload a photo">
+              <input type="file" accept="image/*" onChange={e => updateLiveSpeaker(index, { photoFile: e.target.files?.[0] || null })} className={inputCls} />
+            </Field>
+          </div>
+
+          <Field label="Bio">
+            <textarea value={speaker.bioText} onChange={e => updateLiveSpeaker(index, { bioText: e.target.value })} className={inputCls + ' resize-none'} rows={3} placeholder="Bio and relevant experience" />
+          </Field>
+          <Field label="Short bio (optional)">
+            <input value={speaker.shortBio} onChange={e => updateLiveSpeaker(index, { shortBio: e.target.value })} className={inputCls} placeholder="Short speaker introduction" />
+          </Field>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label="Experience">
+              <input value={speaker.experience} onChange={e => updateLiveSpeaker(index, { experience: e.target.value })} className={inputCls} placeholder="Relevant experience" />
+            </Field>
+            <Field label="Education">
+              <input value={speaker.education} onChange={e => updateLiveSpeaker(index, { education: e.target.value })} className={inputCls} placeholder="Education" />
+            </Field>
+            <Field label="Research / Other">
+              <input value={speaker.researchInfo} onChange={e => updateLiveSpeaker(index, { researchInfo: e.target.value })} className={inputCls} placeholder="Research or other detail" />
+            </Field>
+            <Field label="Expertise tags">
+              <input value={speaker.expertiseTagsText} onChange={e => updateLiveSpeaker(index, { expertiseTagsText: e.target.value })} className={inputCls} placeholder="Comma-separated topics" />
+            </Field>
+          </div>
+        </section>
+      ))}
+    </div>
+  )
+
+  const applyExamWebinarTemplate = () => {
+    setLiveTitle('HOW TO SCORE HIGH IN UNIVERSITY EXAMS')
+    setLiveDescription('Together, they are passionate about helping first-year students understand how university exams are evaluated, how to prepare strategically, and how to write answers that score high marks.')
+    setLiveShortDescription('Exam-ready strategies for first-year university students.')
+    setLiveProvider('Google Meet')
+    setLiveAccess('paid')
+    setLivePrice('19')
+    setLiveSpeakers([
+      {
+        id: crypto.randomUUID(),
+        name: 'Saurav',
+        photoUrl: '',
+        photoFile: null,
+        designation: 'B.Tech Information Technology · Student Placement Coordinator',
+        organization: "GTBIT, Delhi's Training and Placement Cell",
+        badge: '',
+        shortBio: '',
+        bioText: "Saurav is a B.Tech Information Technology student at GTBIT, Delhi, ranked 2nd in the department with a 9.4 GPA. He serves as Student Placement Coordinator at GTBIT's Training and Placement Cell and has hands-on experience from internships at CRIS (Centre for Railway Information Systems) and Skills021, along with freelance web development work.",
+        experience: '',
+        education: '',
+        researchInfo: '',
+        expertiseTagsText: '',
+      },
+      {
+        id: crypto.randomUUID(),
+        name: 'Sarvesh',
+        photoUrl: '',
+        photoFile: null,
+        designation: 'Placement Coordinator',
+        organization: '',
+        badge: '',
+        shortBio: '',
+        bioText: 'Sarvesh is a placement coordinator with a 9.2 CGPA, bringing strong academic and mentoring experience to guide fresher students.',
+        experience: '',
+        education: '',
+        researchInfo: '',
+        expertiseTagsText: '',
+      },
+    ])
+    setLiveTagsText('Exam Strategy, Mid-Sem Prep, Final Exam Prep, Answer Writing, IPU Marking System, Practicals & Viva')
+    setLiveHighlights([
+      { icon: 'trophy', title: 'Department Rank 2', subtitle: '9.4 GPA, GTBIT' },
+      { icon: 'graduation', title: 'Placement Coordinators', subtitle: 'Real placement and mentoring experience' },
+      { icon: 'book', title: '60-Minute Session', subtitle: 'Practical, exam-ready strategies' },
+    ])
   }
 
   const renderRegistrationFields = () => (
@@ -8602,8 +8746,17 @@ export default function AdminDashboard() {
           <div className="grid lg:grid-cols-12 gap-6 mt-6">
             {/* Left: Session Details (7 cols) */}
             <div className="lg:col-span-7 space-y-4">
-              <div className="text-xs font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400 flex items-center gap-1.5">
-                <Radio size={14} /> Session Information
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-xs font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400 flex items-center gap-1.5">
+                  <Radio size={14} /> Session Information
+                </div>
+                <button
+                  type="button"
+                  onClick={applyExamWebinarTemplate}
+                  className="text-xs font-bold text-violet-600 dark:text-violet-400 hover:underline"
+                >
+                  Load exam webinar content
+                </button>
               </div>
 
               <Field label="Webinar Title *">
@@ -8710,67 +8863,7 @@ export default function AdminDashboard() {
                 <Sparkles size={14} /> Speaker & Profile Details
               </div>
 
-              <div className="grid sm:grid-cols-2 gap-3">
-                <Field label="Speaker Name">
-                  <input
-                    value={liveSpeakerName}
-                    onChange={e => setLiveSpeakerName(e.target.value)}
-                    className={inputCls}
-                    placeholder="e.g. Dr. Anubhav Bajpai"
-                  />
-                </Field>
-                <Field label="Badge Label">
-                  <input
-                    value={liveSpeakerBadge}
-                    onChange={e => setLiveSpeakerBadge(e.target.value)}
-                    className={inputCls}
-                    placeholder="Featured Speaker"
-                  />
-                </Field>
-              </div>
-
-              <div className="space-y-2">
-                <Field label="Speaker Photo URL (or Upload below)">
-                  <input
-                    value={liveSpeakerPhotoUrl}
-                    onChange={e => setLiveSpeakerPhotoUrl(e.target.value)}
-                    className={inputCls}
-                    placeholder="https://... image URL"
-                  />
-                </Field>
-                <Field label="Or Upload Speaker Photo">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={e => setLiveSpeakerPhotoFile(e.target.files?.[0] || null)}
-                    className={inputCls}
-                  />
-                </Field>
-                {liveSpeakerPhotoUrl && (
-                  <div className="flex items-center gap-3 p-2 rounded-xl bg-violet-50/60 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800">
-                    <img
-                      src={liveSpeakerPhotoUrl}
-                      alt="Speaker Preview"
-                      className="w-10 h-10 rounded-lg object-cover border border-violet-300 dark:border-violet-700"
-                      onError={e => { (e.target as HTMLElement).style.display = 'none' }}
-                    />
-                    <div className="text-xs truncate flex-1">
-                      <p className="font-semibold text-brand-text dark:text-white truncate">{liveSpeakerName || 'Speaker'}</p>
-                      <p className="text-brand-muted truncate text-[10px]">{liveSpeakerPhotoUrl}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <Field label="Speaker Bio / Intro">
-                <textarea
-                  rows={4}
-                  value={liveBioText}
-                  onChange={e => setLiveBioText(e.target.value)}
-                  className={inputCls}
-                  placeholder="Speaker bio, achievements, credentials..."
-                />
-              </Field>
+              {renderLiveSpeakerFields()}
 
               <Field label="Expertise Tags (comma-separated)">
                 <input
@@ -13898,53 +13991,7 @@ export default function AdminDashboard() {
                     </label>
                   </div>
 
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    <Field label="Speaker Name">
-                      <input
-                        value={liveSpeakerName}
-                        onChange={e => setLiveSpeakerName(e.target.value)}
-                        className={inputCls}
-                        placeholder="e.g. Dr. Anubhav Bajpai"
-                      />
-                    </Field>
-                    <Field label="Badge Label">
-                      <input
-                        value={liveSpeakerBadge}
-                        onChange={e => setLiveSpeakerBadge(e.target.value)}
-                        className={inputCls}
-                        placeholder="Featured Speaker"
-                      />
-                    </Field>
-                  </div>
-
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    <Field label="Speaker Photo URL">
-                      <input
-                        value={liveSpeakerPhotoUrl}
-                        onChange={e => setLiveSpeakerPhotoUrl(e.target.value)}
-                        className={inputCls}
-                        placeholder="https://... image URL"
-                      />
-                    </Field>
-                    <Field label="Or Upload New Photo">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={e => setLiveSpeakerPhotoFile(e.target.files?.[0] || null)}
-                        className={inputCls}
-                      />
-                    </Field>
-                  </div>
-
-                  <Field label="Speaker Bio (separate paragraphs with blank line)">
-                    <textarea
-                      value={liveBioText}
-                      onChange={e => setLiveBioText(e.target.value)}
-                      className={inputCls + ' resize-none'}
-                      rows={3}
-                      placeholder="Speaker bio, achievements..."
-                    />
-                  </Field>
+                  {renderLiveSpeakerFields()}
 
                   <Field label="Expertise Tags (comma-separated)">
                     <input

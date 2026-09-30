@@ -7,7 +7,7 @@ import {
   Sparkles, ShieldCheck, HelpCircle, Check, Loader2,
   Calendar, Layers, Download, Upload, X, Copy, QrCode, Tag,
   BadgePercent, AlertTriangle, ExternalLink, BookOpen,
-  Star, Users, Phone, Video
+  Star, Users, Phone, Video, Smartphone, Zap
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
@@ -50,6 +50,7 @@ export default function SemesterBundleView() {
   // Payment Checkout Modal
   const [showCheckoutModal, setShowCheckoutModal] = useState(false)
   const [step, setStep] = useState<'details' | 'upi_payment' | 'submitted'>('details')
+  const [paymentMode, setPaymentMode] = useState<'app' | 'qr'>('app')
   const [firstName, setFirstName] = useState(user?.name ? user.name.split(' ')[0] : '')
   const [lastName, setLastName] = useState(user?.name ? user.name.split(' ').slice(1).join(' ') : '')
   const [email, setEmail] = useState(user?.email || '')
@@ -1106,39 +1107,109 @@ export default function SemesterBundleView() {
                       </span>
                     </div>
 
-                    {/* UPI Details & QR */}
-                    <div className="p-4 rounded-2xl bg-gray-50 dark:bg-white/5 border border-brand-border text-center space-y-3">
-                      {paymentSettings.qrCodeUrl ? (
-                        <img
-                          src={paymentSettings.qrCodeUrl}
-                          alt="UPI QR Code"
-                          className="w-40 h-40 object-contain mx-auto rounded-xl border bg-white p-1"
-                        />
-                      ) : (
-                        <div className="w-32 h-32 rounded-xl bg-white dark:bg-brand-dark-card border mx-auto flex items-center justify-center text-brand-muted">
-                          <QrCode size={48} />
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-center gap-2">
-                        <code className="text-xs font-mono font-bold bg-white dark:bg-brand-dark-card px-3 py-1.5 rounded-xl border">
-                          {paymentSettings.upiId}
-                        </code>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(paymentSettings.upiId)
-                            setCopiedUpi(true)
-                            setTimeout(() => setCopiedUpi(false), 2000)
-                            toast.success('UPI ID copied!')
-                          }}
-                          className="p-1.5 rounded-xl border hover:bg-gray-100 text-xs font-semibold flex items-center gap-1"
-                        >
-                          {copiedUpi ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
-                        </button>
-                      </div>
-                      <p className="text-[11px] text-brand-muted">Pay via GPay, PhonePe, Paytm, or any UPI app</p>
+                    {/* Payment Mode Selector: UPI App vs QR Code */}
+                    <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-xl text-xs font-semibold">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMode('app')}
+                        className={`flex-1 py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                          paymentMode === 'app'
+                            ? 'bg-white dark:bg-brand-dark-card text-brand-text dark:text-white shadow-xs font-bold'
+                            : 'text-brand-muted hover:text-brand-text dark:hover:text-white'
+                        }`}
+                      >
+                        <Smartphone size={14} /> Pay via UPI App
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMode('qr')}
+                        className={`flex-1 py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                          paymentMode === 'qr'
+                            ? 'bg-white dark:bg-brand-dark-card text-brand-text dark:text-white shadow-xs font-bold'
+                            : 'text-brand-muted hover:text-brand-text dark:hover:text-white'
+                        }`}
+                      >
+                        <QrCode size={14} /> Scan QR Code
+                      </button>
                     </div>
+
+                    {/* ── Option A: Direct UPI App Payment ── */}
+                    {paymentMode === 'app' && (() => {
+                      const activeUpiId = paymentSettings.upiId || 'skills021@upi'
+                      const activePayee = paymentSettings.upiName || 'Skills021'
+                      const transactionNote = encodeURIComponent(`Skills021 Semester - ${(bundle?.title || 'Semester Bundle').slice(0, 30)}`)
+                      const upiIntent = `upi://pay?pa=${activeUpiId}&pn=${encodeURIComponent(activePayee)}&am=${pricing.finalAmount}&cu=INR&tn=${transactionNote}`
+
+                      return (
+                        <div className="space-y-2">
+                          <a
+                            href={upiIntent}
+                            className="w-full py-3 px-4 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-sm shadow-sm flex items-center justify-center gap-2 transition-all active:scale-[0.99] cursor-pointer"
+                          >
+                            <Zap size={16} className="fill-white" />
+                            <span>Pay ₹{pricing.finalAmount} via UPI App</span>
+                            <ExternalLink size={13} className="opacity-80" />
+                          </a>
+
+                          <div className="flex items-center justify-between text-[11px] text-brand-muted px-1">
+                            <span>
+                              UPI ID: <strong className="font-mono text-brand-text dark:text-brand-dark-text">{activeUpiId}</strong>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(activeUpiId)
+                                setCopiedUpi(true)
+                                toast.success('UPI ID copied!')
+                                setTimeout(() => setCopiedUpi(false), 2000)
+                              }}
+                              className="text-primary-600 dark:text-primary-400 font-semibold hover:underline flex items-center gap-0.5 cursor-pointer"
+                            >
+                              {copiedUpi ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                              {copiedUpi ? 'Copied' : 'Copy ID'}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* ── Option B: QR Code for desktop or second device ── */}
+                    {paymentMode === 'qr' && (() => {
+                      const activeUpiId = paymentSettings.upiId || 'skills021@upi'
+                      const activePayee = paymentSettings.upiName || 'Skills021'
+                      const transactionNote = encodeURIComponent(`Skills021 Semester - ${(bundle?.title || 'Semester Bundle').slice(0, 30)}`)
+                      const upiIntent = `upi://pay?pa=${activeUpiId}&pn=${encodeURIComponent(activePayee)}&am=${pricing.finalAmount}&cu=INR&tn=${transactionNote}`
+                      const qrDisplay = paymentSettings.qrCodeUrl?.trim() || `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(upiIntent)}&size=240x240&margin=10`
+
+                      return (
+                        <div className="p-3 rounded-xl bg-gray-50 dark:bg-white/5 border border-brand-border flex flex-col items-center justify-center space-y-2">
+                          <img
+                            src={qrDisplay}
+                            alt="UPI QR Code"
+                            className="w-32 h-32 object-contain rounded-lg border bg-white p-1"
+                          />
+
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <code className="font-mono font-bold text-[11px] bg-white dark:bg-brand-dark-card px-2 py-0.5 rounded border">
+                              {activeUpiId}
+                            </code>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(activeUpiId)
+                                setCopiedUpi(true)
+                                setTimeout(() => setCopiedUpi(false), 2000)
+                                toast.success('UPI ID copied!')
+                              }}
+                              className="p-1 rounded border text-brand-muted hover:text-brand-text cursor-pointer"
+                              title="Copy UPI ID"
+                            >
+                              {copiedUpi ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })()}
 
                     {/* Student Info inputs */}
                     <div className="grid grid-cols-2 gap-3">

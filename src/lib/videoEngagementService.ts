@@ -28,6 +28,7 @@ export interface PaymentSettings {
   qrCodeUrl: string
   instructions?: string
   allAccessPrice?: number
+  allAccessEnabled?: boolean
   updatedAt?: string
 }
 
@@ -1050,13 +1051,15 @@ const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
   upiName: 'Skills021',
   qrCodeUrl: '',
   allAccessPrice: 999,
+  allAccessEnabled: true,
   instructions: 'Scan QR or pay directly to the UPI ID, then enter your 12-digit UTR number and upload screenshot proof.',
 }
 
-function parseInstructionsAndConfig(raw: string | undefined): { instructions: string; allAccessPrice: number } {
-  if (!raw) return { instructions: DEFAULT_PAYMENT_SETTINGS.instructions || '', allAccessPrice: 999 }
+function parseInstructionsAndConfig(raw: string | undefined): { instructions: string; allAccessPrice: number; allAccessEnabled: boolean } {
+  if (!raw) return { instructions: DEFAULT_PAYMENT_SETTINGS.instructions || '', allAccessPrice: 999, allAccessEnabled: true }
   const match = raw.match(/<!--CONFIG:(.*?)-->/)
   let allAccessPrice = 999
+  let allAccessEnabled = true
   let cleanInstructions = raw
   if (match) {
     try {
@@ -1064,10 +1067,13 @@ function parseInstructionsAndConfig(raw: string | undefined): { instructions: st
       if (typeof parsed.allAccessPrice === 'number' && parsed.allAccessPrice > 0) {
         allAccessPrice = parsed.allAccessPrice
       }
+      if (typeof parsed.allAccessEnabled === 'boolean') {
+        allAccessEnabled = parsed.allAccessEnabled
+      }
       cleanInstructions = raw.replace(/<!--CONFIG:.*?-->/, '').trim()
     } catch {}
   }
-  return { instructions: cleanInstructions, allAccessPrice }
+  return { instructions: cleanInstructions, allAccessPrice, allAccessEnabled }
 }
 
 export async function getPaymentSettings(): Promise<PaymentSettings> {
@@ -1079,13 +1085,14 @@ export async function getPaymentSettings(): Promise<PaymentSettings> {
       .maybeSingle()
 
     if (data && !error) {
-      const { instructions, allAccessPrice } = parseInstructionsAndConfig(data.instructions)
+      const { instructions, allAccessPrice, allAccessEnabled } = parseInstructionsAndConfig(data.instructions)
       const settings: PaymentSettings = {
         id: data.id,
         upiId: data.upi_id || DEFAULT_PAYMENT_SETTINGS.upiId,
         upiName: data.upi_name || DEFAULT_PAYMENT_SETTINGS.upiName,
         qrCodeUrl: data.qr_code_url || '',
         allAccessPrice: allAccessPrice || 999,
+        allAccessEnabled: allAccessEnabled !== false,
         instructions: instructions || DEFAULT_PAYMENT_SETTINGS.instructions,
         updatedAt: data.updated_at,
       }
@@ -1104,6 +1111,7 @@ export async function getPaymentSettings(): Promise<PaymentSettings> {
         ...DEFAULT_PAYMENT_SETTINGS,
         ...parsed,
         allAccessPrice: parsed.allAccessPrice || 999,
+        allAccessEnabled: parsed.allAccessEnabled !== false,
       }
     } catch {}
   }
@@ -1117,9 +1125,10 @@ export async function updatePaymentSettings(settings: Partial<PaymentSettings>):
   const qrCodeUrl = (settings.qrCodeUrl ?? '').trim()
   const cleanInstructions = (settings.instructions ?? DEFAULT_PAYMENT_SETTINGS.instructions ?? '').trim()
   const allAccessPrice = settings.allAccessPrice && settings.allAccessPrice > 0 ? settings.allAccessPrice : 999
+  const allAccessEnabled = settings.allAccessEnabled !== undefined ? settings.allAccessEnabled : true
 
   // Embed config tag into instructions field for database persistence without altering table schema
-  const payloadInstructions = `${cleanInstructions}\n<!--CONFIG:${JSON.stringify({ allAccessPrice })}-->`
+  const payloadInstructions = `${cleanInstructions}\n<!--CONFIG:${JSON.stringify({ allAccessPrice, allAccessEnabled })}-->`
 
   try {
     const { data, error } = await supabase
@@ -1137,13 +1146,14 @@ export async function updatePaymentSettings(settings: Partial<PaymentSettings>):
 
     if (error) throw error
 
-    const { instructions: savedCleanInstructions, allAccessPrice: savedPrice } = parseInstructionsAndConfig(data.instructions)
+    const { instructions: savedCleanInstructions, allAccessPrice: savedPrice, allAccessEnabled: savedEnabled } = parseInstructionsAndConfig(data.instructions)
     const result: PaymentSettings = {
       id: data.id,
       upiId: data.upi_id,
       upiName: data.upi_name,
       qrCodeUrl: data.qr_code_url,
       allAccessPrice: savedPrice,
+      allAccessEnabled: savedEnabled,
       instructions: savedCleanInstructions,
       updatedAt: data.updated_at,
     }
@@ -1156,6 +1166,7 @@ export async function updatePaymentSettings(settings: Partial<PaymentSettings>):
       upiName,
       qrCodeUrl,
       allAccessPrice,
+      allAccessEnabled,
       instructions: cleanInstructions,
       updatedAt: new Date().toISOString(),
     }

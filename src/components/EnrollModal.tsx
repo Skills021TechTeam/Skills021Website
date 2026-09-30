@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Loader2, CheckCircle2, QrCode, Copy, Check,
   UploadCloud, AlertCircle, Phone, GraduationCap, Sparkles, Clock,
-  Tag, ChevronRight, BadgePercent, XCircle, FileText, Video, MessageCircle
+  Tag, ChevronRight, BadgePercent, XCircle, FileText, Video, MessageCircle,
+  Smartphone, ExternalLink, Zap
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Course, Resource } from '../store/contentStore'
@@ -54,6 +55,7 @@ export default function EnrollModal({
 
   // UPI payment state
   const [step, setStep] = useState<Step>('details')
+  const [paymentMode, setPaymentMode] = useState<'app' | 'qr'>('app')
   const [utrNumber, setUtrNumber] = useState('')
   const [screenshotBase64, setScreenshotBase64] = useState<string>('')
   const [copiedUpi, setCopiedUpi] = useState(false)
@@ -178,7 +180,13 @@ export default function EnrollModal({
 
   const activeUpiId = paymentSettings.upiId || 'skills021@upi'
   const activePayeeName = paymentSettings.upiName || 'Skills021'
-  const upiIntentUrl = `upi://pay?pa=${activeUpiId}&pn=${encodeURIComponent(activePayeeName)}&am=${displayAmount}&cu=INR&tn=${encodeURIComponent(`Skills021 - ${title.slice(0, 30)}`)}`
+  const transactionNote = encodeURIComponent(`Skills021 - ${title.slice(0, 30)}`)
+  // Universal NPCI standard UPI intent URL - opens app chooser with amount and payee pre-filled
+  const upiIntentUrl = `upi://pay?pa=${activeUpiId}&pn=${encodeURIComponent(activePayeeName)}&am=${displayAmount}&cu=INR&tn=${transactionNote}`
+  // App-specific intent deep links (Android/iOS)
+  const gpayIntentUrl = `tez://upi/pay?pa=${activeUpiId}&pn=${encodeURIComponent(activePayeeName)}&am=${displayAmount}&cu=INR&tn=${transactionNote}`
+  const phonepeIntentUrl = `phonepe://pay?pa=${activeUpiId}&pn=${encodeURIComponent(activePayeeName)}&am=${displayAmount}&cu=INR&tn=${transactionNote}`
+  const paytmIntentUrl = `paytmmp://pay?pa=${activeUpiId}&pn=${encodeURIComponent(activePayeeName)}&am=${displayAmount}&cu=INR&tn=${transactionNote}`
   const qrDisplayUrl = paymentSettings.qrCodeUrl?.trim()
     ? paymentSettings.qrCodeUrl
     : `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(upiIntentUrl)}&size=240x240&margin=10`
@@ -649,7 +657,7 @@ export default function EnrollModal({
                 <button
                   type="submit"
                   disabled={submitting || pricing.isLoading}
-                  className="w-full mt-2 py-3 bg-primary-500 text-white font-bold text-sm rounded-xl hover:bg-primary-600 transition-colors flex items-center justify-center gap-2 shadow-md shadow-primary-500/20 disabled:opacity-60"
+                  className="w-full mt-2 py-3 bg-primary-500 text-white font-bold text-sm rounded-xl hover:bg-primary-600 transition-colors flex items-center justify-center gap-2 shadow-md shadow-primary-500/20 disabled:opacity-60 cursor-pointer"
                 >
                   {submitting ? (
                     <Loader2 size={18} className="animate-spin" />
@@ -658,7 +666,9 @@ export default function EnrollModal({
                   ) : pricing.isLoading ? (
                     <><Loader2 size={16} className="animate-spin" /> Loading price…</>
                   ) : (
-                    `Proceed to UPI Payment (${formatPrice(displayAmount)})`
+                    <>
+                      <Smartphone size={16} /> Proceed to UPI Payment ({formatPrice(displayAmount)})
+                    </>
                   )}
                 </button>
               </form>
@@ -699,37 +709,93 @@ export default function EnrollModal({
                   </div>
                 )}
 
-                {/* QR Code Container */}
-                <div className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-gray-200 dark:border-brand-dark-border">
-                  <div className="p-2 bg-white rounded-xl shadow-sm max-w-[200px] max-h-[200px] flex items-center justify-center overflow-hidden">
+                {/* Payment Mode Selector: UPI App vs QR Code */}
+                <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-xl text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMode('app')}
+                    className={`flex-1 py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      paymentMode === 'app'
+                        ? 'bg-white dark:bg-brand-dark-card text-brand-text dark:text-white shadow-xs font-bold'
+                        : 'text-brand-muted hover:text-brand-text dark:hover:text-white'
+                    }`}
+                  >
+                    <Smartphone size={14} /> Pay via UPI App
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMode('qr')}
+                    className={`flex-1 py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      paymentMode === 'qr'
+                        ? 'bg-white dark:bg-brand-dark-card text-brand-text dark:text-white shadow-xs font-bold'
+                        : 'text-brand-muted hover:text-brand-text dark:hover:text-white'
+                    }`}
+                  >
+                    <QrCode size={14} /> Scan QR Code
+                  </button>
+                </div>
+
+                {/* ── Option A: Direct UPI App Payment ── */}
+                {paymentMode === 'app' && (
+                  <div className="space-y-2">
+                    <a
+                      href={upiIntentUrl}
+                      className="w-full py-3 px-4 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-sm shadow-sm flex items-center justify-center gap-2 transition-all active:scale-[0.99] cursor-pointer"
+                    >
+                      <Zap size={16} className="fill-white" />
+                      <span>Pay {formatPrice(displayAmount)} via UPI App</span>
+                      <ExternalLink size={13} className="opacity-80" />
+                    </a>
+
+                    <div className="flex items-center justify-between text-[11px] text-brand-muted px-1">
+                      <span>
+                        UPI ID: <strong className="font-mono text-brand-text dark:text-brand-dark-text">{activeUpiId}</strong>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleCopyUpi}
+                        className="text-primary-600 dark:text-primary-400 font-semibold hover:underline flex items-center gap-0.5 cursor-pointer"
+                      >
+                        {copiedUpi ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+                        {copiedUpi ? 'Copied' : 'Copy ID'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Option B: QR Code for desktop or second device ── */}
+                {paymentMode === 'qr' && (
+                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-white/5 border border-brand-border flex flex-col items-center justify-center space-y-2">
                     <img
                       src={qrDisplayUrl}
                       alt="Skills021 UPI QR Code"
-                      className="w-44 h-44 object-contain rounded-lg"
+                      className="w-32 h-32 object-contain rounded-lg border bg-white p-1"
                     />
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <code className="font-mono font-bold text-[11px] bg-white dark:bg-brand-dark-card px-2 py-0.5 rounded border">
+                        {activeUpiId}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={handleCopyUpi}
+                        className="p-1 rounded border text-brand-muted hover:text-brand-text cursor-pointer"
+                        title="Copy UPI ID"
+                      >
+                        {copiedUpi ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+                      </button>
+                    </div>
                   </div>
-                  <div className="mt-3 flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-brand-dark-card border border-brand-border dark:border-brand-dark-border rounded-xl text-xs">
-                    <span className="text-brand-muted dark:text-brand-dark-muted font-mono">{activeUpiId}</span>
-                    <button
-                      type="button"
-                      onClick={handleCopyUpi}
-                      className="inline-flex items-center gap-1 font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 ml-1"
-                    >
-                      {copiedUpi ? <Check size={13} className="text-green-500" /> : <Copy size={13} />}
-                      {copiedUpi ? 'Copied' : 'Copy'}
-                    </button>
-                  </div>
-                </div>
+                )}
 
                 {/* Step Instructions */}
                 <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 rounded-xl text-xs space-y-1 text-amber-800 dark:text-amber-300">
                   <p className="font-bold flex items-center gap-1.5">
-                    <AlertCircle size={14} /> Verification Instructions:
+                    <AlertCircle size={14} /> Verification Steps:
                   </p>
                   <ol className="list-decimal list-inside space-y-0.5 text-[11px] opacity-90">
-                    <li>Make the payment of <strong>{formatPrice(displayAmount)}</strong> to the UPI ID above.</li>
+                    <li>Complete the payment of <strong>{formatPrice(displayAmount)}</strong> in your UPI app.</li>
                     <li>Copy the <strong>12-digit UTR / Reference ID</strong> from your UPI app receipt.</li>
-                    <li>Upload your payment screenshot below and click Submit.</li>
+                    <li>Paste the UTR number below, upload your receipt screenshot, and click Submit.</li>
                   </ol>
                 </div>
 

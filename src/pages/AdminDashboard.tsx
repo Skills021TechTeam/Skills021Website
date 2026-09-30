@@ -1151,12 +1151,16 @@ export default function AdminDashboard() {
     upiId: 'skills021@upi',
     upiName: 'Skills021',
     qrCodeUrl: '',
+    allAccessPrice: 999,
+    allAccessEnabled: true,
     instructions: 'Scan QR or pay directly to the UPI ID, then enter your 12-digit UTR number and upload screenshot proof.',
   })
   const [draftPaymentSettings, setDraftPaymentSettings] = useState<PaymentSettings>({
     upiId: 'skills021@upi',
     upiName: 'Skills021',
     qrCodeUrl: '',
+    allAccessPrice: 999,
+    allAccessEnabled: true,
     instructions: 'Scan QR or pay directly to the UPI ID, then enter your 12-digit UTR number and upload screenshot proof.',
   })
   const [paymentSettingsLoading, setPaymentSettingsLoading] = useState(false)
@@ -4791,23 +4795,52 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* All-Access Pass Price */}
-            <div>
-              <label className="block text-xs font-bold text-brand-text dark:text-brand-dark-text mb-1">
-                ⭐ All-Access Pass Membership Price (₹) *
-              </label>
-              <input
-                type="number"
-                min="1"
-                value={draftPaymentSettings.allAccessPrice ?? 999}
-                onChange={(e) => setDraftPaymentSettings((p) => ({ ...p, allAccessPrice: Math.max(1, parseInt(e.target.value) || 999) }))}
-                placeholder="999"
-                className="input text-xs font-semibold"
-                required
-              />
-              <p className="text-[11px] text-brand-muted mt-1">
-                Controls the price displayed on the &quot;Upgrade to All-Access&quot; button on student dashboards and course checkout modals
-              </p>
+            {/* All-Access Pass Price & Visibility */}
+            <div className="p-4 rounded-xl border border-brand-border dark:border-brand-dark-border bg-gray-50/50 dark:bg-white/[0.02] space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-xs font-bold text-brand-text dark:text-brand-dark-text">
+                    ⭐ All-Access Pass Option
+                  </label>
+                  <p className="text-[11px] text-brand-muted mt-0.5">
+                    Show or remove the &quot;Upgrade to All-Access&quot; button on student dashboards
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={draftPaymentSettings.allAccessEnabled !== false}
+                    onChange={(e) => setDraftPaymentSettings((p) => ({ ...p, allAccessEnabled: e.target.checked }))}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                </label>
+              </div>
+
+              {draftPaymentSettings.allAccessEnabled !== false ? (
+                <div>
+                  <label className="block text-xs font-semibold text-brand-text dark:text-brand-dark-text mb-1">
+                    Membership Price (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={draftPaymentSettings.allAccessPrice ?? 999}
+                    onChange={(e) => setDraftPaymentSettings((p) => ({ ...p, allAccessPrice: Math.max(1, parseInt(e.target.value) || 999) }))}
+                    placeholder="999"
+                    className="input text-xs font-semibold"
+                    required
+                  />
+                  <p className="text-[11px] text-brand-muted mt-1">
+                    Controls the price displayed on the &quot;Upgrade to All-Access&quot; button on student dashboards and course checkout modals
+                  </p>
+                </div>
+              ) : (
+                <div className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 p-2.5 rounded-lg border border-amber-500/20 flex items-center gap-1.5">
+                  <AlertCircle size={14} className="shrink-0" />
+                  <span>The &quot;Upgrade to All-Access&quot; button is currently <strong>hidden/removed</strong> from student dashboards.</span>
+                </div>
+              )}
             </div>
 
             {/* Custom QR Code Upload */}
@@ -4901,9 +4934,17 @@ export default function AdminDashboard() {
                   Dynamic UPI QR Active
                 </span>
               )}
-              <div className="flex items-center justify-between text-xs py-1.5 px-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-600 dark:text-amber-400 font-bold mt-2">
+              <div className={`flex items-center justify-between text-xs py-1.5 px-3 rounded-lg font-bold mt-2 ${
+                draftPaymentSettings.allAccessEnabled !== false
+                  ? 'bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400'
+                  : 'bg-gray-200/50 dark:bg-white/5 border border-gray-300 dark:border-white/10 text-gray-400 dark:text-gray-500'
+              }`}>
                 <span>⭐ All-Access Pass:</span>
-                <span>₹{(draftPaymentSettings.allAccessPrice ?? 999).toLocaleString()}</span>
+                <span>
+                  {draftPaymentSettings.allAccessEnabled !== false
+                    ? `₹${(draftPaymentSettings.allAccessPrice ?? 999).toLocaleString()}`
+                    : 'Hidden / Removed'}
+                </span>
               </div>
             </div>
           </div>

@@ -83,6 +83,7 @@ export default function UserDashboard() {
   const [showAvatarModal, setShowAvatarModal] = useState(false)
   const [showLogoutModal, setShowLogoutModal] = useState(false)
   const [allAccessPrice, setAllAccessPrice] = useState(999)
+  const [allAccessEnabled, setAllAccessEnabled] = useState(true)
 
   const handleConfirmLogout = async () => {
     await logoutUser()
@@ -299,6 +300,7 @@ export default function UserDashboard() {
     loadData()
     getPaymentSettings().then((s) => {
       if (s?.allAccessPrice) setAllAccessPrice(s.allAccessPrice)
+      if (s?.allAccessEnabled !== undefined) setAllAccessEnabled(s.allAccessEnabled)
     })
   }, [loadData])
 
@@ -574,7 +576,7 @@ export default function UserDashboard() {
                   <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/10 to-yellow-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-bold shadow-sm">
                     ⭐ All-Access Premium Member
                   </div>
-                ) : user?.role !== 'admin' ? (
+                ) : user?.role !== 'admin' && allAccessEnabled ? (
                   <button
                     onClick={() => setShowUpgradeModal(true)}
                     className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-primary-500 to-indigo-600 text-white font-bold text-xs shadow-md hover:opacity-90 transition-all"

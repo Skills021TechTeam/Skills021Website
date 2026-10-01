@@ -1801,6 +1801,7 @@ export default function AdminDashboard() {
   // Subject Bundle live lookup states for Course & Resource modals
   const [courseSubjectBundle, setCourseSubjectBundle] = useState<SubjectBundle | null | undefined>(undefined)
   const [loadingCourseBundle, setLoadingCourseBundle] = useState(false)
+  const [courseSubjectUnits, setCourseSubjectUnits] = useState<{ id: string; title: string; unitNumber: number }[]>([])
   const [resourceSubjectBundle, setResourceSubjectBundle] = useState<SubjectBundle | null | undefined>(undefined)
   const [loadingResourceBundle, setLoadingResourceBundle] = useState(false)
 
@@ -2191,7 +2192,7 @@ export default function AdminDashboard() {
     }
   }, [cSelectedSemesterId])
 
-  // Lookup active Subject Bundle for Course Modal
+  // Lookup active Subject Bundle + existing units for Course Modal
   useEffect(() => {
     if (showModal && editItem?._type === 'course') {
       if (cSelectedSubjectId) {
@@ -2200,8 +2201,24 @@ export default function AdminDashboard() {
           .then(b => setCourseSubjectBundle(b))
           .catch(() => setCourseSubjectBundle(null))
           .finally(() => setLoadingCourseBundle(false))
+        // Also fetch existing units so admin can pick one
+        ;(async () => {
+          try {
+            const { data } = await supabase
+              .from('subject_units')
+              .select('id, unit_number, title')
+              .eq('subject_id', Number(cSelectedSubjectId))
+              .order('unit_number', { ascending: true })
+            setCourseSubjectUnits(
+              (data || []).map((u: any) => ({ id: String(u.id), title: u.title, unitNumber: u.unit_number }))
+            )
+          } catch {
+            setCourseSubjectUnits([])
+          }
+        })()
       } else {
         setCourseSubjectBundle(undefined)
+        setCourseSubjectUnits([])
       }
     }
   }, [showModal, editItem?._type, cSelectedSubjectId])
@@ -7175,6 +7192,9 @@ export default function AdminDashboard() {
             return
           }
 
+          const rawUnitTitle: string = editItem.unitTitle || ''
+          const resolvedUnitTitle = rawUnitTitle === '__new__' ? (editItem.unitTitleCustom?.trim() || '') : rawUnitTitle.trim()
+
           const isFree = !isUnderBundle && (editItem.price === 'FREE' || editItem.price === 0 || editItem.price === '0')
           const payload = {
             title: editItem.title,
@@ -7197,6 +7217,7 @@ export default function AdminDashboard() {
             isCourseBundle: isComboBundle,
             bundledCourseIds: isComboBundle ? (editItem.bundledCourseIds || []) : [],
             whatsappGroupUrl: editItem.whatsappGroupUrl?.trim() || '',
+            unitTitle: isUnderBundle && resolvedUnitTitle ? resolvedUnitTitle : undefined,
           }
 
           let savedCourseId: string
@@ -7637,16 +7658,48 @@ export default function AdminDashboard() {
               </div>
 
               {isUnderBundle && (
-                <Field label="Subject Bundle Unit Title (optional)">
-                  <input
-                    value={editItem.unitTitle || ''}
-                    onChange={e => setEditItem((p: any) => ({ ...p, unitTitle: e.target.value }))}
-                    className={inputCls}
-                    placeholder="e.g. Unit 1: Core Lectures & Concepts"
-                  />
-                  <p className="text-[10px] text-brand-muted mt-1">
-                    If left blank, it will automatically find or create a Unit for you. If a title is provided, it will use the existing unit with this title or create a new one.
-                  </p>
+                <Field label="Subject Bundle Unit">
+                  {courseSubjectUnits.length > 0 ? (
+                    <>
+                      <select
+                        value={editItem.unitTitle || ''}
+                        onChange={e => setEditItem((p: any) => ({ ...p, unitTitle: e.target.value }))}
+                        className={inputCls}
+                      >
+                        <option value="">-- Select existing unit --</option>
+                        {courseSubjectUnits.map(u => (
+                          <option key={u.id} value={u.title}>
+                            Unit {u.unitNumber}: {u.title}
+                          </option>
+                        ))}
+                        <option value="__new__">＋ Create New Unit...</option>
+                      </select>
+                      {editItem.unitTitle === '__new__' && (
+                        <input
+                          value={editItem.unitTitleCustom || ''}
+                          onChange={e => setEditItem((p: any) => ({ ...p, unitTitleCustom: e.target.value }))}
+                          className={inputCls + ' mt-2'}
+                          placeholder="e.g. Unit 3: Advanced Topics"
+                          autoFocus
+                        />
+                      )}
+                      <p className="text-[10px] text-brand-muted mt-1">
+                        Pick an existing unit to add this video there, or choose ＋ Create New Unit to start a new one.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <input
+                        value={editItem.unitTitle || ''}
+                        onChange={e => setEditItem((p: any) => ({ ...p, unitTitle: e.target.value }))}
+                        className={inputCls}
+                        placeholder="e.g. Unit 1: Core Lectures & Concepts"
+                      />
+                      <p className="text-[10px] text-brand-muted mt-1">
+                        No units exist yet for this subject. Enter a title to create the first unit, or leave blank to auto-create one.
+                      </p>
+                    </>
+                  )}
                 </Field>
               )}
 

@@ -1797,13 +1797,12 @@ export default function Courses() {
               </span>
             )}
           </button>
-          {/* <button
+          <button
             onClick={() => setCourseSection('bundles')}
-            className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
-              courseSection === 'bundles'
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${courseSection === 'bundles'
                 ? 'bg-gradient-to-r from-primary-600 to-indigo-600 text-white shadow-md'
                 : 'text-brand-muted dark:text-brand-dark-muted hover:text-brand-text dark:hover:text-brand-dark-text'
-            }`}
+              }`}
           >
             <Package size={15} /> Subject Bundles
             {subjectBundles.length > 0 && (
@@ -1811,7 +1810,7 @@ export default function Courses() {
                 {subjectBundles.length}
               </span>
             )}
-          </button> */}
+          </button>
           <button
             onClick={() => setCourseSection('courses')}
             className={`px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${courseSection === 'courses'
